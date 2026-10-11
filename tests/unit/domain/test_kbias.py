@@ -100,8 +100,8 @@ def test_skips_zero_durations(t_est, t_act):
 
 
 def test_update_k_bias_ema():
-    # 0.3 * (90 / 60) + 0.7 * 1.25 = 0.45 + 0.875 = 1.325
-    assert update_k_bias(INITIAL_K_BIAS, t_est=60, t_act=90) == pytest.approx(1.325)
+    # 0.2 * (90 / 60) + 0.8 * 1.3 = 0.3 + 1.04 = 1.34
+    assert update_k_bias(INITIAL_K_BIAS, t_est=60, t_act=90) == pytest.approx(1.34)
 
 
 def test_update_k_bias_custom_alpha():

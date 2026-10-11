@@ -55,8 +55,8 @@ Dependency rule: `api → application → domain` and `infrastructure → applic
 **Formulas**
 - `T_proposed = T_est × K_bias + buffer` (buffer = break between two tasks, from onboarding)
 - K_bias update (EMA, per user per work domain): `K_new = α × (T_act / T_est) + (1 − α) × K_old`
-- `α = 0.3` by default, read from config (experiments may try other values).
-- Initial K_bias = 1.25. *(Open: may be seeded from the onboarding answer "how often do you overrun" — Problems #10.)*
+- `α = 0.2` by default, read from config (experiments may try other values).
+- Initial K_bias = 1.3. *(Open: may be seeded from the onboarding answer "how often do you overrun" — Problems #10.)*
 - K_bias is always clamped to **[0.5, 3.0]**.
 - Example: T_est = 60, K = 1.3, buffer = 0 → T_proposed = 78.
 
@@ -138,8 +138,8 @@ Every K_bias update is written to `KBiasUpdateLog` (old, new, α, T_est, T_act, 
 ## 12. Open questions (do not assume the answer — see the Problems tab)
 
 1. Supervisor approval for Python / separate service (#8).
-2. Backend ↔ AI contract: JWT signing and the claim holding `UserId`; which tables AI writes; how the Backend tells AI a focus session ended (#9).
-3. Initial K_bias from onboarding or fixed 1.25 (#10).
+2. Backend ↔ AI contract: which tables AI writes (#9). *Decided: JWT is HS256, user ID in `sub` (see `plans/auth-jwt.md`); calls go Frontend → Backend → AI (the Backend calls the AI service, e.g. when a Flexible task is done).*
+3. Initial K_bias from onboarding or fixed 1.3 (#10).
 4. Outlier threshold for learning data (#12).
 5. Document-read quota per plan (#13).
 6. Which LLM models and embedding model (vector size; ERD uses 1536).

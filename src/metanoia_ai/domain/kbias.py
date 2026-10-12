@@ -4,12 +4,12 @@ All durations are in minutes. Default values live here; the application
 layer may pass other values read from config.
 """
 
-from metanoia_ai.domain.models import ActualTimeSource, TaskType
+from metanoia_ai.domain.models import SkipReason, TaskType
 
 K_MIN = 0.5
 K_MAX = 3.0
-INITIAL_K_BIAS = 1.25  # Open: may be seeded from onboarding (Problems #10).
-DEFAULT_ALPHA = 0.3
+INITIAL_K_BIAS = 1.3  # Open: may be seeded from onboarding (Problems #10).
+DEFAULT_ALPHA = 0.2
 # Open: threshold not agreed yet (Problems #12). Proposed value: > 5x or < 1/5.
 DEFAULT_OUTLIER_RATIO = 5.0
 
@@ -28,27 +28,27 @@ def proposed_minutes(t_est: float, k_bias: float, buffer: float = 0.0) -> float:
     return t_est * clamp_k_bias(k_bias) + buffer
 
 
-def should_learn(
+def skip_reason(
     task_type: TaskType,
     t_est: float,
     t_act: float | None,
-    source: ActualTimeSource,
-    user_confirmed: bool = False,
     outlier_ratio: float = DEFAULT_OUTLIER_RATIO,
-) -> bool:
-    """Return True only when this result is clean enough to update K_bias.
+) -> SkipReason | None:
+    """Return why this task must not update K_bias, or None when it is clean.
 
-    t_act is None when the user did not answer (UNKNOWN).
-    user_confirmed only matters for auto-stopped timers.
+    t_act is None when there is no usable actual time (UNKNOWN).
+    Session checks (running, unconfirmed) are done in `summarize_actual_time`.
     """
     if task_type is TaskType.FIXED:
-        return False
-    if t_act is None or t_act <= 0 or t_est <= 0:
-        return False
-    if source is ActualTimeSource.AUTO_TIMEOUT and not user_confirmed:
-        return False
+        return SkipReason.FIXED_TASK
+    if t_est <= 0:
+        raise ValueError("t_est must be positive")
+    if t_act is None or t_act <= 0:
+        return SkipReason.NO_ACTUAL_TIME
     ratio = t_act / t_est
-    return 1 / outlier_ratio <= ratio <= outlier_ratio
+    if not 1 / outlier_ratio <= ratio <= outlier_ratio:
+        return SkipReason.OUTLIER
+    return None
 
 
 def update_k_bias(

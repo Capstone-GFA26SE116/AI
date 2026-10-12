@@ -19,6 +19,7 @@ USER_ID = UUID("3f2a6c1e-8b4d-4e2a-9c7f-1a2b3c4d5e6f")
 def make_settings(secret: str = SECRET) -> Settings:
     return Settings(
         _env_file=None,
+        database_url="postgresql://user:fake@localhost:5432/test",
         jwt_secret=secret,
         jwt_issuer="METANOIA",
         jwt_audience="METANOIA.Client",

@@ -19,7 +19,7 @@ def client():
 def clean_settings(monkeypatch, tmp_path):
     """Run in an empty folder (no real .env) with a fresh settings cache."""
     monkeypatch.chdir(tmp_path)
-    for name in ["JWT_SECRET", "JWT_ISSUER", "JWT_AUDIENCE", "JWT_LEEWAY_SECONDS"]:
+    for name in ["DATABASE_URL", "JWT_SECRET", "JWT_ISSUER", "JWT_AUDIENCE"]:
         monkeypatch.delenv(name, raising=False)
     get_settings.cache_clear()
     yield monkeypatch
@@ -43,6 +43,7 @@ def test_me_with_valid_token_returns_user_id(client):
 
 
 def test_startup_succeeds_with_settings(clean_settings):
+    clean_settings.setenv("DATABASE_URL", "postgresql://user:fake@localhost:5432/test")
     clean_settings.setenv("JWT_SECRET", "x" * 64)
     clean_settings.setenv("JWT_ISSUER", "METANOIA")
     clean_settings.setenv("JWT_AUDIENCE", "METANOIA.Client")

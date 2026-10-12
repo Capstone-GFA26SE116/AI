@@ -6,13 +6,12 @@ from metanoia_ai.domain.kbias import (
     K_MIN,
     clamp_k_bias,
     proposed_minutes,
-    should_learn,
+    skip_reason,
     update_k_bias,
 )
-from metanoia_ai.domain.models import ActualTimeSource, TaskType
+from metanoia_ai.domain.models import SkipReason, TaskType
 
 FLEX = TaskType.FLEXIBLE
-TIMER = ActualTimeSource.TIMER
 
 
 # --- clamp_k_bias ---
@@ -47,61 +46,54 @@ def test_proposed_minutes_rejects_bad_input(t_est, buffer):
         proposed_minutes(t_est, 1.25, buffer)
 
 
-# --- should_learn ---
+# --- skip_reason ---
 
 
-def test_learns_from_normal_flexible_task():
-    assert should_learn(FLEX, t_est=60, t_act=90, source=TIMER)
+def test_clean_flexible_task_has_no_skip_reason():
+    assert skip_reason(FLEX, t_est=60, t_act=90) is None
 
 
-def test_skips_fixed_task():
-    assert not should_learn(TaskType.FIXED, t_est=60, t_act=60, source=TIMER)
+def test_fixed_task_is_skipped():
+    assert skip_reason(TaskType.FIXED, t_est=60, t_act=60) == SkipReason.FIXED_TASK
 
 
-def test_skips_unknown_actual_time():
-    assert not should_learn(FLEX, t_est=60, t_act=None, source=TIMER)
+def test_fixed_task_is_skipped_even_without_estimate():
+    # Fixed tasks have no estimate in the DB; the type check comes first.
+    assert skip_reason(TaskType.FIXED, t_est=0, t_act=None) == SkipReason.FIXED_TASK
 
 
-def test_skips_unconfirmed_auto_timeout():
-    source = ActualTimeSource.AUTO_TIMEOUT
-    assert not should_learn(FLEX, t_est=60, t_act=180, source=source)
-
-
-def test_learns_from_confirmed_auto_timeout():
-    source = ActualTimeSource.AUTO_TIMEOUT
-    assert should_learn(FLEX, t_est=60, t_act=180, source=source, user_confirmed=True)
-
-
-def test_learns_from_self_reported():
-    source = ActualTimeSource.SELF_REPORTED
-    assert should_learn(FLEX, t_est=60, t_act=75, source=source)
+@pytest.mark.parametrize("t_act", [None, 0])
+def test_missing_actual_time_is_skipped(t_act):
+    assert skip_reason(FLEX, t_est=60, t_act=t_act) == SkipReason.NO_ACTUAL_TIME
 
 
 @pytest.mark.parametrize("t_act", [301, 11])
-def test_skips_outliers(t_act):
-    assert not should_learn(FLEX, t_est=60, t_act=t_act, source=TIMER)
+def test_outliers_are_skipped(t_act):
+    assert skip_reason(FLEX, t_est=60, t_act=t_act) == SkipReason.OUTLIER
 
 
 @pytest.mark.parametrize("t_act", [300, 12])
-def test_learns_at_outlier_boundary(t_act):
-    assert should_learn(FLEX, t_est=60, t_act=t_act, source=TIMER)
+def test_outlier_boundary_is_learned(t_act):
+    assert skip_reason(FLEX, t_est=60, t_act=t_act) is None
 
 
 def test_custom_outlier_ratio():
-    assert not should_learn(FLEX, t_est=60, t_act=200, source=TIMER, outlier_ratio=3)
+    result = skip_reason(FLEX, t_est=60, t_act=200, outlier_ratio=3)
+    assert result == SkipReason.OUTLIER
 
 
-@pytest.mark.parametrize(("t_est", "t_act"), [(0, 60), (60, 0)])
-def test_skips_zero_durations(t_est, t_act):
-    assert not should_learn(FLEX, t_est=t_est, t_act=t_act, source=TIMER)
+@pytest.mark.parametrize("t_est", [0, -10])
+def test_bad_estimate_raises(t_est):
+    with pytest.raises(ValueError):
+        skip_reason(FLEX, t_est=t_est, t_act=60)
 
 
 # --- update_k_bias ---
 
 
 def test_update_k_bias_ema():
-    # 0.3 * (90 / 60) + 0.7 * 1.25 = 0.45 + 0.875 = 1.325
-    assert update_k_bias(INITIAL_K_BIAS, t_est=60, t_act=90) == pytest.approx(1.325)
+    # 0.2 * (90 / 60) + 0.8 * 1.3 = 0.3 + 1.04 = 1.34
+    assert update_k_bias(INITIAL_K_BIAS, t_est=60, t_act=90) == pytest.approx(1.34)
 
 
 def test_update_k_bias_custom_alpha():

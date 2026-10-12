@@ -1,169 +1,267 @@
 # CLAUDE.md — METANOIA AI Service
 
-Guidance for Claude (and any teammate) working in the `AI` repo.
+Rules for Claude Code (and any teammate) working in the `AI` repo.
 
 ## 1. What this repo is
 
-METANOIA is a capstone project (FPT University HCM, 09/2026 – 03/2027): an AI assistant that helps **freelancers** manage projects and plan their work. It learns how much each user under-estimates time and corrects future schedules.
+METANOIA (capstone, FPT University HCM, 09/2026 – 03/2027): an AI assistant that helps
+freelancers plan their work. It learns how much each user under-estimates time and
+corrects future schedules.
 
-This repo is the **AI service**. It runs as a **separate service**, deployed independently from the Backend (ASP.NET Core). Both share the same Supabase database and the same login token (JWT).
+This repo is the **AI service** (Python), deployed separately from the Backend
+(ASP.NET Core). Both share one Supabase database and the same JWT.
 
 - Owner: Hieu (team leader). Other members build Backend and Frontend.
-- Language: **Python**. The original proposal said C# / Semantic Kernel; the change is **waiting for the supervisor's approval**. Keep core logic independent of any framework.
-- **Source of truth:** the team Google Doc "Metanoia" (tabs: What, In/Out Scope, Function - Non-Functional, Model Business, Problems, Issue, Log...). It is written in Vietnamese for the team. If this file and the doc disagree, the doc wins — tell Hieu about the mismatch.
-- Anything sent to the supervisor must be in **English**, in our own words.
+- Python instead of C# is **waiting for the supervisor's approval** — keep core logic
+  framework-independent.
+
+**Where information lives — read in this order; if two disagree, STOP and tell Hieu:**
+1. `plans/FR-xx.md` — the approved plan for the function being built.
+2. `docs/` — product facts: `functional-requirements.md`, `database.md`, `open-questions.md`.
+3. This file — rules that apply to every task.
+
+The team Google Doc is for humans only; Hieu copies decided facts into `docs/` or `plans/`.
 
 ## 2. Tech stack
 
 - Python 3.12, package manager **uv**
-- FastAPI + uvicorn (web API), Pydantic (validation, incl. LLM JSON output)
-- pytest (tests), ruff (lint/format)
-- Planned: SQLAlchemy + asyncpg + pgvector (Supabase Postgres)
-- LLM routing (from the Model Business tab): Free plan → cheapest model; paid plans → cheap model for ~90% of calls, stronger model for ~10% "hard" calls. Two providers (OpenAI + Google); if one fails, switch to the other. Models are chosen by **config, never hard-coded**. Embedding model: not chosen yet.
+- FastAPI + uvicorn (API), Pydantic + pydantic-settings (validation, config from `.env`)
+- PyJWT (verify Backend tokens, HS256)
+- SQLAlchemy 2 async + asyncpg (Supabase Postgres) — raw SQL with `text()`, no ORM models
+- pytest + httpx (tests), ruff (lint/format)
+- Planned: pgvector (FR-19), LLM providers (OpenAI + Google)
+- LLM routing: Free plan → cheapest model; paid plans → cheap model ~90% of calls,
+  stronger model ~10% "hard" calls. If one provider fails, switch to the other.
+  Models come from **config, never hard-coded**. Embedding model: not chosen yet.
 
 ## 3. Commands
 
 ```bash
-uv sync                       # install everything from pyproject.toml / uv.lock
-uv run pytest -q              # run tests
-uv run ruff check .           # lint
-uv run ruff format .          # format
-uv run uvicorn metanoia_ai.api.main:app --reload   # run the API (once main.py exists)
+uv sync                                            # install from uv.lock
+uv run pytest -q                                   # tests
+uv run ruff check .                                # lint
+uv run ruff format .                               # format
+uv run uvicorn metanoia_ai.api.main:app --reload   # run API → http://127.0.0.1:8000/docs
 ```
 
-Add a library with `uv add <name>` (or `uv add --dev <name>`) and commit `pyproject.toml` + `uv.lock` together.
+- **Ask Hieu before adding any library.** Then `uv add <name>` (or `--dev`) and commit
+  `pyproject.toml` + `uv.lock` together; give the reason in the PR.
+- On Hieu's Mac the virtual env lives outside the repo (`UV_PROJECT_ENVIRONMENT`,
+  because of iCloud). Do not create `.venv` in the repo or change this.
 
 ## 4. Folder structure (layered, like Clean Architecture)
 
 ```
 src/metanoia_ai/
-  domain/          # pure rules and formulas. No DB, no LLM, no web.
-  application/     # use cases + interfaces (LLMClient, EmbeddingClient, MemoryStore, CalendarReader ...)
-  infrastructure/  # real implementations: database, LLM providers, embeddings
-  api/             # FastAPI routes, JWT check, request/response schemas
-tests/unit/        # fast tests, mainly for domain/
+  config.py              # Settings from .env; bad/missing value → app won't start
+  domain/                # pure rules & formulas. No DB, no web, no LLM.
+    models.py            #   shared types (enums, small dataclasses)
+    <topic>.py           #   e.g. kbias.py, actual_time.py
+  application/           # one use case = one user action; outside world only via ports
+    ports/               #   interfaces (typing.Protocol), e.g. LearningRepository
+    use_cases/           #   e.g. record_task_completion.py
+  infrastructure/        # real implementations of ports
+    db/                  #   engine.py (connection pool) + <x>_repository.py (SQL)
+  api/                   # HTTP edge
+    main.py              #   FastAPI app, startup/shutdown, include routers
+    auth.py              #   JWT → user_id
+    deps.py              #   wiring: build use cases with real repos + config
+    routes/              #   one file per feature, e.g. learning.py
+tests/unit/              # mirrors src/ (domain/, application/, api/, infrastructure/)
+  application/fakes.py   #   in-memory fake repos — application tests never touch the DB
+plans/                   # one plan per function (format: plans/_TEMPLATE.md)
+docs/                    # product facts (FR list, database, open questions)
 ```
 
-Dependency rule: `api → application → domain` and `infrastructure → application → domain`. **domain imports nothing from the other layers.**
+**Dependency rule:** `api → application → domain`; `infrastructure` implements
+`application/ports`. `domain` imports nothing from other layers. Only `api/deps.py`
+knows which real implementation is used.
+
+**Adding a new function — follow the FR-17 pattern:**
+domain rules → port → use case (+ fake repo tests) → SQL repository → route → wire in `deps.py`.
 
 ## 5. Core domain rules (do not change without asking Hieu)
 
 **Task types**
-- **Flexible**: duration depends on the user (coding, writing, design). Needs deadline + T_est. The system measures and learns from these.
-- **Fixed**: time set by someone else (meetings, calls). Blocked time only: never moved, **never used for learning**.
+- **Flexible** — duration depends on the user (coding, writing). Has deadline + T_est. Measured and learned from.
+- **Fixed** — time set by others (meetings). Blocked time only: never moved, **never learned from**.
 
-**Formulas**
-- `T_proposed = T_est × K_bias + buffer` (buffer = break between two tasks, from onboarding)
-- K_bias update (EMA, per user per work domain): `K_new = α × (T_act / T_est) + (1 − α) × K_old`
-- `α = 0.2` by default, read from config (experiments may try other values).
-- Initial K_bias = 1.3. *(Open: may be seeded from the onboarding answer "how often do you overrun" — Problems #10.)*
-- K_bias is always clamped to **[0.5, 3.0]**.
-- Example: T_est = 60, K = 1.3, buffer = 0 → T_proposed = 78.
+**Formulas** (values from config; defaults below)
+- `T_proposed = T_est × K_bias + buffer` (buffer = break after a task, from onboarding)
+- `K_new = α × (T_act / T_est) + (1 − α) × K_old` — per user, per work domain
+- α = 0.2 (`KBIAS_ALPHA`, DB allows (0, 0.30]) · initial K = 1.3 (`KBIAS_INITIAL`) ·
+  outlier ratio = 5 (`KBIAS_OUTLIER_RATIO`) · K always clamped to **[0.5, 3.0]**
+- Example: T_est 60, K 1.3 → T_proposed 78. Done in 90 → K_new = 0.2×1.5 + 0.8×1.3 = 1.34.
 
-**Clean learning data — skip the update when:**
-- the task is Fixed;
-- T_act is `UNKNOWN` (user did not answer);
-- T_act came from an auto-stopped timer the user has not confirmed;
-- the ratio T_act / T_est is an outlier. *(Threshold open: proposed > 5× or < 1/5 — Problems #12.)*
+**Learning (FR-17)**
+- T_est = the user's own `Task.EstimatedMinutes` (never the AI subtask sum).
+- T_act = sum of finished `FocusSession`s, rounded to minutes. Source recorded:
+  `Timer` / `SelfReported` / `AutoTimeout` (weakest source wins).
+- A task is learned **once** (first `Done`). Skip when: Fixed, not done, no time,
+  session still running, unconfirmed time, ratio outside [1/5, 5].
+- Every update is logged in `KBiasUpdateLog` so any K can be recomputed.
 
-**Where T_act comes from** (always store the source):
-- `timer` — Start/Stop in Focus mode; a task can have several sessions, T_act = sum of sessions.
-- `self_reported` — quick buttons "As planned / +15' / +30' / Other" when the user forgot the timer.
-- `auto_timeout` — timer ran over 3× the planned time and stopped itself.
+**Scheduling (FR-10)**
+- **Code places the slots; the LLM only writes the one-line reason.**
+- Order: keep Fixed → Flexible by nearest deadline (tie: longer first) → size with
+  T_proposed → prefer productive hours → warn if a deadline can't be met.
+- Nothing reaches the calendar until the user approves.
+- Task runs over its slot: never auto-move; extend if the next gap fits, else propose a
+  re-plan of the rest of the day. No LLM, no quota.
 
-Every K_bias update is written to `KBiasUpdateLog` (old, new, α, T_est, T_act, source) so any value can be recomputed.
-
-**Scheduling (who does what)**
-- **Code places the slots; the LLM only explains.** The LLM never decides slot times.
-- Order: (1) keep Fixed tasks as they are, (2) Flexible tasks by nearest deadline first (tie: longer T_proposed first), (3) size each slot with T_proposed, (4) prefer the user's productive hours, (5) warn when a deadline cannot be met.
-- Nothing is written to the calendar until the user approves.
-
-**Task runs over its slot** (Issue tab #1): never auto-move. Extend the slot if the next gap is enough; otherwise re-run the planner for the rest of the day (do not move Fixed tasks or tasks already started, keep order) and show a proposal for the user to approve. **No LLM call and no quota used** in this flow. Partial T_act is kept and summed before the K_bias update.
-
-**Plan rules that affect AI logic** (Model Business tab)
-- Free plan: K_bias **is still learned**, but only shown as a hint ("you usually need 30% more"), not added to the schedule.
-- Productive hours: all plans use the onboarding answers; only the top plan also learns from timer data.
+**Plan rules**
+- Free plan: K_bias is learned but only shown as a hint, not added to the schedule.
+- Productive hours: all plans use onboarding answers; only the top plan also learns from timer data.
 
 ## 6. AI features this repo owns
 
-- FR-08 AI chat: **project level** (read brief / attached document → ask clarifying questions → draft milestones + tasks with the user's estimate and the adjusted estimate) and **task level** (split a task > 2 h into subtasks). The user edits drafts; **Apply** creates the real records.
-- FR-09 Context: free/busy time, current workload, similar past tasks (vector search + filters + prefer recent).
-- FR-10 Schedule proposal (planner + validator + one-line reason per slot).
-- FR-12 Daily briefing "Today": 3 priorities with reasons, deadlines at risk, warnings from similar past tasks. Text only.
-- FR-17 K_bias learning. FR-18 productive-hours learning. FR-19 long-term memory (embeddings in pgvector, built in the background).
-- Plumbing: quota check, `AIUsageLog`.
+Full text in `docs/functional-requirements.md`. Status: first line of each `plans/FR-xx.md`.
 
-**Deferred:** FR-13 blind test of 3 personalization levels (research part). **Out of scope:** voice assistant, Eisenhower matrix, training our own model.
+| FR | What | Plan |
+|---|---|---|
+| — | JWT check (shared by all endpoints) | `plans/auth-jwt.md` |
+| FR-17 | Learn K_bias when a Flexible task is done | `plans/FR-17.md` |
+| FR-10 | Schedule proposal (planner + one-line reason per slot) | `plans/FR-10.md` |
+| — | Quota check + `AIUsageLog` (before every LLM call) | — |
+| FR-08 | AI chat: project level (brief → milestones + tasks) and task level (split task > 2 h) | — |
+| FR-09 | Context: free/busy time, workload, similar past tasks | — |
+| FR-19 | Long-term memory: embeddings in pgvector, built in the background | — |
+| FR-12 | Daily "Today" briefing (text only) | — |
+| FR-18 | Productive hours: onboarding answers, then timer data | — |
+
+**Not this repo:** FR-11 schedule approval + writing to Google Calendar (Backend).
+**Deferred:** FR-13 blind test. **Out of scope:** voice, Eisenhower matrix, training our own model.
 
 ## 7. Rules for LLM use
 
-- **Quota is counted per type**: schedule runs, chat messages, document reads. Max 50 AI calls per user per day. Check quota **before** calling the LLM. When quota is used up, block AI features only; manual features keep working.
-- Documents: sent to the LLM **only when the user attaches them in chat**. Extract text first and cap at **20,000 tokens**.
-- LLM output must be JSON validated by a Pydantic schema **and** business rules (no overlap, before deadline, Fixed tasks untouched). If invalid: retry up to 2 times, then return a clear error.
-- If the LLM provider is down, the planner and manual features still work.
-- Every suggestion has a one-line, plain-language reason. No internal names (`K_bias`, `T_proposed`) in user-facing text.
-- Log every LLM/embedding call: feature, model, tokens, cost, latency.
-- Keep prompts in separate versioned files. Keep 10–20 sample inputs to re-run after each prompt change.
-- Targets: chat first words < 3 s (streaming), schedule proposal < 10 s, similar-task search < 100 ms.
+**Quota** (check BEFORE every LLM call)
+- Counted per type: schedule runs, chat messages, document reads. Max 50 AI calls per user per day.
+- Out of quota → block AI features only; manual features keep working.
+- No LLM call → no quota (FR-17, overrun re-plan, pure planner work).
+
+**Input**
+- Documents go to the LLM **only when the user attaches them in chat** (from the project's
+  library, FR-08). Extract text first, cap at **20,000 tokens**.
+- Never send email, full name, OAuth tokens or client contact details (see §9).
+
+**Output**
+- LLM returns JSON → validate with a Pydantic schema **and** business rules
+  (no overlap, before deadline, Fixed untouched). Invalid → retry up to 2 times, then a clear error.
+- Every suggestion has a one-line, plain-language reason. Never show internal names
+  (`K_bias`, `T_proposed`) to users.
+- LLM provider down → planner and manual features still work (return slots without reasons).
+
+**Operations**
+- Log every LLM/embedding call in `AIUsageLog`: feature, model, tokens, cost, latency.
+- Prompts live in separate versioned files; keep 10–20 sample inputs to re-run after each prompt change.
 - Background work (embeddings): retry up to 3 times; a missing embedding never blocks saving a task.
+- Targets: chat first words < 3 s (streaming) · schedule proposal < 10 s · similar-task search < 100 ms.
 
 ## 8. Database rules
 
-- Supabase Postgres is shared with the Backend. **The Backend team owns the schema.** Do **not** run migrations or change tables from this repo.
-- Proposed (not agreed yet — Problems #9): this service writes only to `KBiasUpdateLog`, `UserDomainProfile`, `TaskExecutionMemory`, `ChatConversation`, `ChatMessage`, `ScheduleProposal`, `AIUsageLog`, and the AI usage counters. Everything else is read-only here.
-- Busy time comes from the synced `GoogleCalendarEvent` table. Writing events to Google on approval is the Backend's job.
-- `ScheduleChangeLog.Source` must be set correctly (`MANUAL`, `AI`, `GOOGLE_SYNC`); slots placed by this service use `AI`.
-- The Supabase project is **PRODUCTION**. Experiment on a separate dev database.
-- Every query is filtered by the owner's user ID.
+**Setup (Hieu's decision, 2026-10-12):** we develop directly on the shared Supabase
+project (no separate dev DB). Free plan = **no backup**: a wrong write or delete is permanent.
+All test data is wiped before public launch.
+
+**Ownership**
+- The Backend owns the schema. Never run migrations, CREATE/ALTER/DROP from this repo.
+- Need a schema change? STOP → tell Hieu (he agrees with the Backend first).
+- This service writes only to the tables listed as "AI writes" in `docs/database.md`.
+  Everything else is read-only.
+
+**Every query**
+- Filtered by the owner's user ID (`Task` has no `UserId` → join `Project.UserId`).
+- Raw SQL with `text()`; quote names (`"KBias"`) — Postgres is case-sensitive with quotes.
+- Convert DB strings (`Timer`, `Flexible`…) ↔ domain enums only in `infrastructure/`.
+
+**Testing against the real DB**
+- Unit tests never touch the DB (use fakes).
+- Read-only checks (SELECT on `information_schema`, `EXPLAIN` without running) are always OK.
+- A real run (writes rows) only as a planned step and after Hieu says OK. Create test data
+  with a script, then delete exactly those rows and show that 0 remain (like FR-17 step 12).
+- Never DELETE/UPDATE rows you did not create. Never TRUNCATE or DROP.
 
 ## 9. Security and privacy
 
 - Never commit `.env` or any key/password. Only `.env.example` (names, no values) goes to Git.
+- Secrets are `SecretStr` in `config.py`; never print or log them (incl. `DATABASE_URL`).
+- JWT (details: `plans/auth-jwt.md`): HS256 only; require `exp`, `iss`, `aud`, `sub`;
+  user ID = `sub`. Every endpoint except `/health` needs a valid token.
+  Never log tokens; on failure return a plain 401 without the reason.
+- Tests use fake keys and never read the real `.env`.
 - Never send email, full name, OAuth tokens or client contact details to the LLM.
-- Validate the JWT on every endpoint; this service checks tokens, it does not issue them.
 
 ## 10. Code conventions
 
-- Type hints everywhere; Pydantic models at the edges.
-- Write each domain function together with its unit test. Target ≥ 80% coverage for core logic (K_bias update, T_proposed, ordering, quota check).
-- Small functions, plain names, short English docstrings.
-- Do not add a dependency without a reason; mention it in the PR.
+- Type hints everywhere. Pydantic models at the edges (API body, config, LLM output).
+- Domain types: `@dataclass(frozen=True)` and `StrEnum`. Ports: `typing.Protocol`.
+- Anything that waits (DB, LLM, HTTP) is `async`.
+- Durations in **minutes**. Datetimes always **timezone-aware**. K_bias rounded to 3 decimals (DB numeric(5,3)).
+- Small functions, plain names, short English docstrings and comments.
+- Every function comes with its tests in the same step. ≥ 80% coverage for core logic.
+- Before stopping a step: `uv run pytest -q` and `uv run ruff check .` both pass.
 
-## 11. Git workflow
+## 11. Git
 
-- Never push directly to `main`. Branch as `feature/<short-name>`, push, open a Pull Request.
-- Commit messages: short, imperative (`feat: add K_bias EMA update`, `test: skip Fixed tasks`).
-- Check `git status` before committing: no secrets, no `.venv`, no `__pycache__`.
+- One plan = one branch = one PR. Branch from the latest `main`: `feature/frXX-<short-name>`.
+- PRs always target **`main`** (PR #2 was merged into the wrong branch once).
+- Commit messages: short, English, imperative (`feat: add K_bias EMA update`).
+- Before any commit: `git status` — no `.env`, no secrets, no `.venv`, no `__pycache__`.
+- Commit after each step Hieu approves ("tiếp"). Push and open a PR only after Hieu says OK.
+- PR description in English (for teammates): what, why, new libraries, what the Backend must do.
 
-## 12. Open questions (do not assume the answer — see the Problems tab)
+## 12. How to work with Hieu
 
-1. Supervisor approval for Python / separate service (#8).
-2. Backend ↔ AI contract: which tables AI writes (#9). *Decided: JWT is HS256, user ID in `sub` (see `plans/auth-jwt.md`); calls go Frontend → Backend → AI (the Backend calls the AI service, e.g. when a Flexible task is done).*
-3. Initial K_bias from onboarding or fixed 1.3 (#10).
-4. Outlier threshold for learning data (#12).
-5. Document-read quota per plan (#13).
-6. Which LLM models and embedding model (vector size; ERD uses 1536).
-7. Database doc vs Supabase schema mismatch (#19).
-
-## 13. How to work with Hieu
-
-- Hieu works on a Mac and is learning Python (knows Java). Explain in simple words, give **one step at a time**, and **check whether something already exists before creating it**.
-- Keep answers short. Do not create extra documents unless asked.
+- **Nói chuyện bằng tiếng Việt.** Code, comments, commits and PRs in English.
+- Hieu knows Java and is learning Python: explain in simple words and compare with Java when useful.
+- Keep answers short. Do not create documents that were not asked for.
+- Check whether something already exists before creating it.
 - Say clearly when something is an assumption or not yet agreed with the team.
-- Nói bằng tiếng việt
 
-## 14. Specs
-- `docs/functional-requirements.md` — FR list (Vietnamese, team version). Read the relevant FR before working on it.
-- If the code needs something the spec doesn't say, ask Hieu — don't invent it.
+## 13. Workflow: build from an approved plan
 
-## 15. Workflow: one FR at a time, think together before coding
+Hieu designs each function on Claude web and writes `plans/FR-xx.md` (format: `plans/_TEMPLATE.md`).
+**Your job: build exactly that plan, one step at a time. You do not design.**
+No approved plan → do not write feature code.
+Small jobs with no plan (typo, rename, docs): say what you will change, wait for OK.
 
-Hieu must understand everything that gets built. Never jump ahead. Each phase ends with a STOP; wait for Hieu.
+**Phase A — CHECK (no code)**
+1. Read the plan and the existing code it touches.
+2. Summarize in ≤ 5 lines: what you will build, which files, which tests.
+3. List anything unclear, missing or conflicting (plan vs. code vs. `docs/` vs. this file).
+   **Do not fill gaps yourself.**
+4. STOP. Wait for "BẮT ĐẦU".
 
-1. UNDERSTAND — Restate the FR in simple Vietnamese: what goes in, what comes out, which layer/files it touches, an example with real numbers. STOP: ask "Hiểu như vậy đúng chưa?"
-2. ISSUES — List every unclear point, edge case, and conflict with this file or the spec. For each: 2–3 options, pros/cons, your recommendation. Discuss ONE issue at a time. Never decide alone. STOP after each issue.
-3. PLAN — Write `plans/FR-xx.md`: decisions from phase 2, then numbered steps. Each step = one small function + its unit test. STOP: code nothing until Hieu types "DUYỆT".
-4. BUILD — Do ONE step. Then explain: what the code does, why, and compare unfamiliar Python with Java. Run `uv run pytest -q` and `uv run ruff check .`. STOP: wait for "tiếp".
-5. WRAP-UP — Summarize what was built, tick the steps in the plan file, suggest a commit message. Do not commit or push.
+**Phase B — BUILD (one step of plan §4 at a time)**
+1. List the files you will create or change. Touch nothing else.
+2. Write the code + the tests named for this step (plan §3).
+3. Run `uv run pytest -q` and `uv run ruff check .`.
+4. Explain briefly in Vietnamese: what each part does, why, and Python-vs-Java where useful.
+5. STOP. On "tiếp": tick the step in plan §4, commit, then start the next step.
 
-If a new problem appears during BUILD: stop, go back to phase 2 for that problem only.
+**Phase C — WRAP-UP**
+- Check every acceptance criterion in plan §0: pass / fail, and tick the ones that pass.
+- List what the Backend/team must do (for `docs/open-questions.md`).
+- Ask before pushing and opening the PR.
+
+**The only edits you may make to a plan:** ticking checkboxes in §0 and §4.
+
+**When something goes wrong** (bug, failing test, plan doesn't work in practice):
+- STOP. Do not redesign, and do not change behavior, API, DB use or tests on your own.
+  Typo-level fixes inside the current step are OK.
+- Write this report so Hieu can paste it into Claude web:
+
+```
+## Bug report — FR-xx, bước N
+- Hiện tượng:
+- Lỗi / log (rút gọn):
+- Nguyên nhân nghi ngờ:
+- Mục plan bị ảnh hưởng: (0–4)
+- Hướng sửa: 2–3 lựa chọn, ưu/nhược mỗi cái
+```
+
+- Wait until Hieu updates the plan (§5 change log), re-read it, then continue.
+
+## 14. Open questions
+
+See `docs/open-questions.md`. Never assume the answer to an open question — ask Hieu.

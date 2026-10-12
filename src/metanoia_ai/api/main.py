@@ -9,17 +9,25 @@ from fastapi import Depends, FastAPI
 from pydantic import BaseModel
 
 from metanoia_ai.api.auth import get_current_user_id
+from metanoia_ai.api.routes import learning
 from metanoia_ai.config import get_settings
+from metanoia_ai.infrastructure.db.engine import create_engine, create_session_factory
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Load settings at startup, so a missing value stops the app right away."""
-    get_settings()
+    """Startup: load settings (a missing value stops the app) and set up the DB pool.
+
+    Shutdown: close all DB connections.
+    """
+    engine = create_engine(get_settings())
+    app.state.session_factory = create_session_factory(engine)
     yield
+    await engine.dispose()
 
 
 app = FastAPI(title="METANOIA AI", lifespan=lifespan)
+app.include_router(learning.router)
 
 
 class HealthResponse(BaseModel):

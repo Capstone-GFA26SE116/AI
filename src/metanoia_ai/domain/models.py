@@ -51,6 +51,8 @@ class FocusSessionRecord:
     ended_at: datetime | None  # None: the session is still running
     source: ActualTimeSource
     is_confirmed: bool = True
+    subtask_id: UUID | None = None
+    remaining_minutes: int | None = None  # user's own "about X minutes left"
 
 
 # --- Schedule proposal (FR-10) ---

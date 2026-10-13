@@ -27,8 +27,9 @@ Ký hiệu: **AI ghi** = AI service được INSERT/UPDATE · **Chỉ đọc** =
   `MissingMinutes` trống hoặc > 0, **bắt buộc có khi `IsFeasible = false`** · `Explanation` text NOT NULL ·
   `Warnings` jsonb, trống hoặc mảng (Hiếu thêm 2026-10-07) · `CreatedAt` mặc định now().
 - `BlindTestSessionId`, `DisplayPosition`, `IsChosen`: cho FR-13, AI không ghi.
-- ⚠️ `Status` ∈ {`Pending`, `Approved`, `PartlyApproved`, `Rejected`} — **chưa có `Superseded`**
-  (FR-10 quyết định #2 cần). Chờ Backend thêm (Hiếu chọn 2026-10-13).
+- `Status` ∈ {`Pending`, `Approved`, `PartlyApproved`, `Rejected`, `Superseded`}.
+  ⚠️ `Superseded` do AI thêm thẳng vào DB 2026-10-13 (Hiếu cho phép, đã báo Backend):
+  Backend phải cập nhật entity / migration, nếu không migration sau có thể xoá mất giá trị này.
 
 ### `ScheduleSlot` — AI ghi, chỉ slot trạng thái `Proposed` (FR-10)
 - `TaskId` NOT NULL · `SubTaskId?` · `ScheduleProposalId?` · `StartTime`, `EndTime` timestamptz, `EndTime > StartTime`.

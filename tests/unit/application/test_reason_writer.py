@@ -30,8 +30,8 @@ GOOD = answer((SLOT_1, "Due in 2 days, in your most focused hour."))
 
 
 def writer(llm, max_retries=2, ticks=None) -> ReasonWriter:
-    # Fake clock: each call takes 1.5 s.
-    times = iter(ticks or [i * 1.5 for i in range(20)])
+    # Fake clock: +0.3 s per reading, so 3 fast tries all start inside the 2 s budget.
+    times = iter(ticks or [i * 0.3 for i in range(20)])
     return ReasonWriter(
         llm,
         max_retries=max_retries,
@@ -58,7 +58,7 @@ def test_good_answer_first_time():
         100,
         50,
     )
-    assert call.latency_ms == 1500
+    assert call.latency_ms == 300
 
 
 def test_t23_bad_shape_once_then_good():
@@ -101,6 +101,30 @@ def test_retries_can_be_turned_off():
     result = write(FakeLLMClient("bad", GOOD), max_retries=0)
     assert result.reasons is None
     assert len(result.calls) == 1
+
+
+def test_slow_failure_is_not_retried():
+    # First call times out after 10 s: retrying could take 10 s more (AC8).
+    llm = FakeLLMClient(LLMError("timeout", model="m"), GOOD)
+    result = write(llm, ticks=[0.0, 10.0, 10.0])
+    assert result.reasons is None
+    assert len(llm.prompts) == 1
+    assert result.calls[0].latency_ms == 10_000
+
+
+def test_retry_stops_once_the_budget_is_used():
+    # Two fast bad answers take 1.2 s each: the 3rd try would start at 2.4 s ≥ 2 s.
+    llm = FakeLLMClient("bad", "bad", GOOD)
+    result = write(llm, ticks=[0.0, 1.2, 1.2, 2.4, 2.4])
+    assert result.reasons is None
+    assert len(llm.prompts) == 2
+
+
+def test_fast_bad_answer_is_retried_within_the_budget():
+    llm = FakeLLMClient("bad", GOOD)
+    result = write(llm, ticks=[0.0, 1.9, 1.9, 2.5])
+    assert result.succeeded
+    assert [c.latency_ms for c in result.calls] == [1900, 600]
 
 
 def test_no_slots_no_call():

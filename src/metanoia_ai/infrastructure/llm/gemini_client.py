@@ -8,7 +8,9 @@ from pydantic import SecretStr
 
 from metanoia_ai.application.ports.llm_client import LLMError, LLMResponse
 
-DEFAULT_TIMEOUT_SECONDS = 8.0
+# Gemini rejects a request deadline under 10 s (400 INVALID_ARGUMENT).
+MIN_TIMEOUT_SECONDS = 10.0
+DEFAULT_TIMEOUT_SECONDS = MIN_TIMEOUT_SECONDS
 
 
 def build_config(
@@ -53,6 +55,10 @@ class GeminiClient:
         timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
         client: Any = None,  # tests pass a stand-in; real code builds genai.Client
     ) -> None:
+        if timeout_seconds < MIN_TIMEOUT_SECONDS:
+            raise ValueError(
+                f"Gemini needs a timeout of at least {MIN_TIMEOUT_SECONDS} s"
+            )
         self.model = model
         self.timeout_seconds = timeout_seconds
         self.client = client or genai.Client(api_key=api_key.get_secret_value())

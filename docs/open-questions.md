@@ -13,7 +13,7 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 | Đồng ý AI ghi `ScheduleProposal`, `ScheduleSlot` (chỉ `Proposed`), `UserSubscription.AiCallsUsed`, `AIUsageLog` | FR-10, #9 | |
 | Gọi `POST /schedule/propose` khi user bấm "Xếp lịch", gửi kèm `language` (vi/en) | FR-10 | DB không có cột ngôn ngữ |
 | Ai reset `AiCallsUsed` khi tới `QuotaResetAt`? | Quota | Giả định: job của Backend |
-| Thêm `Superseded` vào CHECK `ScheduleProposal.Status`; cập nhật entity cho cột `Warnings` | FR-10 | Đọc DB 2026-10-13: CHECK chỉ có `Pending`, `Approved`, `PartlyApproved`, `Rejected`. Hiếu chọn: Backend thêm |
+| Cập nhật entity / migration cho `ScheduleProposal.Status` = `Superseded` và cột `Warnings` | FR-10 | 2026-10-13: AI đã thêm `Superseded` vào CHECK trên DB (Hiếu cho phép, đã báo Backend). Migration của Backend phải giữ giá trị này |
 | Thêm unique (`UserId`) WHERE `Status = 'Active'` cho `UserSubscription` | FR-10, Quota | DB chưa chặn 2 gói `Active`; AI tạm lấy dòng `StartAt` mới nhất |
 | Đơn vị tiền của `AIUsageLog.Cost` (USD hay VND)? | FR-10, Quota | AI tính từ config giá token |
 | Đổi mặc định `UserDomainProfile.KBias` thành `1.300` | FR-17 | |

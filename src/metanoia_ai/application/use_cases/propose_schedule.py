@@ -152,6 +152,7 @@ class ProposeSchedule:
 
         proposal = self._proposal(plan, slot_ids, units, warnings, reasons, language)
         await self._save(user_id, subscription, proposal, reasons.calls)
+        zone = data.hours.time_zone  # times go back in the user's time zone
         return ProposalResult(
             proposal_id=proposal.proposal_id,
             is_feasible=proposal.is_feasible,
@@ -162,8 +163,8 @@ class ProposeSchedule:
                     s.slot_id,
                     s.task_id,
                     s.subtask_id,
-                    s.start,
-                    s.end,
+                    s.start.astimezone(zone),
+                    s.end.astimezone(zone),
                     s.proposed_minutes,
                     s.explanation,
                 )

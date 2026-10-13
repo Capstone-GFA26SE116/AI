@@ -1,6 +1,6 @@
 """In-memory stand-ins for the database and the LLM, used by application tests."""
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from datetime import datetime
@@ -201,9 +201,17 @@ class FakeScheduleRepository:
 
 
 class FakeLLMClient:
-    """Returns prepared answers in order. An exception in the list is raised instead."""
+    """Returns prepared answers in order.
 
-    def __init__(self, *answers: str | Exception, model: str = "fake-model") -> None:
+    An answer can be text, an exception (raised instead), or a function that
+    gets the prompt and returns text (for slot ids made at run time).
+    """
+
+    def __init__(
+        self,
+        *answers: str | Exception | Callable[[str], str],
+        model: str = "fake-model",
+    ) -> None:
         self.answers = list(answers)
         self.model = model
         self.prompts: list[str] = []
@@ -219,6 +227,8 @@ class FakeLLMClient:
         answer = self.answers.pop(0)
         if isinstance(answer, Exception):
             raise answer
+        if callable(answer):
+            answer = answer(prompt)
         return LLMResponse(
             text=answer, model=self.model, input_tokens=100, output_tokens=50
         )

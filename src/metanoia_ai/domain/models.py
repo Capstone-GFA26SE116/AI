@@ -65,6 +65,13 @@ def _require_aware(*values: datetime) -> None:
             raise ValueError("datetime must be timezone-aware")
 
 
+class Language(StrEnum):
+    """Language of the text the user sees (summary, warnings, reasons)."""
+
+    VI = "vi"
+    EN = "en"
+
+
 class WarningType(StrEnum):
     """Why part of a schedule could not be made. Values are sent in the API."""
 

@@ -9,7 +9,7 @@ from fastapi import Depends, FastAPI
 from pydantic import BaseModel
 
 from metanoia_ai.api.auth import get_current_user_id
-from metanoia_ai.api.routes import learning
+from metanoia_ai.api.routes import learning, schedule
 from metanoia_ai.config import get_settings
 from metanoia_ai.infrastructure.db.engine import create_engine, create_session_factory
 
@@ -28,6 +28,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="METANOIA AI", lifespan=lifespan)
 app.include_router(learning.router)
+app.include_router(schedule.router)
 
 
 class HealthResponse(BaseModel):

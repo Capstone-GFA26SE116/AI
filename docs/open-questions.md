@@ -12,6 +12,8 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 | Đồng ý AI ghi `UserDomainProfile`, `KBiasUpdateLog` | FR-17, #9 | |
 | Đồng ý AI ghi `ScheduleProposal`, `ScheduleSlot` (chỉ `Proposed`), `UserSubscription.AiCallsUsed`, `AIUsageLog` | FR-10, #9 | |
 | Gọi `POST /schedule/propose` khi user bấm "Xếp lịch", gửi kèm `language` (vi/en) | FR-10 | DB không có cột ngôn ngữ |
+| Xử lý kết quả `/schedule/propose`: 200 có thể có `proposal_id: null` (không có việc cần xếp); 409 = user không có gói `Active`; 429 = hết lượt AI | FR-10 | `task_ids: []` = không chọn task nào; bỏ trường = mọi task |
+| FR-11: chỉ duyệt đề xuất `Pending`; bỏ qua đề xuất `Superseded` và slot `Cancelled` | FR-10, FR-11 | Mỗi lần "Xếp lịch" mới, AI chuyển đề xuất `Pending` cũ → `Superseded` |
 | Ai reset `AiCallsUsed` khi tới `QuotaResetAt`? | Quota | Giả định: job của Backend |
 | Cập nhật entity / migration cho `ScheduleProposal.Status` = `Superseded` và cột `Warnings` | FR-10 | 2026-10-13: AI đã thêm `Superseded` vào CHECK trên DB (Hiếu cho phép, đã báo Backend). Migration của Backend phải giữ giá trị này |
 | Thêm unique (`UserId`) WHERE `Status = 'Active'` cho `UserSubscription` | FR-10, Quota | DB chưa chặn 2 gói `Active`; AI tạm lấy dòng `StartAt` mới nhất |

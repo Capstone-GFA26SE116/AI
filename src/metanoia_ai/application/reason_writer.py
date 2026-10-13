@@ -1,7 +1,10 @@
 """FR-10: ask the LLM for one short reason per slot, check the answer, retry if bad.
 
 One call covers all slots. A bad answer (not JSON, wrong shape, missing slot,
-too long, internal names) or a failed call is retried up to `max_retries` times.
+too long, internal names) or a failed call is retried up to `max_retries` times,
+but only while less than `retry_budget_seconds` has passed since the first try:
+a bad answer usually comes back fast, a slow or timed-out call is not repeated.
+Worst case ≈ budget + one call timeout (2 s + 10 s), to stay near AC8 (< 10 s).
 If every try fails, the slots are kept without reasons.
 Every call is reported, so the use case can write one AIUsageLog row per call.
 """
@@ -27,6 +30,7 @@ MAX_REASON_LENGTH = 150
 FORBIDDEN_WORDS = ("k_bias", "kbias", "t_proposed", "t_est", "k=")
 LANGUAGE_NAMES = {Language.VI: "Vietnamese", Language.EN: "English"}
 TOKENS_PER_PRICE_UNIT = Decimal(1_000_000)
+DEFAULT_RETRY_BUDGET_SECONDS = 2.0
 
 
 class ReasonItem(BaseModel):
@@ -74,10 +78,12 @@ class ReasonWriter:
         max_retries: int,
         input_price_per_1m: float,
         output_price_per_1m: float,
+        retry_budget_seconds: float = DEFAULT_RETRY_BUDGET_SECONDS,
         clock: Callable[[], float] = time.perf_counter,
     ) -> None:
         self.llm = llm
         self.max_retries = max_retries
+        self.retry_budget = retry_budget_seconds
         self.input_price = Decimal(str(input_price_per_1m))
         self.output_price = Decimal(str(output_price_per_1m))
         self.clock = clock
@@ -86,14 +92,19 @@ class ReasonWriter:
     async def write(
         self, facts: Mapping[UUID, SlotFacts], language: Language
     ) -> ReasonResult:
-        """Reasons for every slot, or None after 1 + max_retries failed tries."""
+        """Reasons for every slot, or None when every try failed."""
         if not facts:
             return ReasonResult(reasons={}, calls=())
         prompt = self.build_prompt(facts, language)
         schema = ReasonsAnswer.model_json_schema()
         calls = []
+        first_start: float | None = None
         for _ in range(1 + self.max_retries):
             started = self.clock()
+            if first_start is None:
+                first_start = started
+            elif started - first_start >= self.retry_budget:
+                break  # too slow already: keep the slots without reasons
             try:
                 response = await self.llm.generate_json(prompt, schema)
             except LLMError as error:

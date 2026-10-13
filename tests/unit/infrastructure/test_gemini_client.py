@@ -57,10 +57,10 @@ class StandInSDK:
 
 
 def test_config_asks_for_json_with_schema_and_timeout():
-    config = build_config(SCHEMA, timeout_seconds=8)
+    config = build_config(SCHEMA, timeout_seconds=10)
     assert config.response_mime_type == "application/json"
     assert config.response_json_schema == SCHEMA
-    assert config.http_options.timeout == 8000  # milliseconds
+    assert config.http_options.timeout == 10_000  # milliseconds
 
 
 def test_to_response_reads_text_and_tokens():
@@ -89,13 +89,26 @@ def test_empty_answer_gives_empty_text():
 
 def test_generate_json_sends_model_prompt_and_config():
     sdk = StandInSDK(gemini_answer())
-    client = GeminiClient(FAKE_KEY, "gemini-flash-lite", timeout_seconds=5, client=sdk)
+    client = GeminiClient(FAKE_KEY, "gemini-flash-lite", timeout_seconds=12, client=sdk)
     response = asyncio.run(client.generate_json("the prompt", SCHEMA))
     assert response.input_tokens == 120
     (call,) = sdk.calls
     assert call["model"] == "gemini-flash-lite"
     assert call["contents"] == "the prompt"
-    assert call["config"].http_options.timeout == 5000
+    assert call["config"].http_options.timeout == 12_000
+
+
+def test_default_timeout_is_the_gemini_minimum():
+    client = GeminiClient(FAKE_KEY, "m", client=StandInSDK(gemini_answer()))
+    assert client.timeout_seconds == 10
+
+
+def test_timeout_under_10_seconds_is_rejected():
+    # Gemini answers 400 "Minimum allowed deadline is 10s" (found in step 15).
+    with pytest.raises(ValueError):
+        GeminiClient(
+            FAKE_KEY, "m", timeout_seconds=8, client=StandInSDK(gemini_answer())
+        )
 
 
 def test_sdk_error_becomes_llm_error_without_details():

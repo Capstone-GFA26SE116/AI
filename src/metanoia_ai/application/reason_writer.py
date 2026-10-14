@@ -1,4 +1,4 @@
-"""FR-10: ask the LLM for one short reason per slot, check the answer, retry if bad.
+"""FR-10: ask the LLM for a short reason per slot, check the answer, retry if bad.
 
 One call covers all slots. A bad answer (not JSON, wrong shape, missing slot,
 too long, internal names) or a failed call is retried up to `max_retries` times,
@@ -24,10 +24,30 @@ from metanoia_ai.domain.models import Language
 from metanoia_ai.domain.schedule_text import SlotFacts
 from metanoia_ai.prompts import load_prompt
 
-PROMPT_VERSION = "schedule_reason_v1"
-MAX_REASON_LENGTH = 150
-# Internal names the user must never see (checked without case).
-FORBIDDEN_WORDS = ("k_bias", "kbias", "t_proposed", "t_est", "k=")
+PROMPT_VERSION = "schedule_reason_v2"
+MAX_REASON_LENGTH = 250  # at most 2 short sentences (plan #33)
+# Internal names the user must never see (checked without case):
+# formula names, fact names and fact values sent in the prompt.
+FORBIDDEN_WORDS = (
+    "k_bias",
+    "kbias",
+    "t_proposed",
+    "t_est",
+    "k=",
+    "earliest_free",
+    "waited_for_focus_hour",
+    "earlier_blocked_by",
+    "calendar_event",
+    "approved_slot",
+    "other_task",
+    "outside_work_hours",
+    "no_long_gap",
+    "priority_rank",
+    "spare_hours",
+    "estimate_minutes",
+    "planned_minutes",
+    "extra_percent",
+)
 LANGUAGE_NAMES = {Language.VI: "Vietnamese", Language.EN: "English"}
 TOKENS_PER_PRICE_UNIT = Decimal(1_000_000)
 DEFAULT_RETRY_BUDGET_SECONDS = 2.0
@@ -169,6 +189,14 @@ def facts_to_json(slot_id: UUID, facts: SlotFacts) -> dict[str, object]:
         "extra_applied": facts.extra_applied,
         "part": facts.part_index,
         "parts": facts.part_count,
+        "placement": facts.placement.value,
+        "earlier_blocked_by": facts.earlier_blocked_by.value,
+        "priority_rank": facts.priority_rank,
+        "priority_total": facts.priority_total,
+        "estimate_minutes": facts.estimate_minutes,
+        "planned_minutes": facts.planned_minutes,
+        "spare_hours": facts.spare_hours,
+        "split_reason": facts.split_reason.value if facts.split_reason else None,
     }
 
 

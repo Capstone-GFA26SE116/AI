@@ -32,8 +32,14 @@ from metanoia_ai.application.ports.schedule_repository import (
     TaskToSchedule,
 )
 from metanoia_ai.application.reason_writer import LLMCall, ReasonResult, ReasonWriter
-from metanoia_ai.domain.free_time import busy_ranges, free_ranges, running_timer_busy
+from metanoia_ai.domain.free_time import (
+    BusyBlock,
+    busy_blocks,
+    free_ranges,
+    running_timer_busy,
+)
 from metanoia_ai.domain.models import (
+    BusyKind,
     Language,
     PlannedSlot,
     ScheduleUnit,
@@ -42,9 +48,15 @@ from metanoia_ai.domain.models import (
     WarningType,
 )
 from metanoia_ai.domain.planner import PlanResult, plan_schedule, top_productive_hours
-from metanoia_ai.domain.schedule_duration import minutes_to_schedule, sessions_of
+from metanoia_ai.domain.schedule_duration import (
+    minutes_to_schedule,
+    remaining_estimate,
+    sessions_of,
+)
 from metanoia_ai.domain.schedule_text import (
     SlotFacts,
+    earlier_blocked_by,
+    priority_ranks,
     slot_facts,
     summary,
     warning_message,
@@ -94,6 +106,8 @@ class UnitInfo:
     title: str
     deadline: datetime
     user_k: Decimal  # the user's K, also on the Free plan (then only a hint)
+    estimate_minutes: int  # the user's own estimate of what is left
+    planned_minutes: int  # all minutes kept for the unit
 
 
 class ProposeSchedule:
@@ -141,13 +155,16 @@ class ProposeSchedule:
                 warnings=(),
             )
 
-        plan = self._plan(data, units, timers, now, window_end)
+        blocks = busy_blocks(
+            data.fixed_tasks, data.calendar_events, data.approved_slots, timers
+        )
+        plan = self._plan(data, units, blocks, now, window_end)
         warnings = list(plan.warnings)
         if not data.calendar_synced:
             warnings.append(ScheduleWarning(WarningType.CALENDAR_NOT_SYNCED))
 
         slot_ids = {slot: uuid4() for slot in plan.slots}
-        facts = self._facts(plan.slots, slot_ids, infos, data)
+        facts = self._facts(plan.slots, slot_ids, infos, units, blocks, data, now)
         reasons = await self.reason_writer.write(facts, language)
 
         proposal = self._proposal(plan, slot_ids, units, warnings, reasons, language)
@@ -216,7 +233,11 @@ class ProposeSchedule:
             for unit in self._task_units(task, k, now):
                 units.append(unit)
                 infos[(unit.task_id, unit.subtask_id)] = UnitInfo(
-                    unit.title, unit.deadline, user_k
+                    unit.title,
+                    unit.deadline,
+                    user_k,
+                    estimate_minutes=unit.estimate_minutes or unit.minutes,
+                    planned_minutes=unit.minutes,
                 )
         return units, infos, timers
 
@@ -226,28 +247,41 @@ class ProposeSchedule:
     ) -> list[ScheduleUnit]:
         """One unit per open subtask, or one unit for a task without subtasks."""
         if not task.subtasks:
-            minutes = minutes_to_schedule(task.estimated_minutes, task.sessions, k, now)
             return [
-                ScheduleUnit(task.task_id, None, task.title, task.deadline, minutes, k)
-            ]
-        return [
-            ScheduleUnit(
-                task_id=task.task_id,
-                subtask_id=sub.subtask_id,
-                title=f"{task.title}: {sub.title}",
-                deadline=task.deadline,
-                minutes=minutes_to_schedule(
-                    sub.estimated_minutes,
-                    sessions_of(task.sessions, sub.subtask_id),
+                ScheduleUnit(
+                    task.task_id,
+                    None,
+                    task.title,
+                    task.deadline,
+                    minutes_to_schedule(task.estimated_minutes, task.sessions, k, now),
                     k,
-                    now,
-                ),
-                k_bias_used=k,
-                order_index=sub.order_index,
+                    estimate_minutes=remaining_estimate(
+                        task.estimated_minutes, task.sessions, now
+                    ),
+                )
+            ]
+        units = []
+        for sub in task.subtasks:
+            if not sub.is_open:
+                continue
+            sessions = sessions_of(task.sessions, sub.subtask_id)
+            units.append(
+                ScheduleUnit(
+                    task_id=task.task_id,
+                    subtask_id=sub.subtask_id,
+                    title=f"{task.title}: {sub.title}",
+                    deadline=task.deadline,
+                    minutes=minutes_to_schedule(
+                        sub.estimated_minutes, sessions, k, now
+                    ),
+                    k_bias_used=k,
+                    order_index=sub.order_index,
+                    estimate_minutes=remaining_estimate(
+                        sub.estimated_minutes, sessions, now
+                    ),
+                )
             )
-            for sub in task.subtasks
-            if sub.is_open
-        ]
+        return units
 
     @staticmethod
     def _running_timer(
@@ -279,13 +313,11 @@ class ProposeSchedule:
         self,
         data: PlanningData,
         units: list[ScheduleUnit],
-        timers: list[TimeRange],
+        blocks: list[BusyBlock],
         now: datetime,
         window_end: datetime,
     ) -> PlanResult:
-        busy = busy_ranges(
-            data.fixed_tasks, data.calendar_events, data.approved_slots, timers
-        )
+        busy = [b.time for b in blocks]
         free = free_ranges(data.hours, now, self.window_days, busy, self.round_minutes)
         return plan_schedule(
             units,
@@ -305,12 +337,30 @@ class ProposeSchedule:
         slots: Sequence[PlannedSlot],
         slot_ids: dict[PlannedSlot, UUID],
         infos: dict[tuple[UUID, UUID | None], UnitInfo],
+        units: Sequence[ScheduleUnit],
+        blocks: Sequence[BusyBlock],
         data: PlanningData,
+        now: datetime,
     ) -> dict[UUID, SlotFacts]:
+        """Facts per slot, including why it starts when it does (plan #32)."""
         productive = top_productive_hours(data.productive_scores, self.top_hours)
+        ranks = priority_ranks(units)
+        by_task: dict[UUID, list[PlannedSlot]] = {}
+        for slot in sorted(slots, key=lambda s: s.start):
+            by_task.setdefault(slot.task_id, []).append(slot)
+
         result = {}
         for slot in slots:
             info = infos[(slot.task_id, slot.subtask_id)]
+            own = by_task[slot.task_id]
+            index = own.index(slot)
+            # Soonest start: now, or the end of the previous part / subtask.
+            earliest = own[index - 1].end if index else now
+            others = [
+                BusyBlock(TimeRange(s.start, s.end), BusyKind.OTHER_TASK)
+                for s in slots
+                if s.task_id != slot.task_id
+            ]
             result[slot_ids[slot]] = slot_facts(
                 slot,
                 info.title,
@@ -318,6 +368,13 @@ class ProposeSchedule:
                 info.user_k,
                 productive,
                 data.hours.time_zone,
+                blocked_by=earlier_blocked_by(
+                    slot, earliest, [*blocks, *others], data.hours, self.round_minutes
+                ),
+                priority=(ranks[slot.task_id], len(ranks)),
+                estimate_minutes=info.estimate_minutes,
+                planned_minutes=info.planned_minutes,
+                task_end=own[-1].end,
             )
         return result
 

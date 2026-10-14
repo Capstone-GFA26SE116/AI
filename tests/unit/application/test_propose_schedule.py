@@ -405,6 +405,52 @@ def test_subtasks_become_separate_slots_in_order():
     assert "Write report: Part 1" in world.llm.prompts[0]
 
 
+def sent_facts(prompt: str) -> dict[str, dict]:
+    """The facts the LLM got, by task title."""
+    slots = json.loads(prompt.split("Slots:", 1)[1])
+    return {s["task_title"]: s for s in slots}
+
+
+def test_why_facts_reach_the_llm():
+    # Google event 09:00-10:00. Urgent (due Tue) is placed first, at 10:00;
+    # Later (due Wed) comes after it.
+    world = World()
+    meeting = CalendarEvent(at(19, 9), at(19, 10), False, False, False)
+    urgent = task(title="Urgent", minutes=60, deadline=at(20, 17))
+    later = task(title="Later", minutes=60, deadline=at(21, 17))
+    world.run(planning(later, urgent, events=[meeting]))
+
+    facts = sent_facts(world.llm.prompts[0])
+    assert facts["Urgent"]["earlier_blocked_by"] == "calendar_event"
+    assert facts["Urgent"]["placement"] == "earliest_free"
+    assert (facts["Urgent"]["priority_rank"], facts["Urgent"]["priority_total"]) == (
+        1,
+        2,
+    )
+    assert (
+        facts["Urgent"]["estimate_minutes"],
+        facts["Urgent"]["planned_minutes"],
+    ) == (60, 78)
+    assert facts["Urgent"]["spare_hours"] == 29  # Mon 11:18 → Tue 17:00 = 29h42'
+    assert facts["Later"]["earlier_blocked_by"] == "other_task"
+    assert facts["Later"]["priority_rank"] == 2
+
+
+def test_second_subtask_is_not_blocked_by_its_own_first_part():
+    world = World()
+    first, second = uuid4(), uuid4()
+    parent = task(
+        subtasks=[
+            SubTaskToSchedule(first, "Part 1", 30, 1, True),
+            SubTaskToSchedule(second, "Part 2", 30, 2, True),
+        ]
+    )
+    world.run(planning(parent))
+    facts = sent_facts(world.llm.prompts[0])
+    assert facts["Write report: Part 2"]["earlier_blocked_by"] == "none"
+    assert facts["Write report: Part 2"]["estimate_minutes"] == 30
+
+
 def test_slot_ids_in_result_match_saved_slots():
     world = World()
     result = world.run(planning(task(), task()))

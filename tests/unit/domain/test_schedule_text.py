@@ -124,6 +124,16 @@ def slot(start, end, k=Decimal("1.3"), part=1, parts=1) -> PlannedSlot:
     return PlannedSlot(TASK, None, start, end, k, part, parts)
 
 
+# The "why this time" arguments, when a test is not about them.
+WHY = {
+    "blocked_by": BlockedBy.NONE,
+    "priority": (1, 1),
+    "estimate_minutes": 60,
+    "planned_minutes": 78,
+    "task_end": at(19, 15, 18),
+}
+
+
 def test_slot_facts_paid_plan():
     facts = slot_facts(
         slot(at(19, 14), at(19, 15, 18), part=1, parts=2),
@@ -132,6 +142,7 @@ def test_slot_facts_paid_plan():
         user_k=Decimal("1.3"),
         productive_hours=frozenset({14, 15}),
         time_zone=SAIGON,
+        **WHY,
     )
     assert facts.task_title == "Write report"
     assert facts.days_to_deadline == 2  # Monday → Wednesday
@@ -149,6 +160,7 @@ def test_slot_facts_free_plan_is_only_a_hint():
         user_k=Decimal("1.25"),
         productive_hours=frozenset({14}),
         time_zone=SAIGON,
+        **WHY,
     )
     assert facts.extra_percent == 25
     assert facts.extra_applied is False
@@ -166,6 +178,7 @@ def test_days_to_deadline_uses_the_user_clock():
         user_k=None,
         productive_hours=frozenset(),
         time_zone=SAIGON,
+        **WHY,
     )
     assert facts.days_to_deadline == 0
 

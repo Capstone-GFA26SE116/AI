@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from metanoia_ai.config import Settings
+from metanoia_ai.config import MissingLlmSettingError, Settings
 
 REQUIRED_VARS = {
     "DATABASE_URL": "postgresql://user:fake-password@localhost:5432/test",
@@ -9,11 +9,24 @@ REQUIRED_VARS = {
     "JWT_ISSUER": "METANOIA",
     "JWT_AUDIENCE": "METANOIA.Client",
 }
+LLM_VARS = {
+    "LLM_MODEL": "fake-flash-lite",
+    "GEMINI_API_KEY": "fake-gemini-key",
+    "LLM_INPUT_PRICE_PER_1M": "0.1",
+    "LLM_OUTPUT_PRICE_PER_1M": "0.4",
+}
 OPTIONAL_VARS = [
     "JWT_LEEWAY_SECONDS",
     "KBIAS_ALPHA",
     "KBIAS_INITIAL",
     "KBIAS_OUTLIER_RATIO",
+    "SCHEDULE_WINDOW_DAYS",
+    "SCHEDULE_MIN_CHUNK_MINUTES",
+    "SCHEDULE_ROUND_MINUTES",
+    "SCHEDULE_TOP_PRODUCTIVE_HOURS",
+    "QUOTA_DAILY_MAX",
+    "LLM_MAX_RETRIES",
+    *LLM_VARS,
 ]
 
 
@@ -46,6 +59,54 @@ def test_defaults(env):
     assert settings.kbias_alpha == 0.2
     assert settings.kbias_initial == 1.3
     assert settings.kbias_outlier_ratio == 5.0
+    assert settings.schedule_window_days == 7
+    assert settings.schedule_min_chunk_minutes == 30
+    assert settings.schedule_round_minutes == 5
+    assert settings.schedule_top_productive_hours == 3
+    assert settings.quota_daily_max == 50
+    assert settings.llm_max_retries == 2
+
+
+def test_starts_without_llm_settings(env):
+    settings = load()
+    assert settings.llm_model is None
+    assert settings.gemini_api_key is None
+
+
+def test_empty_value_counts_as_not_set(env):
+    # Copying .env.example as-is must not stop the app.
+    for name in LLM_VARS:
+        env.setenv(name, "")
+    settings = load()
+    assert settings.llm_input_price_per_1m is None
+
+
+def test_llm_config_when_all_set(env):
+    for name, value in LLM_VARS.items():
+        env.setenv(name, value)
+    config = load().llm_config()
+    assert config.model == "fake-flash-lite"
+    assert config.api_key.get_secret_value() == "fake-gemini-key"
+    assert config.max_retries == 2
+    assert config.input_price_per_1m == 0.1
+    assert config.output_price_per_1m == 0.4
+
+
+@pytest.mark.parametrize("name", list(LLM_VARS))
+def test_llm_config_fails_when_one_is_missing(env, name):
+    for other, value in LLM_VARS.items():
+        if other != name:
+            env.setenv(other, value)
+    settings = load()  # the app still starts
+    with pytest.raises(MissingLlmSettingError, match=name):
+        settings.llm_config()
+
+
+def test_llm_error_does_not_show_secret(env):
+    env.setenv("GEMINI_API_KEY", "fake-gemini-key")
+    with pytest.raises(MissingLlmSettingError) as error:
+        load().llm_config()
+    assert "fake-gemini-key" not in str(error.value)
 
 
 def test_values_can_be_changed(env):
@@ -69,6 +130,16 @@ def test_values_can_be_changed(env):
         ("KBIAS_INITIAL", "0.4"),
         ("KBIAS_INITIAL", "3.1"),
         ("KBIAS_OUTLIER_RATIO", "1"),
+        ("SCHEDULE_WINDOW_DAYS", "0"),
+        ("SCHEDULE_MIN_CHUNK_MINUTES", "0"),
+        ("SCHEDULE_ROUND_MINUTES", "0"),
+        ("SCHEDULE_ROUND_MINUTES", "61"),
+        ("SCHEDULE_TOP_PRODUCTIVE_HOURS", "0"),
+        ("SCHEDULE_TOP_PRODUCTIVE_HOURS", "25"),
+        ("QUOTA_DAILY_MAX", "0"),
+        ("LLM_MAX_RETRIES", "-1"),
+        ("LLM_INPUT_PRICE_PER_1M", "-0.1"),
+        ("LLM_OUTPUT_PRICE_PER_1M", "-0.1"),
     ],
 )
 def test_bad_values_are_rejected(env, name, value):
@@ -85,7 +156,8 @@ def test_missing_required_value_fails(env, name):
 
 
 def test_secrets_are_hidden_when_printed(env):
+    env.setenv("GEMINI_API_KEY", "fake-gemini-key")
     settings = load()
-    for secret in ["fake-password", REQUIRED_VARS["JWT_SECRET"]]:
+    for secret in ["fake-password", REQUIRED_VARS["JWT_SECRET"], "fake-gemini-key"]:
         assert secret not in repr(settings)
         assert secret not in str(settings)

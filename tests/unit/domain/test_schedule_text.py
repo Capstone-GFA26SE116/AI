@@ -1,20 +1,39 @@
-from datetime import datetime
+from datetime import datetime, time, timedelta
 from decimal import Decimal
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
 import pytest
 
-from metanoia_ai.domain.models import (
-    Language,
-    PlannedSlot,
-    ScheduleWarning,
-    WarningType,
+from metanoia_ai.domain.free_time import (
+    BusyBlock,
+    CalendarEvent,
+    FixedTaskTime,
+    busy_blocks,
+    free_ranges,
 )
+from metanoia_ai.domain.models import (
+    BlockedBy,
+    BusyKind,
+    Language,
+    Placement,
+    PlannedSlot,
+    ScheduleUnit,
+    ScheduleWarning,
+    SplitReason,
+    TimeRange,
+    WarningType,
+    WorkingHours,
+)
+from metanoia_ai.domain.planner import plan_schedule
 from metanoia_ai.domain.schedule_text import (
+    earlier_blocked_by,
     extra_percent,
+    priority_ranks,
     short_title,
     slot_facts,
+    spare_hours,
+    split_reason,
     summary,
     warning_message,
 )
@@ -165,3 +184,142 @@ def test_long_title_is_cut_to_100_characters():
     assert title.endswith("…")
     assert short_title("  Short  ") == "Short"
     assert short_title("y" * 100) == "y" * 100
+
+
+# --- Step 18: why this time (plan #32) ---
+
+# Common example from the plan: 9:00-17:00, no weekends, buffer 10'. 19 = Monday.
+HOURS = WorkingHours(SAIGON, time(9), time(17), False, 10)
+MONDAY_8AM = at(19, 8)
+TASK_B = UUID(int=2)
+
+
+def unit(task_id=TASK, minutes=60, deadline=None) -> ScheduleUnit:
+    return ScheduleUnit(task_id, None, "Task", deadline or at(23, 17), minutes, None)
+
+
+def blocker_of(units, *, now=MONDAY_8AM, fixed=(), events=(), productive=frozenset()):
+    """Plan like the use case does, then explain the first slot of TASK."""
+    blocks = busy_blocks(fixed, events, [])
+    free = free_ranges(HOURS, now, 7, [b.time for b in blocks], round_minutes=5)
+    result = plan_schedule(
+        units,
+        free,
+        HOURS,
+        productive,
+        now=now,
+        window_end=now + timedelta(days=7),
+        round_minutes=5,
+        min_chunk_minutes=30,
+    )
+    mine = next(s for s in result.slots if s.task_id == TASK)
+    others = [
+        BusyBlock(TimeRange(s.start, s.end), BusyKind.OTHER_TASK)
+        for s in result.slots
+        if s.task_id != TASK
+    ]
+    blocked = earlier_blocked_by(mine, now, blocks + others, HOURS, round_minutes=5)
+    return mine, blocked
+
+
+def test_t47_waited_for_focus_hour_is_not_blocked():
+    mine, blocked = blocker_of([unit()], productive=frozenset({14}))
+    assert mine.placement is Placement.WAITED_FOR_FOCUS_HOUR
+    assert blocked is BlockedBy.NONE
+
+
+def test_t49_meeting_before_the_slot():
+    meeting = [FixedTaskTime(at(19, 9), at(19, 10), False)]
+    mine, blocked = blocker_of([unit()], fixed=meeting)
+    assert mine.start == at(19, 10)
+    assert blocked is BlockedBy.MEETING
+
+
+def test_t50_google_event_before_the_slot():
+    events = [CalendarEvent(at(19, 9), at(19, 10), False, False, False)]
+    mine, blocked = blocker_of([unit()], events=events)
+    assert mine.start == at(19, 10)
+    assert blocked is BlockedBy.CALENDAR_EVENT
+
+
+def test_t51_task_with_a_nearer_deadline_takes_the_morning():
+    mine_unit = unit(TASK, deadline=at(21, 17))
+    urgent = unit(TASK_B, deadline=at(20, 17))
+    mine, blocked = blocker_of([mine_unit, urgent])
+    assert mine.start == at(19, 10, 10)  # after B (09:00-10:00) + 10' buffer
+    assert blocked is BlockedBy.OTHER_TASK
+    assert priority_ranks([mine_unit, urgent]) == {TASK_B: 1, TASK: 2}
+
+
+def test_t52_work_day_over_moves_to_tomorrow_morning():
+    mine, blocked = blocker_of([unit()], now=at(19, 20))
+    assert mine.start == at(20, 9)
+    assert blocked is BlockedBy.OUTSIDE_WORK_HOURS
+
+
+def test_t53_starts_as_soon_as_possible():
+    mine, blocked = blocker_of([unit()], now=at(19, 9, 7))
+    assert mine.start == at(19, 9, 10)
+    assert blocked is BlockedBy.NONE
+
+
+def test_before_work_starts_today_is_not_outside_work_hours():
+    # Now 08:00, slot 09:00 the same day: nothing to explain.
+    _, blocked = blocker_of([unit()])
+    assert blocked is BlockedBy.NONE
+
+
+def test_day_too_short_left_over_the_weekend_is_outside_work_hours():
+    # Friday 16:50: 10' left, the 60' task goes to Monday 09:00.
+    mine, blocked = blocker_of([unit(deadline=at(28, 17))], now=at(23, 16, 50))
+    assert mine.start == at(26, 9)
+    assert blocked is BlockedBy.OUTSIDE_WORK_HOURS
+
+
+def test_last_block_before_the_slot_wins():
+    fixed = [FixedTaskTime(at(19, 9), at(19, 9, 30), False)]
+    events = [CalendarEvent(at(19, 9, 30), at(19, 10), False, False, False)]
+    _, blocked = blocker_of([unit()], fixed=fixed, events=events)
+    assert blocked is BlockedBy.CALENDAR_EVENT
+
+
+def test_t55_spare_hours_until_the_deadline():
+    assert spare_hours(at(19, 15), at(20, 17)) == 26
+    assert spare_hours(at(19, 15, 30), at(19, 17)) == 1  # whole hours only
+    assert spare_hours(at(19, 17), at(19, 16)) == 0  # never negative
+
+
+def test_t56_split_reason_only_for_split_units():
+    assert split_reason(slot(at(19, 9), at(19, 12), part=1, parts=2)) is (
+        SplitReason.NO_LONG_GAP
+    )
+    assert split_reason(slot(at(19, 9), at(19, 10))) is None
+
+
+def test_slot_facts_v2_fields():
+    facts = slot_facts(
+        PlannedSlot(
+            TASK,
+            None,
+            at(19, 14),
+            at(19, 15, 18),
+            Decimal("1.3"),
+            placement=Placement.WAITED_FOR_FOCUS_HOUR,
+        ),
+        title="Write report",
+        deadline=at(21, 17),
+        user_k=Decimal("1.3"),
+        productive_hours=frozenset({14}),
+        time_zone=SAIGON,
+        blocked_by=BlockedBy.NONE,
+        priority=(1, 3),
+        estimate_minutes=60,
+        planned_minutes=78,
+        task_end=at(19, 15, 18),
+    )
+    assert facts.placement is Placement.WAITED_FOR_FOCUS_HOUR
+    assert facts.earlier_blocked_by is BlockedBy.NONE
+    assert (facts.priority_rank, facts.priority_total) == (1, 3)
+    assert (facts.estimate_minutes, facts.planned_minutes) == (60, 78)
+    assert facts.spare_hours == 49  # Mon 15:18 → Wed 17:00
+    assert facts.split_reason is None

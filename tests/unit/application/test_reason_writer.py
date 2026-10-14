@@ -12,7 +12,7 @@ from metanoia_ai.application.reason_writer import (
     ReasonWriter,
     check_answer,
 )
-from metanoia_ai.domain.models import Language
+from metanoia_ai.domain.models import BlockedBy, Language, Placement, SplitReason
 from metanoia_ai.domain.schedule_text import SlotFacts
 from metanoia_ai.prompts import load_prompt, load_samples
 from tests.unit.application.fakes import FakeLLMClient
@@ -146,10 +146,12 @@ def test_no_slots_no_call():
         (answer((SLOT_1, "ok"), (SLOT_2, "extra")), "unknown slot"),
         (answer((SLOT_1, "a"), (SLOT_1, "b")), "repeated slot"),
         (answer((SLOT_1, "   ")), "empty"),
-        (answer((SLOT_1, "x" * 151)), "too long"),
+        (answer((SLOT_1, "x" * 251)), "T57: too long"),
         (answer((SLOT_1, "line one\nline two")), "two lines"),
         (answer((SLOT_1, "Needs T_proposed minutes")), "internal name"),
         (answer((SLOT_1, "Because k=1.3")), "internal name, lower case"),
+        (answer((SLOT_1, "Blocked by other_task.")), "T57: fact value"),
+        (answer((SLOT_1, "Your spare_hours are 26.")), "fact name"),
     ],
 )
 def test_bad_answers_are_rejected(text, why):
@@ -157,8 +159,13 @@ def test_bad_answers_are_rejected(text, why):
         check_answer(text, {SLOT_1})
 
 
-def test_reason_of_exactly_150_characters_is_ok():
-    assert check_answer(answer((SLOT_1, "x" * 150)), {SLOT_1}) == {SLOT_1: "x" * 150}
+def test_t57_reason_of_exactly_250_characters_is_ok():
+    assert check_answer(answer((SLOT_1, "x" * 250)), {SLOT_1}) == {SLOT_1: "x" * 250}
+
+
+def test_t57_two_short_sentences_are_ok():
+    text = "Sáng có cuộc họp nên xếp giờ này. Giữ 78' vì bạn thường cần thêm ~30%."
+    assert check_answer(answer((SLOT_1, text)), {SLOT_1}) == {SLOT_1: text}
 
 
 # --- Prompt ---
@@ -189,7 +196,91 @@ def test_vietnamese_titles_are_sent_as_text():
 
 
 def test_prompt_version_file_exists():
+    assert PROMPT_VERSION == "schedule_reason_v2"
     assert "slot_id" in load_prompt(PROMPT_VERSION)
+
+
+FACT_KEYS = [
+    "task_title",
+    "days_to_deadline",
+    "in_productive_hour",
+    "extra_percent",
+    "extra_applied",
+    "part",
+    "parts",
+    "placement",
+    "earlier_blocked_by",
+    "priority_rank",
+    "priority_total",
+    "estimate_minutes",
+    "planned_minutes",
+    "spare_hours",
+    "split_reason",
+]
+
+
+def test_t58_prompt_v2_has_every_fact():
+    facts = SlotFacts(
+        "Viết báo cáo",
+        2,
+        True,
+        30,
+        True,
+        1,
+        2,
+        placement=Placement.WAITED_FOR_FOCUS_HOUR,
+        earlier_blocked_by=BlockedBy.MEETING,
+        priority_rank=2,
+        priority_total=3,
+        estimate_minutes=60,
+        planned_minutes=78,
+        spare_hours=26,
+        split_reason=SplitReason.NO_LONG_GAP,
+    )
+    llm = FakeLLMClient(GOOD)
+    write(llm, facts={SLOT_1: facts})
+    prompt = llm.prompts[0]
+    sent = json.loads(prompt.split("Slots:", 1)[1])[0]
+    assert sent == {
+        "slot_id": str(SLOT_1),
+        "task_title": "Viết báo cáo",
+        "days_to_deadline": 2,
+        "in_productive_hour": True,
+        "extra_percent": 30,
+        "extra_applied": True,
+        "part": 1,
+        "parts": 2,
+        "placement": "waited_for_focus_hour",
+        "earlier_blocked_by": "meeting",
+        "priority_rank": 2,
+        "priority_total": 3,
+        "estimate_minutes": 60,
+        "planned_minutes": 78,
+        "spare_hours": 26,
+        "split_reason": "no_long_gap",
+    }
+    for key in FACT_KEYS:  # the prompt explains every fact it sends
+        assert key in load_prompt(PROMPT_VERSION)
+
+
+def facts_from_sample(s: dict) -> SlotFacts:
+    return SlotFacts(
+        s["task_title"],
+        s["days_to_deadline"],
+        s["in_productive_hour"],
+        s["extra_percent"],
+        s["extra_applied"],
+        s["part"],
+        s["parts"],
+        placement=Placement(s["placement"]),
+        earlier_blocked_by=BlockedBy(s["earlier_blocked_by"]),
+        priority_rank=s["priority_rank"],
+        priority_total=s["priority_total"],
+        estimate_minutes=s["estimate_minutes"],
+        planned_minutes=s["planned_minutes"],
+        spare_hours=s["spare_hours"],
+        split_reason=SplitReason(s["split_reason"]) if s["split_reason"] else None,
+    )
 
 
 def test_samples_are_valid_and_fill_the_prompt():
@@ -197,17 +288,7 @@ def test_samples_are_valid_and_fill_the_prompt():
     assert len(samples) == 10
     w = writer(FakeLLMClient())
     for sample in samples:
-        facts = {
-            UUID(s["slot_id"]): SlotFacts(
-                s["task_title"],
-                s["days_to_deadline"],
-                s["in_productive_hour"],
-                s["extra_percent"],
-                s["extra_applied"],
-                s["part"],
-                s["parts"],
-            )
-            for s in sample["slots"]
-        }
+        assert all(set(s) == {"slot_id", *FACT_KEYS} for s in sample["slots"])
+        facts = {UUID(s["slot_id"]): facts_from_sample(s) for s in sample["slots"]}
         prompt = w.build_prompt(facts, Language(sample["language"]))
         assert all(s["slot_id"] in prompt for s in sample["slots"])

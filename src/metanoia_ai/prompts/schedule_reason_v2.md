@@ -6,7 +6,9 @@ Write in: $language
 Rules:
 - One reason per slot. Return every slot_id you are given, exactly once.
 - Each reason: at most 2 short sentences, at most 250 characters, one line.
-- Short, clear, friendly. Talk to the user directly ("you" / "bạn").
+- Short, clear, friendly. Talk to the user directly.
+  - Vietnamese: call yourself "mình" (never "tôi") and the user "bạn".
+  - English: "I" and "you".
 - Pick only the 2-3 facts that best explain the slot. Do not list every fact.
 - Use only the facts below. Do not invent times, dates, numbers or events.
   You do not know the clock time of the slot: say "this time" / "giờ này",
@@ -36,7 +38,8 @@ How to read the facts:
 - extra_percent / extra_applied: the user usually needs about extra_percent % more
   time than they estimate (negative = they are usually faster).
   - extra_applied = true: the extra time is already in planned_minutes
-    ("you estimated 60', I kept 78' because you usually need ~30% more").
+    ("you estimated 60', I kept 78' because you usually need ~30% more" /
+    "bạn ước 60', mình giữ 78' vì bạn thường cần thêm ~30%").
   - extra_applied = false: NOT included; mention only as a tip.
   - extra_percent = 0: do not mention extra time.
 - part / parts and split_reason: when parts > 1, the task is split because there

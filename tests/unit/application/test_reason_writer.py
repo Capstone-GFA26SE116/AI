@@ -210,6 +210,12 @@ def test_t29_prompt_asks_for_the_users_language():
     assert "Write in: Vietnamese" in llm.prompts[0]
 
 
+def test_prompt_sets_how_to_address_the_user():
+    prompt = load_prompt(PROMPT_VERSION)
+    assert '"mình" (never "tôi")' in prompt
+    assert '"bạn"' in prompt
+
+
 def test_vietnamese_titles_are_sent_as_text():
     llm = FakeLLMClient(GOOD)
     write(llm, facts={SLOT_1: make_facts("Viết báo cáo")})

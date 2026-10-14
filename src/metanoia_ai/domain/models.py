@@ -80,6 +80,22 @@ class WarningType(StrEnum):
     CALENDAR_NOT_SYNCED = "calendar_not_synced"
 
 
+class Placement(StrEnum):
+    """How the planner chose a slot's start. Values are sent to the LLM."""
+
+    EARLIEST_FREE = "earliest_free"
+    WAITED_FOR_FOCUS_HOUR = "waited_for_focus_hour"  # earlier free time that day
+
+
+class BusyKind(StrEnum):
+    """What makes a time busy. Sent to the LLM instead of the event's name (privacy)."""
+
+    MEETING = "meeting"  # a Fixed task
+    CALENDAR_EVENT = "calendar_event"
+    APPROVED_SLOT = "approved_slot"
+    OTHER_TASK = "other_task"  # a running timer, or a slot of a task placed earlier
+
+
 @dataclass(frozen=True)
 class TimeRange:
     """A period of time [start, end), e.g. a busy block or a free gap."""
@@ -120,6 +136,8 @@ class ScheduleUnit:
     """One thing to place on the calendar: a task, or one unfinished subtask.
 
     `minutes` is already final (T_est × K, or the remaining part of a started task).
+    `estimate_minutes` is the user's own estimate of what is left, before K
+    (only used to explain the slot).
     """
 
     task_id: UUID
@@ -129,11 +147,14 @@ class ScheduleUnit:
     minutes: int
     k_bias_used: Decimal | None  # None on the Free plan
     order_index: int | None = None  # subtask order inside its task
+    estimate_minutes: int | None = None
 
     def __post_init__(self) -> None:
         _require_aware(self.deadline)
         if self.minutes <= 0:
             raise ValueError("minutes must be > 0")
+        if self.estimate_minutes is not None and self.estimate_minutes <= 0:
+            raise ValueError("estimate_minutes must be > 0")
 
 
 @dataclass(frozen=True)
@@ -147,6 +168,7 @@ class PlannedSlot:
     k_bias_used: Decimal | None
     part_index: int = 1
     part_count: int = 1
+    placement: Placement = Placement.EARLIEST_FREE
 
     def __post_init__(self) -> None:
         _require_aware(self.start, self.end)

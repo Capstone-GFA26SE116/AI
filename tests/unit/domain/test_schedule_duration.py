@@ -8,6 +8,7 @@ import pytest
 from metanoia_ai.domain.models import ActualTimeSource, FocusSessionRecord
 from metanoia_ai.domain.schedule_duration import (
     minutes_to_schedule,
+    remaining_estimate,
     scaled_minutes,
     sessions_of,
     worked_minutes,
@@ -112,3 +113,30 @@ def test_t36_subtask_uses_only_its_own_sessions():
 def test_task_without_subtasks_uses_all_sessions():
     sessions = [session(50, subtask_id=uuid4()), session(15)]
     assert sessions_of(sessions, None) == sessions
+
+
+# --- Step 17: the user's own estimate, before K (T54) ---
+
+
+def estimate_and_planned(estimated, sessions, k):
+    return (
+        remaining_estimate(estimated, sessions, NOW),
+        minutes_to_schedule(estimated, sessions, k, NOW),
+    )
+
+
+def test_t54_paid_plan_estimate_and_planned():
+    assert estimate_and_planned(60, [], K) == (60, 78)
+
+
+def test_t54_free_plan_estimate_equals_planned():
+    assert estimate_and_planned(60, [], None) == (60, 60)
+
+
+def test_t54_remaining_minutes_estimate_equals_planned():
+    sessions = [session(60, days_ago=2), session(30, remaining=20)]
+    assert estimate_and_planned(120, sessions, K) == (20, 20)
+
+
+def test_started_task_estimate_is_the_rest_before_k():
+    assert estimate_and_planned(120, [session(90)], K) == (30, 39)

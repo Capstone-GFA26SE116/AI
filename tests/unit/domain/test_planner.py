@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 
 from metanoia_ai.domain.free_time import FixedTaskTime, busy_ranges, free_ranges
 from metanoia_ai.domain.models import (
+    Placement,
     ScheduleUnit,
     ScheduleWarning,
     WarningType,
@@ -283,3 +284,35 @@ def test_other_tasks_are_still_placed_after_a_warning():
     result = plan([late, fine])
     assert [s.task_id for s in result.slots] == [TASK_B]
     assert [w.task_id for w in result.warnings] == [TASK_A]
+
+
+# --- Step 17: how the start was chosen (for the reason) ---
+
+
+def test_t47_free_morning_but_waits_for_focus_hour():
+    result = plan([unit()], productive=frozenset({14}))
+    assert result.slots[0].start == at(19, 14)
+    assert result.slots[0].placement is Placement.WAITED_FOR_FOCUS_HOUR
+
+
+def test_t48_no_productive_hours_is_earliest_free():
+    result = plan([unit()])
+    assert result.slots[0].placement is Placement.EARLIEST_FREE
+
+
+def test_focus_hour_that_is_also_the_earliest_free_time_is_earliest_free():
+    # Busy until 14:00, so 14:00 is both the first free time and a productive hour.
+    busy = busy_ranges([fixed(at(19, 9), at(19, 14))], [], [])
+    result = plan([unit()], busy=busy, productive=frozenset({14}))
+    assert result.slots[0].start == at(19, 14)
+    assert result.slots[0].placement is Placement.EARLIEST_FREE
+
+
+def test_split_parts_are_earliest_free():
+    result = plan(
+        [unit(minutes=300, deadline=at(20, 17))],
+        busy=MORNINGS_ONLY,
+        productive=frozenset({10}),
+    )
+    assert len(result.slots) == 2
+    assert {s.placement for s in result.slots} == {Placement.EARLIEST_FREE}

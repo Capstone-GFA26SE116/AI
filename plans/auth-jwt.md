@@ -49,6 +49,10 @@ Mọi API của AI service chỉ chạy khi có token hợp lệ do Backend phá
 - [x] **6. Thử tay với token thật** (Hiếu làm, mình hướng dẫn): lấy token từ Backend, chạy `uv run uvicorn metanoia_ai.api.main:app --reload`, gọi `/me` ở `/docs` → thấy đúng UserId.
 - [x] **7. Wrap-up**: tick các bước, gợi ý commit, **hỏi Hiếu** rồi push 2 branch và mở 2 PR (ghi lý do thêm thư viện trong PR).
 
+## Cải thiện sau
+
+- [ ] **Chặn user đã xóa tài khoản**: Backend có `OnTokenValidated` (`Program.cs`) gọi `IUserRepository.IsActiveAsync` → token còn hạn nhưng user đã `DELETE /api/me` bị 401 ngay. AI chưa làm → token cũ vẫn gọi được AI tối đa ~60' (+5' leeway). Khi AI đã nối DB (FR-10): thêm truy vấn kiểm tra user còn hoạt động vào `get_current_user_id`.
+
 ## File sẽ tạo / sửa
 
 - `src/metanoia_ai/config.py`, `src/metanoia_ai/api/auth.py`, `src/metanoia_ai/api/main.py`

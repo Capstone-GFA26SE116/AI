@@ -1,6 +1,6 @@
 # Database — phần AI service đụng tới
 
-Cập nhật: 2026-10-13 · Nguồn: code Backend `develop` + đọc trực tiếp Supabase (chỉ đọc).
+Cập nhật: 2026-10-14 · Nguồn: code Backend `develop` + đọc trực tiếp Supabase (chỉ đọc).
 Schema do **Backend** sở hữu. File này chỉ ghi những bảng/cột AI dùng. Thấy lệch với DB thật → báo Hiếu.
 
 Ký hiệu: **AI ghi** = AI service được INSERT/UPDATE · **Chỉ đọc** = không bao giờ ghi.
@@ -88,7 +88,7 @@ Ký hiệu: **AI ghi** = AI service được INSERT/UPDATE · **Chỉ đọc** =
 
 ### `UserSubscription`
 - `Status` ∈ {`Active`, `Scheduled`, `Expired`, `Cancelled`} · `StartAt`, `EndAt?` · `AiCallsUsed` ≥ 0 · `QuotaResetAt`.
-- ⚠️ Không có unique cho dòng `Active` → 1 user có thể có nhiều dòng `Active` (lỗi). AI lấy dòng `StartAt` mới nhất.
+- Unique index `UX_UserSubscription_OneActivePerUser` (`UserId` WHERE `Status = 'Active'`) → mỗi user ≤ 1 dòng `Active`.
 - Nâng cấp gói = dòng mới → `AiCallsUsed` bắt đầu từ 0.
 
 ### `SubscriptionPlan`

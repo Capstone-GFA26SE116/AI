@@ -31,7 +31,8 @@ The team Google Doc is for humans only; Hieu copies decided facts into `docs/` o
 - pytest + httpx (tests), ruff (lint/format)
 - Planned: pgvector (FR-19), LLM providers (OpenAI + Google)
 - LLM routing: Free plan → cheapest model; paid plans → cheap model ~90% of calls,
-  stronger model ~10% "hard" calls. If one provider fails, switch to the other.
+  stronger model ~10% "hard" calls. If one provider fails, switch to the other
+  (from FR-08; FR-10 uses Gemini only).
   Models come from **config, never hard-coded**. Embedding model: not chosen yet.
 
 ## 3. Commands

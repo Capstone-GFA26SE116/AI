@@ -96,6 +96,23 @@ class BusyKind(StrEnum):
     OTHER_TASK = "other_task"  # a running timer, or a slot of a task placed earlier
 
 
+class BlockedBy(StrEnum):
+    """Why a slot does not start earlier. Values are sent to the LLM."""
+
+    MEETING = "meeting"
+    CALENDAR_EVENT = "calendar_event"
+    APPROVED_SLOT = "approved_slot"
+    OTHER_TASK = "other_task"
+    OUTSIDE_WORK_HOURS = "outside_work_hours"  # the work day was over
+    NONE = "none"  # starts as early as it can, or waited for a focus hour
+
+
+class SplitReason(StrEnum):
+    """Why a unit was split into parts. Values are sent to the LLM."""
+
+    NO_LONG_GAP = "no_long_gap"  # no free time long enough before the deadline
+
+
 @dataclass(frozen=True)
 class TimeRange:
     """A period of time [start, end), e.g. a busy block or a free gap."""

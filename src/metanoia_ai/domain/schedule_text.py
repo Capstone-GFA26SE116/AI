@@ -1,25 +1,36 @@
 """FR-10 texts written by code, not by the LLM (vi / en).
 
 - The proposal summary and warning messages: fixed sentences with real numbers.
-- The "facts" of each slot: what the LLM may use to write a one-line reason.
+- The "facts" of each slot: what the LLM may use to write a short reason,
+  including why the planner chose that time (plan #32).
 
 Never show internal names (K_bias, T_proposed) to the user.
 """
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
+from uuid import UUID
 from zoneinfo import ZoneInfo
 
+from metanoia_ai.domain.free_time import BusyBlock, round_up, working_days
 from metanoia_ai.domain.models import (
+    BlockedBy,
     Language,
+    Placement,
     PlannedSlot,
+    ScheduleUnit,
     ScheduleWarning,
+    SplitReason,
     WarningType,
+    WorkingHours,
 )
+from metanoia_ai.domain.planner import order_units
 
 MAX_TITLE_LENGTH = 100
+# Free time is searched at most this many days ahead (covers a long weekend).
+SEARCH_DAYS = 8
 
 
 def summary(
@@ -96,6 +107,15 @@ class SlotFacts:
     )
     part_index: int
     part_count: int
+    # Why this time (v2, plan #32). Defaults only until the use case passes them (step 20).
+    placement: Placement = Placement.EARLIEST_FREE
+    earlier_blocked_by: BlockedBy = BlockedBy.NONE
+    priority_rank: int = 1
+    priority_total: int = 1
+    estimate_minutes: int = 0  # the user's own estimate of what is left
+    planned_minutes: int = 0  # all minutes kept for the unit (every part)
+    spare_hours: int = 0  # from the end of the task's last slot to the deadline
+    split_reason: SplitReason | None = None
 
 
 def slot_facts(
@@ -105,13 +125,21 @@ def slot_facts(
     user_k: Decimal | None,
     productive_hours: frozenset[int],
     time_zone: ZoneInfo,
+    *,
+    blocked_by: BlockedBy = BlockedBy.NONE,
+    priority: tuple[int, int] = (1, 1),
+    estimate_minutes: int | None = None,
+    planned_minutes: int | None = None,
+    task_end: datetime | None = None,
 ) -> SlotFacts:
     """Facts for one slot.
 
     `user_k` is the user's K for this work domain, also on the Free plan
     (then it is only a hint and `slot.k_bias_used` is None).
+    `priority` is (rank, total); `task_end` is when the task's last slot ends.
     """
     start = slot.start.astimezone(time_zone)
+    planned = planned_minutes or slot.proposed_minutes
     return SlotFacts(
         task_title=short_title(title),
         days_to_deadline=(deadline.astimezone(time_zone).date() - start.date()).days,
@@ -120,7 +148,81 @@ def slot_facts(
         extra_applied=slot.k_bias_used is not None,
         part_index=slot.part_index,
         part_count=slot.part_count,
+        placement=slot.placement,
+        earlier_blocked_by=blocked_by,
+        priority_rank=priority[0],
+        priority_total=priority[1],
+        estimate_minutes=estimate_minutes or planned,
+        planned_minutes=planned,
+        spare_hours=spare_hours(task_end or slot.end, deadline),
+        split_reason=split_reason(slot),
     )
+
+
+def earlier_blocked_by(
+    slot: PlannedSlot,
+    earliest: datetime,
+    blocks: Sequence[BusyBlock],
+    hours: WorkingHours,
+    round_minutes: int,
+) -> BlockedBy:
+    """What keeps the slot from starting earlier.
+
+    `earliest`: when the slot could start at the soonest (now, or the end of the
+    previous part / subtask of the same task). `blocks`: busy time, including the
+    slots of other tasks (kind OTHER_TASK). Rules (plan §2):
+    - waited for a focus hour → NONE (the earlier time was free);
+    - starts at the first work time after `earliest` → NONE, or OUTSIDE_WORK_HOURS
+      when that is on a later day (the work day was over);
+    - otherwise → the kind of the busy block that ends last before the slot.
+    """
+    if slot.placement is Placement.WAITED_FOR_FOCUS_HOUR:
+        return BlockedBy.NONE
+    first = first_work_time(earliest, hours, round_minutes)
+    zone = hours.time_zone
+    if slot.start <= first:
+        if first.astimezone(zone).date() > earliest.astimezone(zone).date():
+            return BlockedBy.OUTSIDE_WORK_HOURS
+        return BlockedBy.NONE
+    before = [b for b in blocks if b.time.start < slot.start and b.time.end > first]
+    if before:
+        last = max(before, key=lambda b: b.time.end)
+        return BlockedBy(last.kind.value)
+    if slot.start.astimezone(zone).time() == hours.day_start:
+        return BlockedBy.OUTSIDE_WORK_HOURS
+    return BlockedBy.NONE
+
+
+def first_work_time(
+    moment: datetime, hours: WorkingHours, round_minutes: int
+) -> datetime:
+    """The first round time at or after `moment` inside working hours."""
+    zone = hours.time_zone
+    first_day = moment.astimezone(zone).date()
+    last_day = first_day + timedelta(days=SEARCH_DAYS)
+    for day in working_days(hours, first_day, last_day):
+        start = round_up(max(day.start, moment), round_minutes, zone)
+        if start < day.end:
+            return start
+    return round_up(moment, round_minutes, zone)
+
+
+def priority_ranks(units: Iterable[ScheduleUnit]) -> dict[UUID, int]:
+    """Each task's place in the planner's order (1 = placed first)."""
+    ranks: dict[UUID, int] = {}
+    for unit in order_units(units):
+        ranks.setdefault(unit.task_id, len(ranks) + 1)
+    return ranks
+
+
+def spare_hours(task_end: datetime, deadline: datetime) -> int:
+    """Whole hours between the end of the task's last slot and the deadline."""
+    return max(0, int((deadline - task_end) // timedelta(hours=1)))
+
+
+def split_reason(slot: PlannedSlot) -> SplitReason | None:
+    """The planner splits a unit only when no free time is long enough for it."""
+    return SplitReason.NO_LONG_GAP if slot.part_count > 1 else None
 
 
 def extra_percent(k: Decimal | None) -> int:

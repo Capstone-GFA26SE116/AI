@@ -107,15 +107,15 @@ class SlotFacts:
     )
     part_index: int
     part_count: int
-    # Why this time (v2, plan #32). Defaults only until the use case passes them (step 20).
-    placement: Placement = Placement.EARLIEST_FREE
-    earlier_blocked_by: BlockedBy = BlockedBy.NONE
-    priority_rank: int = 1
-    priority_total: int = 1
-    estimate_minutes: int = 0  # the user's own estimate of what is left
-    planned_minutes: int = 0  # all minutes kept for the unit (every part)
-    spare_hours: int = 0  # from the end of the task's last slot to the deadline
-    split_reason: SplitReason | None = None
+    # Why this time (plan #32)
+    placement: Placement
+    earlier_blocked_by: BlockedBy
+    priority_rank: int
+    priority_total: int
+    estimate_minutes: int  # the user's own estimate of what is left
+    planned_minutes: int  # all minutes kept for the unit (every part)
+    spare_hours: int  # from the end of the task's last slot to the deadline
+    split_reason: SplitReason | None
 
 
 def slot_facts(
@@ -126,11 +126,11 @@ def slot_facts(
     productive_hours: frozenset[int],
     time_zone: ZoneInfo,
     *,
-    blocked_by: BlockedBy = BlockedBy.NONE,
-    priority: tuple[int, int] = (1, 1),
-    estimate_minutes: int | None = None,
-    planned_minutes: int | None = None,
-    task_end: datetime | None = None,
+    blocked_by: BlockedBy,
+    priority: tuple[int, int],
+    estimate_minutes: int,
+    planned_minutes: int,
+    task_end: datetime,
 ) -> SlotFacts:
     """Facts for one slot.
 
@@ -139,7 +139,6 @@ def slot_facts(
     `priority` is (rank, total); `task_end` is when the task's last slot ends.
     """
     start = slot.start.astimezone(time_zone)
-    planned = planned_minutes or slot.proposed_minutes
     return SlotFacts(
         task_title=short_title(title),
         days_to_deadline=(deadline.astimezone(time_zone).date() - start.date()).days,
@@ -152,9 +151,9 @@ def slot_facts(
         earlier_blocked_by=blocked_by,
         priority_rank=priority[0],
         priority_total=priority[1],
-        estimate_minutes=estimate_minutes or planned,
-        planned_minutes=planned,
-        spare_hours=spare_hours(task_end or slot.end, deadline),
+        estimate_minutes=estimate_minutes,
+        planned_minutes=planned_minutes,
+        spare_hours=spare_hours(task_end, deadline),
         split_reason=split_reason(slot),
     )
 

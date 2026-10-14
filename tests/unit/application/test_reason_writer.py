@@ -19,7 +19,29 @@ from tests.unit.application.fakes import FakeLLMClient
 
 SLOT_1 = UUID(int=1)
 SLOT_2 = UUID(int=2)
-FACTS = SlotFacts("Write report", 2, True, 30, True, 1, 1)
+
+
+def make_facts(title: str = "Write report") -> SlotFacts:
+    return SlotFacts(
+        title,
+        2,
+        True,
+        30,
+        True,
+        1,
+        1,
+        placement=Placement.EARLIEST_FREE,
+        earlier_blocked_by=BlockedBy.NONE,
+        priority_rank=1,
+        priority_total=1,
+        estimate_minutes=60,
+        planned_minutes=78,
+        spare_hours=50,
+        split_reason=None,
+    )
+
+
+FACTS = make_facts()
 
 
 def answer(*pairs: tuple[UUID, str]) -> str:
@@ -190,8 +212,7 @@ def test_t29_prompt_asks_for_the_users_language():
 
 def test_vietnamese_titles_are_sent_as_text():
     llm = FakeLLMClient(GOOD)
-    facts = SlotFacts("Viết báo cáo", 2, True, 30, True, 1, 1)
-    write(llm, facts={SLOT_1: facts})
+    write(llm, facts={SLOT_1: make_facts("Viết báo cáo")})
     assert "Viết báo cáo" in llm.prompts[0]
 
 

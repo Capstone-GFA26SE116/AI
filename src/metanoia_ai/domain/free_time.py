@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from metanoia_ai.domain.models import TimeRange, WorkingHours
+from metanoia_ai.domain.models import BusyKind, TimeRange, WorkingHours
 
 SATURDAY = 5  # date.weekday(): Monday = 0 ... Sunday = 6
 
@@ -31,6 +31,14 @@ class CalendarEvent:
     is_created_by_metanoia: bool  # already in ScheduleSlot; would count twice
 
 
+@dataclass(frozen=True)
+class BusyBlock:
+    """One busy time and what it is (to explain why a slot is not earlier)."""
+
+    time: TimeRange
+    kind: BusyKind
+
+
 def round_up(moment: datetime, step_minutes: int, time_zone: ZoneInfo) -> datetime:
     """Round up to the next multiple of `step_minutes` on the user's clock (09:07 → 09:10)."""
     local = moment.astimezone(time_zone)
@@ -44,27 +52,42 @@ def running_timer_busy(now: datetime, remaining_minutes: int) -> TimeRange:
     return TimeRange(now, now + timedelta(minutes=remaining_minutes))
 
 
+def busy_blocks(
+    fixed_tasks: Iterable[FixedTaskTime],
+    events: Iterable[CalendarEvent],
+    approved_slots: Iterable[TimeRange],
+    running_timers: Iterable[TimeRange] = (),
+) -> list[BusyBlock]:
+    """All busy time with its kind, sorted by start (not merged).
+
+    Skipped: Fixed tasks with status Skipped; all-day, cancelled and
+    Metanoia-made Google events; zero-length events.
+    """
+    blocks = [
+        BusyBlock(TimeRange(t.start, t.end), BusyKind.MEETING)
+        for t in fixed_tasks
+        if not t.is_skipped
+    ]
+    blocks += [
+        BusyBlock(TimeRange(e.start, e.end), BusyKind.CALENDAR_EVENT)
+        for e in events
+        if not (e.is_all_day or e.is_cancelled or e.is_created_by_metanoia)
+        and e.end > e.start
+    ]
+    blocks += [BusyBlock(r, BusyKind.APPROVED_SLOT) for r in approved_slots]
+    blocks += [BusyBlock(r, BusyKind.OTHER_TASK) for r in running_timers]
+    return sorted(blocks, key=lambda b: b.time.start)
+
+
 def busy_ranges(
     fixed_tasks: Iterable[FixedTaskTime],
     events: Iterable[CalendarEvent],
     approved_slots: Iterable[TimeRange],
     running_timers: Iterable[TimeRange] = (),
 ) -> list[TimeRange]:
-    """All busy time, merged and sorted.
-
-    Skipped: Fixed tasks with status Skipped; all-day, cancelled and
-    Metanoia-made Google events; zero-length events.
-    """
-    ranges = [TimeRange(t.start, t.end) for t in fixed_tasks if not t.is_skipped]
-    ranges += [
-        TimeRange(e.start, e.end)
-        for e in events
-        if not (e.is_all_day or e.is_cancelled or e.is_created_by_metanoia)
-        and e.end > e.start
-    ]
-    ranges += approved_slots
-    ranges += running_timers
-    return merge(ranges)
+    """All busy time, merged and sorted (the same rules as `busy_blocks`)."""
+    blocks = busy_blocks(fixed_tasks, events, approved_slots, running_timers)
+    return merge(b.time for b in blocks)
 
 
 def merge(ranges: Iterable[TimeRange]) -> list[TimeRange]:

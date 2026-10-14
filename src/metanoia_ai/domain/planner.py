@@ -21,6 +21,7 @@ from zoneinfo import ZoneInfo
 
 from metanoia_ai.domain.free_time import round_up
 from metanoia_ai.domain.models import (
+    Placement,
     PlannedSlot,
     ScheduleUnit,
     ScheduleWarning,
@@ -136,10 +137,13 @@ def place_task(
     earliest = now  # a subtask never starts before the previous one ends
     for unit in task_units:
         usable = after(gaps, earliest)
-        pieces = whole(unit, usable, hours.time_zone, productive_hours)
+        found = whole(unit, usable, hours.time_zone, productive_hours)
         missing = 0
-        if pieces is None:
+        if found is None:
             pieces, missing = split(unit, usable, min_chunk_minutes)
+            placement = Placement.EARLIEST_FREE  # parts fill free time in time order
+        else:
+            pieces, placement = found
         for index, piece in enumerate(pieces, start=1):
             slot = PlannedSlot(
                 task_id=unit.task_id,
@@ -149,6 +153,7 @@ def place_task(
                 k_bias_used=unit.k_bias_used,
                 part_index=index,
                 part_count=len(pieces),
+                placement=placement,
             )
             slots.append(slot)
             gaps = take(gaps, slot, hours, round_minutes)
@@ -163,12 +168,13 @@ def whole(
     gaps: Sequence[TimeRange],
     time_zone: ZoneInfo,
     productive_hours: frozenset[int],
-) -> list[TimeRange] | None:
-    """The unit in one piece, or None if it fits nowhere before its deadline."""
-    start = find_start(unit, gaps, time_zone, productive_hours)
-    if start is None:
+) -> tuple[list[TimeRange], Placement] | None:
+    """The unit in one piece and how its start was chosen, or None if it fits nowhere."""
+    found = find_start(unit, gaps, time_zone, productive_hours)
+    if found is None:
         return None
-    return [TimeRange(start, start + timedelta(minutes=unit.minutes))]
+    start, placement = found
+    return [TimeRange(start, start + timedelta(minutes=unit.minutes))], placement
 
 
 def split(
@@ -204,8 +210,12 @@ def find_start(
     gaps: Sequence[TimeRange],
     time_zone: ZoneInfo,
     productive_hours: frozenset[int],
-) -> datetime | None:
-    """Start time for the whole unit, or None if it fits nowhere before its deadline."""
+) -> tuple[datetime, Placement] | None:
+    """Start time for the whole unit, or None if it fits nowhere before its deadline.
+
+    WAITED_FOR_FOCUS_HOUR: the unit also fit earlier that day, but a productive
+    hour was chosen.
+    """
     length = timedelta(minutes=unit.minutes)
 
     def fits(start: datetime, gap: TimeRange) -> bool:
@@ -221,7 +231,10 @@ def find_start(
             for start in productive_starts(gap, time_zone, productive_hours)
             if fits(start, gap)
         ]
-        return min(productive) if productive else fitting[0].start
+        earliest = fitting[0].start
+        if productive and min(productive) > earliest:
+            return min(productive), Placement.WAITED_FOR_FOCUS_HOUR
+        return earliest, Placement.EARLIEST_FREE
     return None
 
 

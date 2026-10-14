@@ -2,15 +2,17 @@ from datetime import datetime, time
 from zoneinfo import ZoneInfo
 
 from metanoia_ai.domain.free_time import (
+    BusyBlock,
     CalendarEvent,
     FixedTaskTime,
+    busy_blocks,
     busy_ranges,
     free_ranges,
     merge,
     round_up,
     running_timer_busy,
 )
-from metanoia_ai.domain.models import TimeRange, WorkingHours
+from metanoia_ai.domain.models import BusyKind, TimeRange, WorkingHours
 
 SAIGON = ZoneInfo("Asia/Ho_Chi_Minh")
 # Common example from the plan: 9:00-17:00, no weekends, buffer 10'.
@@ -136,6 +138,27 @@ def test_merge_joins_overlapping_and_touching_ranges():
     assert merge(ranges) == [
         TimeRange(at(19, 9), at(19, 11)),
         TimeRange(at(19, 13), at(19, 15)),
+    ]
+
+
+def test_busy_blocks_keep_their_kind_and_follow_the_same_rules():
+    blocks = busy_blocks(
+        [
+            FixedTaskTime(at(19, 13), at(19, 14), False),
+            FixedTaskTime(at(19, 15), at(19, 16), True),  # skipped meeting
+        ],
+        [
+            event(at(19, 11), at(19, 12)),
+            event(at(19, 0), at(20, 0), all_day=True),
+        ],
+        [TimeRange(at(19, 9), at(19, 10))],
+        [TimeRange(at(19, 10), at(19, 10, 30))],
+    )
+    assert blocks == [
+        BusyBlock(TimeRange(at(19, 9), at(19, 10)), BusyKind.APPROVED_SLOT),
+        BusyBlock(TimeRange(at(19, 10), at(19, 10, 30)), BusyKind.OTHER_TASK),
+        BusyBlock(TimeRange(at(19, 11), at(19, 12)), BusyKind.CALENDAR_EVENT),
+        BusyBlock(TimeRange(at(19, 13), at(19, 14)), BusyKind.MEETING),
     ]
 
 

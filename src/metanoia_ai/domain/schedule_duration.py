@@ -43,6 +43,33 @@ def worked_minutes(sessions: Sequence[FocusSessionRecord], now: datetime) -> int
     return max(0, round_minutes(total_seconds))
 
 
+def latest_remaining(sessions: Sequence[FocusSessionRecord]) -> int | None:
+    """RemainingMinutes of the latest session (the user's newest estimate), if any."""
+    if not sessions:
+        return None
+    return max(sessions, key=lambda s: s.started_at).remaining_minutes
+
+
+def remaining_estimate(
+    estimated_minutes: int,
+    sessions: Sequence[FocusSessionRecord],
+    now: datetime,
+) -> int:
+    """The user's own estimate of what is left, before K.
+
+    - Not started: T_est.
+    - Latest session has RemainingMinutes: that value.
+    - Started: max(T_est − worked, 30). Worked includes a running session.
+    """
+    remaining = latest_remaining(sessions)
+    if remaining is not None:
+        return remaining
+    worked = worked_minutes(sessions, now)
+    if worked == 0:
+        return estimated_minutes
+    return max(estimated_minutes - worked, MIN_REMAINING_MINUTES)
+
+
 def minutes_to_schedule(
     estimated_minutes: int,
     sessions: Sequence[FocusSessionRecord],
@@ -51,19 +78,9 @@ def minutes_to_schedule(
 ) -> int:
     """Work minutes to place for one unit (task or subtask).
 
-    - Not started: ceil(T_est × K).
-    - Latest session has RemainingMinutes: use it as is (no × K).
-    - Started: ceil(max(T_est − worked, 30) × K). Worked includes a running session.
+    ceil(remaining_estimate × K), except RemainingMinutes: used as is (no × K).
     """
-    if not sessions:
-        return scaled_minutes(estimated_minutes, k_bias)
-
-    latest = max(sessions, key=lambda s: s.started_at)
-    if latest.remaining_minutes is not None:
-        return latest.remaining_minutes
-
-    worked = worked_minutes(sessions, now)
-    if worked == 0:
-        return scaled_minutes(estimated_minutes, k_bias)
-    remaining = max(estimated_minutes - worked, MIN_REMAINING_MINUTES)
-    return scaled_minutes(remaining, k_bias)
+    estimate = remaining_estimate(estimated_minutes, sessions, now)
+    if latest_remaining(sessions) is not None:
+        return estimate
+    return scaled_minutes(estimate, k_bias)

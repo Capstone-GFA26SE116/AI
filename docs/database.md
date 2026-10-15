@@ -1,6 +1,6 @@
 # Database — phần AI service đụng tới
 
-Cập nhật: 2026-10-14 · Nguồn: code Backend `develop` + đọc trực tiếp Supabase (chỉ đọc).
+Cập nhật: 2026-10-15 · Nguồn: code Backend `develop` + đọc trực tiếp Supabase (chỉ đọc).
 Schema do **Backend** sở hữu. File này chỉ ghi những bảng/cột AI dùng. Thấy lệch với DB thật → báo Hiếu.
 
 Ký hiệu: **AI ghi** = AI service được INSERT/UPDATE · **Chỉ đọc** = không bao giờ ghi.
@@ -43,6 +43,22 @@ Ký hiệu: **AI ghi** = AI service được INSERT/UPDATE · **Chỉ đọc** =
 - `Model` NOT NULL · `InputTokens`, `OutputTokens` ≥ 0 · `Cost` numeric NOT NULL ⚠️ (đơn vị tiền chưa chốt) ·
   `LatencyMs` ≥ 0, NOT NULL · `Succeeded` NOT NULL · `QuotaCharged` mặc định false · `CreatedAt` mặc định now().
 
+### `TaskExecutionMemory` — AI ghi (FR-19) ⚠️
+Đọc trực tiếp DB 2026-10-15 (chỉ đọc). Bảng đang trống.
+- `Id` uuid · `TaskId` uuid NOT NULL · `SubTaskId` uuid trống được · `Content` text NOT NULL ·
+  `Outcome` varchar(20) NOT NULL ∈ {`Completed`, `Partial`, `NotDone`} ⚠️ ·
+  `EstimatedMinutes` int NOT NULL > 0 · `ActualMinutes` int NOT NULL ≥ 0 ·
+  `Embedding` **vector(1536)** trống được · `EmbeddingStatus` varchar(10) ∈ {`Pending`, `Done`, `Failed`}, mặc định `Pending` ·
+  `CreatedAt` mặc định now().
+- CHECK: `EmbeddingStatus = 'Done'` thì bắt buộc có `Embedding`.
+- `EmbeddingModel` varchar(100) trống được: tên model đã tạo vector (FR-19 #21).
+- **Unique** `TaskId` (`TaskExecutionMemory_TaskId_key`): mỗi task 1 memory (FR-19 #22).
+  Hai mục này AI thêm bằng `ALTER` 2026-10-15 (Hiếu cho phép, đã báo Backend); bỏ index thường `IX_TaskExecutionMemory_TaskId` (thừa).
+- **Không có** cột tỷ lệ, domain, `UpdatedAt` (tính lúc đọc, #24).
+- Khóa ngoại `TaskId` → `Task`, `SubTaskId` → `SubTask`: **`ON DELETE RESTRICT`** ⚠️ (task còn memory thì không xóa được task).
+- Index: HNSW `IX_TaskExecutionMemory_Embedding_Hnsw` (`vector_cosine_ops`) **đã có** · GIN full-text trên `Content` · index `EmbeddingStatus <> 'Done'`.
+- Extension `vector` 0.8.2.
+
 ### `UserSubscription.AiCallsUsed` — AI ghi (bộ đếm quota)
 - Chỉ 1 bộ đếm cho mọi loại ⚠️ (luật cần đếm riêng 3 loại). ≥ 0. Xem bảng `UserSubscription` bên dưới.
 
@@ -67,6 +83,14 @@ Ký hiệu: **AI ghi** = AI service được INSERT/UPDATE · **Chỉ đọc** =
 - `CaptureMethod` ∈ {`Timer`, `SelfReported`, `AutoTimeout`}, mặc định `Timer` · `IsConfirmed` mặc định true.
 - Có `EndedAt` thì bắt buộc `StopReason` ∈ {`Completed`, `Interrupted`, `Blocked`, `Other`}.
 - `RemainingMinutes` trống hoặc > 0 (Hiếu thêm 2026-10-07; Backend ghi ở FR-16).
+- `Note` text trống được (ghi chú của phiên; FR-19 đưa vào text memory sau khi che thông tin).
+
+### `Domain`
+- `Name` varchar NOT NULL · `IsActive`.
+
+### `Client` (chỉ đọc `Name`, để che tên trong text FR-19)
+- `UserId` NOT NULL · `Name` NOT NULL · `ContactEmail`, `Phone`, `Notes`: **không đọc**.
+- `Project.ClientId` trống được (project không có khách).
 
 ### `UserCircadianProfile` (FR-10, FR-18)
 - `HourOfDay` 0–23, unique (`UserId`, `HourOfDay`) → mỗi giờ 1 dòng · `Score` trong [0, 1], mặc định 0.5.

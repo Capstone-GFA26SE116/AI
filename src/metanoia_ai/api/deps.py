@@ -1,24 +1,41 @@
 """Wiring: builds the objects each request needs (DB session, use cases)."""
 
-from collections.abc import AsyncIterator
+import logging
+from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Annotated
+from functools import partial
+from typing import Annotated, Any
+from uuid import UUID
 
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from metanoia_ai.application.ports.embedding_client import EmbeddingClient
 from metanoia_ai.application.ports.llm_client import LLMClient
 from metanoia_ai.application.reason_writer import ReasonWriter
+from metanoia_ai.application.use_cases.embed_pending_memories import (
+    EmbedPendingMemories,
+)
 from metanoia_ai.application.use_cases.propose_schedule import ProposeSchedule
 from metanoia_ai.application.use_cases.record_task_completion import (
     RecordTaskCompletion,
 )
-from metanoia_ai.config import Settings, get_settings
+from metanoia_ai.application.use_cases.save_task_memory import SaveTaskMemory
+from metanoia_ai.config import MissingLlmSettingError, Settings, get_settings
 from metanoia_ai.infrastructure.db.learning_repository import SqlLearningRepository
+from metanoia_ai.infrastructure.db.memory_repository import SqlMemoryRepository
 from metanoia_ai.infrastructure.db.quota_repository import SqlQuotaRepository
 from metanoia_ai.infrastructure.db.schedule_repository import SqlScheduleRepository
 from metanoia_ai.infrastructure.llm.gemini_client import GeminiClient
+from metanoia_ai.infrastructure.llm.gemini_embedding_client import (
+    GeminiEmbeddingClient,
+)
+
+logger = logging.getLogger(__name__)
+
+# Background job of one memory: (user id, memory id). Never raises.
+EmbedMemory = Callable[[UUID, UUID], Awaitable[None]]
 
 
 async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
@@ -80,3 +97,80 @@ def get_propose_schedule(
         quota_daily_max=settings.quota_daily_max,
         clock=lambda: datetime.now(UTC),
     )
+
+
+def get_save_task_memory(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> SaveTaskMemory:
+    """FR-19: save the memory row. Works without embedding settings (plan #19)."""
+    return SaveTaskMemory(
+        SqlMemoryRepository(session),
+        model=settings.embedding_model,
+        max_chars=settings.memory_text_max_chars,
+    )
+
+
+def get_embedding_client(app_state: Any, settings: Settings) -> EmbeddingClient:
+    """One Gemini embedding client for the whole app, made on first use.
+
+    Missing settings raise MissingLlmSettingError (names only, never values).
+    """
+    client = getattr(app_state, "embedding_client", None)
+    if client is None:
+        config = settings.embedding_config()
+        client = GeminiEmbeddingClient(
+            config.api_key, config.model, dimensions=config.dimensions
+        )
+        app_state.embedding_client = client
+    return client
+
+
+def build_embedder(
+    session: AsyncSession, settings: Settings, client: EmbeddingClient
+) -> EmbedPendingMemories:
+    config = settings.embedding_config()
+    return EmbedPendingMemories(
+        SqlMemoryRepository(session),
+        SqlQuotaRepository(session),  # same session, its own short transactions
+        client,
+        dimensions=config.dimensions,
+        price_per_1m=config.price_per_1m,
+        now=lambda: datetime.now(UTC),
+    )
+
+
+async def embed_memory(
+    app_state: Any, settings: Settings, user_id: UUID, memory_id: UUID
+) -> None:
+    """Background job after a request. Opens its own session (plan #17); never raises."""
+    try:
+        client = get_embedding_client(app_state, settings)
+        async with app_state.session_factory() as session:
+            await build_embedder(session, settings, client).embed_one(
+                user_id, memory_id
+            )
+    except MissingLlmSettingError as error:
+        logger.warning("Missing %s: memory %s stays Pending", error, memory_id)
+    except Exception:
+        logger.exception("Embedding memory %s failed", memory_id)
+
+
+async def embed_waiting_memories(app_state: Any, settings: Settings) -> None:
+    """Startup scan (plan #20): embed Pending/Failed rows. Never raises."""
+    try:
+        client = get_embedding_client(app_state, settings)
+        async with app_state.session_factory() as session:
+            outcomes = await build_embedder(session, settings, client).embed_waiting()
+        logger.info("Startup memory scan: %d rows handled", len(outcomes))
+    except MissingLlmSettingError as error:
+        logger.warning("Missing %s: startup memory scan skipped", error)
+    except Exception:
+        logger.exception("Startup memory scan failed")
+
+
+def get_memory_embedder(
+    request: Request, settings: Annotated[Settings, Depends(get_settings)]
+) -> EmbedMemory:
+    """The background job, bound to this app (not to the request's session)."""
+    return partial(embed_memory, request.app.state, settings)

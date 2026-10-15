@@ -15,6 +15,13 @@ LLM_VARS = {
     "LLM_INPUT_PRICE_PER_1M": "0.1",
     "LLM_OUTPUT_PRICE_PER_1M": "0.4",
 }
+SIMILAR_VARS = [
+    "SIMILAR_MIN_SIMILARITY",
+    "SIMILAR_RRF_K",
+    "SIMILAR_BRANCH_LIMIT",
+    "SIMILAR_DEFAULT_LIMIT",
+    "SIMILAR_EMBED_TIMEOUT_SECONDS",
+]
 OPTIONAL_VARS = [
     "JWT_LEEWAY_SECONDS",
     "KBIAS_ALPHA",
@@ -31,6 +38,7 @@ OPTIONAL_VARS = [
     "EMBEDDING_DIMENSIONS",
     "EMBEDDING_PRICE_PER_1M",
     "MEMORY_TEXT_MAX_CHARS",
+    *SIMILAR_VARS,
 ]
 EMBEDDING_VARS = {
     "GEMINI_API_KEY": "fake-gemini-key",
@@ -234,6 +242,51 @@ def test_embedding_values_can_be_changed(env):
     ],
 )
 def test_bad_embedding_values_are_rejected(env, name, value):
+    env.setenv(name, value)
+    with pytest.raises(ValidationError):
+        load()
+
+
+# --- similar tasks (FR-09) ---
+
+
+def test_similar_defaults(env):
+    settings = load()
+    assert settings.similar_min_similarity == 0.5
+    assert settings.similar_rrf_k == 60
+    assert settings.similar_branch_limit == 20
+    assert settings.similar_default_limit == 5
+    assert settings.similar_embed_timeout_seconds == 1.5
+
+
+def test_similar_values_can_be_changed(env):
+    env.setenv("SIMILAR_MIN_SIMILARITY", "0.65")
+    env.setenv("SIMILAR_RRF_K", "30")
+    env.setenv("SIMILAR_BRANCH_LIMIT", "50")
+    env.setenv("SIMILAR_DEFAULT_LIMIT", "10")
+    env.setenv("SIMILAR_EMBED_TIMEOUT_SECONDS", "2")
+    settings = load()
+    assert settings.similar_min_similarity == 0.65
+    assert settings.similar_rrf_k == 30
+    assert settings.similar_branch_limit == 50
+    assert settings.similar_default_limit == 10
+    assert settings.similar_embed_timeout_seconds == 2
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("SIMILAR_MIN_SIMILARITY", "-0.1"),
+        ("SIMILAR_MIN_SIMILARITY", "1.1"),
+        ("SIMILAR_RRF_K", "0"),
+        ("SIMILAR_BRANCH_LIMIT", "0"),
+        ("SIMILAR_BRANCH_LIMIT", "101"),
+        ("SIMILAR_DEFAULT_LIMIT", "0"),
+        ("SIMILAR_DEFAULT_LIMIT", "11"),
+        ("SIMILAR_EMBED_TIMEOUT_SECONDS", "0"),
+    ],
+)
+def test_bad_similar_values_are_rejected(env, name, value):
     env.setenv(name, value)
     with pytest.raises(ValidationError):
         load()

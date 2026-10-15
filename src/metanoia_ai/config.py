@@ -58,6 +58,17 @@ class Settings(BaseSettings):
     embedding_price_per_1m: float | None = Field(default=None, ge=0)
     memory_text_max_chars: int = Field(default=1000, gt=0)
 
+    # Similar tasks (FR-09): hybrid search + RRF.
+    # Vector results below this cosine similarity are dropped as noise.
+    similar_min_similarity: float = Field(default=0.5, ge=0, le=1)
+    similar_rrf_k: int = Field(default=60, gt=0)
+    # Rows taken from each branch (vector, full-text) before merging.
+    similar_branch_limit: int = Field(default=20, ge=1, le=100)
+    # Results returned when the caller gives no limit (API allows 1-10).
+    similar_default_limit: int = Field(default=5, ge=1, le=10)
+    # Wait at most this long for the query vector, then search text only (#14).
+    similar_embed_timeout_seconds: float = Field(default=1.5, gt=0)
+
     def embedding_config(self) -> "EmbeddingConfig":
         """The embedding settings, all present. Raises MissingLlmSettingError otherwise."""
         values = {

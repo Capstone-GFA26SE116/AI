@@ -216,7 +216,7 @@ Test cũ (FR-09, FR-10, FR-17, FR-19) phải pass nguyên vẹn.
   - `ChatConversation` có `ProjectId` NOT NULL không (task-level chat cần điền cả project?).
   - `Task.Description` có tồn tại không. `SubTask` còn cột nào bắt buộc ngoài những gì `docs/database.md` ghi.
   - **Thiếu cột cần thiết hoặc khác hẳn plan → DỪNG, hỏi Hiếu.**
-- [ ] **1.** Config: `CHAT_HISTORY_LIMIT` (20), `CHAT_MESSAGE_MAX_CHARS` (2000), `BREAKDOWN_MIN_SUBTASKS` (2),
+- [x] **1.** Config: `CHAT_HISTORY_LIMIT` (20), `CHAT_MESSAGE_MAX_CHARS` (2000), `BREAKDOWN_MIN_SUBTASKS` (2),
   `BREAKDOWN_MAX_SUBTASKS` (10), `BREAKDOWN_MIN_MINUTES` (5), `BREAKDOWN_MAX_MINUTES` (120),
   `BREAKDOWN_MANUAL_MAX_MINUTES` (480), `BREAKDOWN_WARNING_RATIO` (0.3) + `.env.example` — test cấu hình.
 - [ ] **2.** Domain `task_breakdown.py`: kiểu + `check_draft` (AI và sửa tay) — test T1–T4.

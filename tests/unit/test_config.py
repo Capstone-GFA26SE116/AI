@@ -22,6 +22,16 @@ SIMILAR_VARS = [
     "SIMILAR_DEFAULT_LIMIT",
     "SIMILAR_EMBED_TIMEOUT_SECONDS",
 ]
+CHAT_VARS = [
+    "CHAT_HISTORY_LIMIT",
+    "CHAT_MESSAGE_MAX_CHARS",
+    "BREAKDOWN_MIN_SUBTASKS",
+    "BREAKDOWN_MAX_SUBTASKS",
+    "BREAKDOWN_MIN_MINUTES",
+    "BREAKDOWN_MAX_MINUTES",
+    "BREAKDOWN_MANUAL_MAX_MINUTES",
+    "BREAKDOWN_WARNING_RATIO",
+]
 OPTIONAL_VARS = [
     "JWT_LEEWAY_SECONDS",
     "KBIAS_ALPHA",
@@ -39,6 +49,7 @@ OPTIONAL_VARS = [
     "EMBEDDING_PRICE_PER_1M",
     "MEMORY_TEXT_MAX_CHARS",
     *SIMILAR_VARS,
+    *CHAT_VARS,
 ]
 EMBEDDING_VARS = {
     "GEMINI_API_KEY": "fake-gemini-key",
@@ -288,5 +299,59 @@ def test_similar_values_can_be_changed(env):
 )
 def test_bad_similar_values_are_rejected(env, name, value):
     env.setenv(name, value)
+    with pytest.raises(ValidationError):
+        load()
+
+
+# --- task chat (FR-08a) ---
+
+
+def test_chat_defaults(env):
+    settings = load()
+    assert settings.chat_history_limit == 20
+    assert settings.chat_message_max_chars == 2000
+    assert (settings.breakdown_min_subtasks, settings.breakdown_max_subtasks) == (2, 10)
+    assert (settings.breakdown_min_minutes, settings.breakdown_max_minutes) == (5, 120)
+    assert settings.breakdown_manual_max_minutes == 480
+    assert settings.breakdown_warning_ratio == 0.3
+
+
+def test_chat_values_can_be_changed(env):
+    env.setenv("CHAT_HISTORY_LIMIT", "10")
+    env.setenv("BREAKDOWN_MAX_SUBTASKS", "8")
+    env.setenv("BREAKDOWN_WARNING_RATIO", "0.5")
+    settings = load()
+    assert settings.chat_history_limit == 10
+    assert settings.breakdown_max_subtasks == 8
+    assert settings.breakdown_warning_ratio == 0.5
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("CHAT_HISTORY_LIMIT", "0"),
+        ("CHAT_MESSAGE_MAX_CHARS", "0"),
+        ("BREAKDOWN_MIN_SUBTASKS", "0"),
+        ("BREAKDOWN_MIN_MINUTES", "0"),
+        ("BREAKDOWN_WARNING_RATIO", "0"),
+    ],
+)
+def test_bad_chat_values_are_rejected(env, name, value):
+    env.setenv(name, value)
+    with pytest.raises(ValidationError):
+        load()
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        pytest.param({"BREAKDOWN_MIN_SUBTASKS": "11"}, id="min-subtasks-over-max"),
+        pytest.param({"BREAKDOWN_MIN_MINUTES": "121"}, id="min-minutes-over-max"),
+        pytest.param({"BREAKDOWN_MAX_MINUTES": "500"}, id="ai-max-over-manual-max"),
+    ],
+)
+def test_breakdown_ranges_must_make_sense(env, changes):
+    for name, value in changes.items():
+        env.setenv(name, value)
     with pytest.raises(ValidationError):
         load()

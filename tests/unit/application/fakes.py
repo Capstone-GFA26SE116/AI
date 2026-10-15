@@ -2,11 +2,15 @@
 
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
+from metanoia_ai.application.ports.embedding_client import (
+    EmbeddingError,
+    EmbeddingResponse,
+)
 from metanoia_ai.application.ports.learning_repository import (
     DomainProfile,
     KBiasLogEntry,
@@ -14,6 +18,10 @@ from metanoia_ai.application.ports.learning_repository import (
     TaskForLearning,
 )
 from metanoia_ai.application.ports.llm_client import LLMError, LLMResponse
+from metanoia_ai.application.ports.memory_repository import (
+    PendingMemory,
+    TaskForMemory,
+)
 from metanoia_ai.application.ports.quota_repository import (
     Subscription,
     UsageLogEntry,
@@ -22,6 +30,7 @@ from metanoia_ai.application.ports.schedule_repository import (
     NewProposal,
     PlanningData,
 )
+from metanoia_ai.domain.memory_text import MemoryDraft
 
 
 class FakeLearningRepository:
@@ -231,4 +240,147 @@ class FakeLLMClient:
             answer = answer(prompt)
         return LLMResponse(
             text=answer, model=self.model, input_tokens=100, output_tokens=50
+        )
+
+
+# --- Long-term memory (FR-19) ---
+
+
+@dataclass(frozen=True)
+class FakeMemoryRow:
+    """One TaskExecutionMemory row."""
+
+    user_id: UUID
+    task_id: UUID
+    draft: MemoryDraft
+    status: str  # Pending / Done / Failed
+    vector: tuple[float, ...] | None
+    model: str | None
+    order: int  # stands in for CreatedAt (oldest first)
+
+
+class FakeMemoryRepository:
+    """Tasks and memory rows in memory. One row per task, like UNIQUE("TaskId")."""
+
+    def __init__(self) -> None:
+        # task id -> (owner id, task)
+        self.tasks: dict[UUID, tuple[UUID, TaskForMemory]] = {}
+        # memory id -> row
+        self.rows: dict[UUID, FakeMemoryRow] = {}
+        self.fail_on_upsert = False  # simulate a DB error while saving
+        self._next_order = 0
+
+    def add_task(self, owner_id: UUID, task: TaskForMemory) -> None:
+        self.tasks[task.task_id] = (owner_id, task)
+
+    def row_for_task(self, task_id: UUID) -> tuple[UUID, FakeMemoryRow] | None:
+        for memory_id, row in self.rows.items():
+            if row.task_id == task_id:
+                return memory_id, row
+        return None
+
+    @asynccontextmanager
+    async def transaction(self) -> AsyncIterator[None]:
+        # Roll back on error, like a real transaction.
+        saved = dict(self.rows)
+        try:
+            yield
+        except BaseException:
+            self.rows = saved
+            raise
+
+    async def get_task(self, user_id: UUID, task_id: UUID) -> TaskForMemory | None:
+        owner_and_task = self.tasks.get(task_id)
+        if owner_and_task is None or owner_and_task[0] != user_id:
+            return None
+        return owner_and_task[1]
+
+    async def upsert(
+        self, user_id: UUID, task_id: UUID, draft: MemoryDraft, model: str | None
+    ) -> UUID:
+        if self.fail_on_upsert:
+            raise RuntimeError("database error while saving the memory")
+        existing = self.row_for_task(task_id)
+        if existing:
+            memory_id, row = existing
+            order = row.order
+        else:
+            memory_id, order = uuid4(), self._next_order
+            self._next_order += 1
+        self.rows[memory_id] = FakeMemoryRow(
+            user_id, task_id, draft, "Pending", None, model, order
+        )
+        return memory_id
+
+    def _own_row(self, user_id: UUID, memory_id: UUID) -> FakeMemoryRow | None:
+        row = self.rows.get(memory_id)
+        return row if row is not None and row.user_id == user_id else None
+
+    async def get_pending(self, user_id: UUID, memory_id: UUID) -> PendingMemory | None:
+        row = self._own_row(user_id, memory_id)
+        if row is None or row.status == "Done":
+            return None
+        return PendingMemory(memory_id, user_id, row.draft.content)
+
+    async def list_waiting(self, limit: int) -> list[tuple[UUID, UUID]]:
+        waiting = sorted(
+            (row.order, memory_id, row.user_id)
+            for memory_id, row in self.rows.items()
+            if row.status != "Done"
+        )
+        return [(memory_id, user_id) for _, memory_id, user_id in waiting[:limit]]
+
+    async def save_embedding(
+        self,
+        user_id: UUID,
+        memory_id: UUID,
+        content: str,
+        vector: list[float],
+        model: str,
+    ) -> bool:
+        row = self._own_row(user_id, memory_id)
+        if row is None or row.draft.content != content:
+            return False
+        self.rows[memory_id] = replace(
+            row, status="Done", vector=tuple(vector), model=model
+        )
+        return True
+
+    async def mark_failed(self, user_id: UUID, memory_id: UUID, content: str) -> bool:
+        row = self._own_row(user_id, memory_id)
+        if row is None or row.draft.content != content:
+            return False
+        self.rows[memory_id] = replace(row, status="Failed")
+        return True
+
+
+class FakeEmbeddingClient:
+    """Returns prepared answers in order.
+
+    An answer can be a vector, an exception (raised instead), or a function
+    that gets the text and returns a vector (e.g. to change data mid-call).
+    """
+
+    def __init__(
+        self,
+        *answers: list[float] | Exception | Callable[[str], list[float]],
+        model: str = "fake-embedding",
+        input_tokens: int | None = 12,
+    ) -> None:
+        self.answers = list(answers)
+        self.model = model
+        self.input_tokens = input_tokens
+        self.texts: list[str] = []
+
+    async def embed(self, text: str) -> EmbeddingResponse:
+        self.texts.append(text)
+        if not self.answers:
+            raise EmbeddingError("no more fake answers", model=self.model)
+        answer = self.answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        if callable(answer):
+            answer = answer(text)
+        return EmbeddingResponse(
+            vector=answer, model=self.model, input_tokens=self.input_tokens
         )

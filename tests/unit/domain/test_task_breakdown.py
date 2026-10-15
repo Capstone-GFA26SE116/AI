@@ -1,14 +1,19 @@
+from decimal import Decimal
+
 import pytest
 
+from metanoia_ai.domain.models import Language
 from metanoia_ai.domain.task_breakdown import (
     BadDraftError,
     Draft,
     DraftLimits,
+    DraftNumbers,
     ReplyKind,
     Subtask,
     SubtaskInput,
     check_draft,
     check_reply,
+    draft_numbers,
 )
 
 AI = DraftLimits(min_subtasks=2, max_subtasks=10, min_minutes=5, max_minutes=120)
@@ -138,3 +143,71 @@ def test_t4_one_manual_subtask_is_fine():
 def test_t4_manual_still_needs_unique_titles():
     with pytest.raises(BadDraftError):
         check_draft(items(30, 30, titles=["A", "a"]), MANUAL)
+
+
+# --- T5-T7: numbers next to a draft ---
+
+
+def draft_of(*minutes) -> Draft:
+    return check_draft(items(*minutes), AI)
+
+
+def test_t5_numbers_without_warning():
+    numbers = draft_numbers(240, Decimal("1.3"), draft_of(60, 90, 90, 60), False, 0.3)
+    assert numbers == DraftNumbers(
+        your_estimate_minutes=240,
+        adjusted_minutes=312,
+        subtask_total_minutes=300,
+        adjusted_is_hint=False,
+        warning=None,
+    )
+
+
+def test_adjusted_is_rounded_up():
+    # 45 × 1.34 = 60.3 → 61, like FR-10.
+    numbers = draft_numbers(45, Decimal("1.34"), draft_of(30, 30), False, 0.3)
+    assert numbers.adjusted_minutes == 61
+
+
+def test_t6_warning_when_much_more():
+    # 312 adjusted, 420 total: 35% more.
+    numbers = draft_numbers(
+        240, Decimal("1.3"), draft_of(120, 120, 120, 60), False, 0.3
+    )
+    assert numbers.warning == (
+        "Tổng các bước là 420 phút, nhiều hơn khoảng 35% so với "
+        "thời gian bạn thường cần cho việc này (312 phút)."
+    )
+
+
+def test_t6_warning_when_much_less():
+    # 312 adjusted, 120 total: 62% less.
+    numbers = draft_numbers(240, Decimal("1.3"), draft_of(60, 60), False, 0.3)
+    assert numbers.warning is not None
+    assert "ít hơn khoảng 62%" in numbers.warning
+    assert "thiếu bước" in numbers.warning
+
+
+def test_exactly_at_the_limit_gives_no_warning():
+    # 100 adjusted (K 1.0), 130 total: exactly 30%.
+    numbers = draft_numbers(100, Decimal("1.0"), draft_of(65, 65), False, 0.3)
+    assert numbers.warning is None
+
+
+def test_warning_in_english():
+    numbers = draft_numbers(
+        240, Decimal("1.3"), draft_of(60, 60), False, 0.3, Language.EN
+    )
+    assert numbers.warning.startswith("The steps add up to 120 minutes, about 62% less")
+
+
+def test_warning_has_no_internal_names():
+    numbers = draft_numbers(240, Decimal("1.3"), draft_of(60, 60), False, 0.3)
+    for name in ("K_bias", "T_proposed", "T_est", "K="):
+        assert name not in numbers.warning
+
+
+def test_t7_free_plan_shows_adjusted_as_hint():
+    numbers = draft_numbers(240, Decimal("1.3"), draft_of(60, 90, 90, 60), True, 0.3)
+    assert numbers.adjusted_is_hint is True
+    assert numbers.adjusted_minutes == 312  # still shown, as a hint

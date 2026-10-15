@@ -35,11 +35,10 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 
 | Câu hỏi | Liên quan | Hiện đang dùng |
 |---|---|---|
-| Giảng viên duyệt Python + service riêng? | #8 | Python |
 | K ban đầu lấy từ onboarding hay cố định 1.3? | #10 | 1.3 |
 | Ngưỡng outlier | #12 | 5 (ngoài [1/5, 5] thì bỏ qua) |
 | Quota đọc tài liệu theo từng gói | #13 | — |
-| Chọn model LLM + model embedding (kích thước vector; ERD đang 1536) | — | Chưa chọn |
+| Chọn model LLM (FR-08) | — | FR-10 dùng Gemini, tên model trong config |
 | Database doc lệch với schema Supabase | #19 | Tin DB thật |
 
 ## Cập nhật Google Doc
@@ -53,3 +52,5 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 | 2026-10-07 | JWT | HS256, user ID trong `sub`, iss `METANOIA`, aud `METANOIA.Client` |
 | 2026-10-11 | Đường gọi | Frontend → Backend → AI |
 | 2026-10-12 | DB dev riêng? | Không — làm thẳng trên Supabase, xóa dữ liệu test trước khi công bố |
+| 2026-10-14 | Giảng viên duyệt Python + service riêng? (#8) | Đã duyệt: Python, service riêng |
+| 2026-10-14 | Chọn model embedding | `gemini-embedding-2`, cắt xuống 1536 chiều (khớp ERD). Dự phòng: OpenAI `text-embedding-3-small` (FR-19 #1) |

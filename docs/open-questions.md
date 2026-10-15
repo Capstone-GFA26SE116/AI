@@ -30,6 +30,7 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 | Chính sách xóa task: `TaskExecutionMemory`, `FocusSession`, `KBiasUpdateLog` đều `ON DELETE RESTRICT` (task đã có lịch sử thì không xóa được). Cố ý? Đề xuất memory → `CASCADE` | FR-19 #25, FR-17 | `SubTask`, `ScheduleSlot`, `ChatConversation` là `CASCADE` |
 | Gọi `POST /learning/task-completed` cả khi task chuyển sang `Skipped` (không chỉ `Done`) | FR-19 #2 | |
 | Đồng ý AI ghi `TaskExecutionMemory` | FR-19, #9 | |
+| Chuyển tiếp `GET /memory/similar?task_id=&limit=` cho Frontend (đường gọi Frontend → Backend → AI) | FR-09 | Chỉ đọc + ghi `AIUsageLog`; không trừ quota. `search_mode` ∈ `hybrid`/`text_only`/`none` |
 
 ## Chờ quyết định (team / giảng viên)
 
@@ -40,6 +41,7 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 | Quota đọc tài liệu theo từng gói | #13 | — |
 | Chọn model LLM (FR-08) | — | FR-10 dùng Gemini, tên model trong config |
 | Database doc lệch với schema Supabase | #19 | Tin DB thật |
+| Ngưỡng `SIMILAR_MIN_SIMILARITY` (FR-09 #4) | FR-09 | 0.5. Chạy thật 2026-10-15: task không liên quan vẫn qua ngưỡng (Gemini cho câu khác nghĩa ~0.69) → cân nhắc ~0.75 khi có thêm dữ liệu |
 
 ## Cập nhật Google Doc
 

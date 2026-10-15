@@ -1,7 +1,8 @@
 """FastAPI app for the METANOIA AI service."""
 
+import asyncio
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from typing import Annotated
 from uuid import UUID
 
@@ -9,6 +10,7 @@ from fastapi import Depends, FastAPI
 from pydantic import BaseModel
 
 from metanoia_ai.api.auth import get_current_user_id
+from metanoia_ai.api.deps import embed_waiting_memories
 from metanoia_ai.api.routes import learning, schedule
 from metanoia_ai.config import get_settings
 from metanoia_ai.infrastructure.db.engine import create_engine, create_session_factory
@@ -16,13 +18,19 @@ from metanoia_ai.infrastructure.db.engine import create_engine, create_session_f
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Startup: load settings (a missing value stops the app) and set up the DB pool.
+    """Startup: load settings (a missing value stops the app), set up the DB pool,
+    and start the memory scan in the background (FR-19, does not delay startup).
 
-    Shutdown: close all DB connections.
+    Shutdown: stop the scan if still running, close all DB connections.
     """
-    engine = create_engine(get_settings())
+    settings = get_settings()
+    engine = create_engine(settings)
     app.state.session_factory = create_session_factory(engine)
+    scan = asyncio.create_task(embed_waiting_memories(app.state, settings))
     yield
+    scan.cancel()
+    with suppress(asyncio.CancelledError):
+        await scan
     await engine.dispose()
 
 

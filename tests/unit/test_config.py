@@ -27,7 +27,16 @@ OPTIONAL_VARS = [
     "QUOTA_DAILY_MAX",
     "LLM_MAX_RETRIES",
     *LLM_VARS,
+    "EMBEDDING_MODEL",
+    "EMBEDDING_DIMENSIONS",
+    "EMBEDDING_PRICE_PER_1M",
+    "MEMORY_TEXT_MAX_CHARS",
 ]
+EMBEDDING_VARS = {
+    "GEMINI_API_KEY": "fake-gemini-key",
+    "EMBEDDING_MODEL": "fake-embedding",
+    "EMBEDDING_PRICE_PER_1M": "0.15",
+}
 
 
 @pytest.fixture
@@ -161,3 +170,70 @@ def test_secrets_are_hidden_when_printed(env):
     for secret in ["fake-password", REQUIRED_VARS["JWT_SECRET"], "fake-gemini-key"]:
         assert secret not in repr(settings)
         assert secret not in str(settings)
+
+
+# --- embedding (FR-19) ---
+
+
+def test_embedding_defaults(env):
+    settings = load()
+    assert settings.embedding_model is None
+    assert settings.embedding_price_per_1m is None
+    assert settings.embedding_dimensions == 1536
+    assert settings.memory_text_max_chars == 1000
+
+
+def test_embedding_config_when_all_set(env):
+    for name, value in EMBEDDING_VARS.items():
+        env.setenv(name, value)
+    config = load().embedding_config()
+    assert config.model == "fake-embedding"
+    assert config.api_key.get_secret_value() == "fake-gemini-key"
+    assert config.dimensions == 1536
+    assert config.price_per_1m == 0.15
+
+
+def test_embedding_config_does_not_need_llm_settings(env):
+    # Only the shared key: no LLM_MODEL, no LLM prices.
+    for name, value in EMBEDDING_VARS.items():
+        env.setenv(name, value)
+    assert load().embedding_config().model == "fake-embedding"
+
+
+@pytest.mark.parametrize("name", list(EMBEDDING_VARS))
+def test_embedding_config_fails_when_one_is_missing(env, name):
+    for other, value in EMBEDDING_VARS.items():
+        if other != name:
+            env.setenv(other, value)
+    settings = load()  # the app still starts
+    with pytest.raises(MissingLlmSettingError, match=name):
+        settings.embedding_config()
+
+
+def test_embedding_error_does_not_show_secret(env):
+    env.setenv("GEMINI_API_KEY", "fake-gemini-key")
+    with pytest.raises(MissingLlmSettingError) as error:
+        load().embedding_config()
+    assert "fake-gemini-key" not in str(error.value)
+
+
+def test_embedding_values_can_be_changed(env):
+    env.setenv("EMBEDDING_DIMENSIONS", "768")
+    env.setenv("MEMORY_TEXT_MAX_CHARS", "500")
+    settings = load()
+    assert settings.embedding_dimensions == 768
+    assert settings.memory_text_max_chars == 500
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("EMBEDDING_DIMENSIONS", "0"),
+        ("EMBEDDING_PRICE_PER_1M", "-0.1"),
+        ("MEMORY_TEXT_MAX_CHARS", "0"),
+    ],
+)
+def test_bad_embedding_values_are_rejected(env, name, value):
+    env.setenv(name, value)
+    with pytest.raises(ValidationError):
+        load()

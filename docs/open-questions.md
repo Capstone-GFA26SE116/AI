@@ -1,6 +1,6 @@
 # Câu hỏi mở & việc chờ Backend/team
 
-Cập nhật: 2026-10-12. Đây là danh sách DUY NHẤT. Trong plan chỉ đánh dấu ⚠️ cạnh quyết định liên quan.
+Cập nhật: 2026-10-15. Đây là danh sách DUY NHẤT. Trong plan chỉ đánh dấu ⚠️ cạnh quyết định liên quan.
 Chốt xong → ghi kết quả vào `docs/` hoặc plan, rồi chuyển dòng xuống mục "Đã chốt".
 Số `#` = số trong tab Problems của Google Doc (nếu có).
 
@@ -25,17 +25,20 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 | Quota: DB chỉ có 1 bộ đếm `AiCallsUsed`, luật cần đếm riêng 3 loại | Quota, #13 | |
 | Đồng ý cách hiểu buffer (khoảng nghỉ riêng, không ghi lên lịch) | FR-10 | |
 | Role: không chặn Admin theo role; quyền gọi AI dựa vào gói + quota | — | Hiếu đã quyết, chỉ báo |
-| Refresh token: token sống 60', Focus mode dài hơn → Stop bị 401 | Backend + Frontend | Đưa vào tab Problems |
+| Refresh token: token sống 60', Focus mode dài hơn → Stop bị 401 | Backend + Frontend | Đưa vào tab Problems. 2026-10-14: Backend `develop` đã có refresh token trong `AuthController` → kiểm lại rồi đóng |
+| Cập nhật script/entity cho `TaskExecutionMemory`: cột `EmbeddingModel` varchar(100) NULL + `UNIQUE ("TaskId")` (`TaskExecutionMemory_TaskId_key`), bỏ `IX_TaskExecutionMemory_TaskId` | FR-19 #21, #22 | 2026-10-15: AI đã chạy `ALTER` trên DB (Hiếu cho phép, đã báo Backend). Script/entity của Backend phải giữ các thay đổi này |
+| Chính sách xóa task: `TaskExecutionMemory`, `FocusSession`, `KBiasUpdateLog` đều `ON DELETE RESTRICT` (task đã có lịch sử thì không xóa được). Cố ý? Đề xuất memory → `CASCADE` | FR-19 #25, FR-17 | `SubTask`, `ScheduleSlot`, `ChatConversation` là `CASCADE` |
+| Gọi `POST /learning/task-completed` cả khi task chuyển sang `Skipped` (không chỉ `Done`) | FR-19 #2 | |
+| Đồng ý AI ghi `TaskExecutionMemory` | FR-19, #9 | |
 
 ## Chờ quyết định (team / giảng viên)
 
 | Câu hỏi | Liên quan | Hiện đang dùng |
 |---|---|---|
-| Giảng viên duyệt Python + service riêng? | #8 | Python |
 | K ban đầu lấy từ onboarding hay cố định 1.3? | #10 | 1.3 |
 | Ngưỡng outlier | #12 | 5 (ngoài [1/5, 5] thì bỏ qua) |
 | Quota đọc tài liệu theo từng gói | #13 | — |
-| Chọn model LLM + model embedding (kích thước vector; ERD đang 1536) | — | Chưa chọn |
+| Chọn model LLM (FR-08) | — | FR-10 dùng Gemini, tên model trong config |
 | Database doc lệch với schema Supabase | #19 | Tin DB thật |
 
 ## Cập nhật Google Doc
@@ -49,3 +52,5 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 | 2026-10-07 | JWT | HS256, user ID trong `sub`, iss `METANOIA`, aud `METANOIA.Client` |
 | 2026-10-11 | Đường gọi | Frontend → Backend → AI |
 | 2026-10-12 | DB dev riêng? | Không — làm thẳng trên Supabase, xóa dữ liệu test trước khi công bố |
+| 2026-10-14 | Giảng viên duyệt Python + service riêng? (#8) | Đã duyệt: Python, service riêng |
+| 2026-10-14 | Chọn model embedding | `gemini-embedding-2`, cắt xuống 1536 chiều (khớp ERD). Dự phòng: OpenAI `text-embedding-3-small` (FR-19 #1) |

@@ -50,6 +50,32 @@ class Settings(BaseSettings):
     llm_input_price_per_1m: float | None = Field(default=None, ge=0)
     llm_output_price_per_1m: float | None = Field(default=None, ge=0)
 
+    # Embedding + long-term memory (FR-19). Like the LLM: optional at startup,
+    # required through embedding_config(). Uses the same GEMINI_API_KEY.
+    embedding_model: str | None = None
+    # The DB column is vector(1536); another size cannot be stored.
+    embedding_dimensions: int = Field(default=1536, gt=0)
+    embedding_price_per_1m: float | None = Field(default=None, ge=0)
+    memory_text_max_chars: int = Field(default=1000, gt=0)
+
+    def embedding_config(self) -> "EmbeddingConfig":
+        """The embedding settings, all present. Raises MissingLlmSettingError otherwise."""
+        values = {
+            "GEMINI_API_KEY": self.gemini_api_key,
+            "EMBEDDING_MODEL": self.embedding_model,
+            "EMBEDDING_PRICE_PER_1M": self.embedding_price_per_1m,
+        }
+        missing = [name for name, value in values.items() if value is None]
+        if missing:
+            # Only the names: never put a secret value in an error message.
+            raise MissingLlmSettingError(", ".join(missing))
+        return EmbeddingConfig(
+            model=self.embedding_model,
+            api_key=self.gemini_api_key,
+            dimensions=self.embedding_dimensions,
+            price_per_1m=self.embedding_price_per_1m,
+        )
+
     def llm_config(self) -> "LlmConfig":
         """The LLM settings, all present. Raises MissingLlmSettingError otherwise."""
         values = {
@@ -85,6 +111,17 @@ class LlmConfig:
     # Price per 1 million tokens (currency not agreed with the Backend yet).
     input_price_per_1m: float
     output_price_per_1m: float
+
+
+@dataclass(frozen=True)
+class EmbeddingConfig:
+    """Everything needed to embed memory text and log the cost of each call."""
+
+    model: str
+    api_key: SecretStr
+    dimensions: int
+    # Price per 1 million input tokens (embeddings have no output tokens).
+    price_per_1m: float
 
 
 @lru_cache

@@ -227,7 +227,7 @@ Test cũ (FR-09, FR-10, FR-17, FR-19) phải pass nguyên vẹn.
   Cho Hiếu xem prompt trước khi đi tiếp.
 - [x] **5.** `chat_writer.py` (gọi + kiểm + thử lại, theo kiểu `reason_writer.py`) — test T10, T11 (phần LLM).
 - [x] **6.** Port `ChatRepository` + fake trong `tests/unit/application/fakes.py`.
-- [ ] **7.** Use case `SendTaskChatMessage` — test T8–T18.
+- [x] **7.** Use case `SendTaskChatMessage` — test T8–T18.
 - [ ] **8.** Use case `GetTaskChat` + `ApplyTaskBreakdown` — test T19–T22.
 - [ ] **9.** Infrastructure `SqlChatRepository` (T26). Chạy `EXPLAIN` (không thực thi) các câu SQL trên DB thật.
 - [ ] **10.** API `routes/chat.py` + `main.py` + `deps.py` — test T23–T25.

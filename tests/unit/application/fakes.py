@@ -1,12 +1,21 @@
 """In-memory stand-ins for the database and the LLM, used by application tests."""
 
-from collections.abc import AsyncIterator, Callable
+import copy
+from collections.abc import AsyncIterator, Callable, Sequence
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, replace
-from datetime import datetime
+from dataclasses import dataclass, field, replace
+from datetime import datetime, timedelta
+from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
+from metanoia_ai.application.ports.chat_repository import (
+    ChatMessage,
+    ChatRole,
+    ChatTask,
+    SavedDraft,
+    SavedSubtask,
+)
 from metanoia_ai.application.ports.embedding_client import (
     EmbeddingError,
     EmbeddingResponse,
@@ -36,6 +45,7 @@ from metanoia_ai.application.ports.similar_task_repository import (
 )
 from metanoia_ai.domain.memory_text import MemoryDraft
 from metanoia_ai.domain.similar_tasks import WORD, PastTask
+from metanoia_ai.domain.task_breakdown import Subtask
 
 
 class FakeLearningRepository:
@@ -465,3 +475,137 @@ class FakeSimilarTaskRepository:
             if hits:
                 scored.append((-hits, len(scored), m.task))
         return [task for _, _, task in sorted(scored)[:limit]]
+
+
+# --- Task chat (FR-08a) ---
+
+
+@dataclass
+class FakeConversation:
+    owner_id: UUID
+    task_id: UUID
+    project_id: UUID
+    title: str
+    status: str = "Open"
+    messages: list[ChatMessage] = field(default_factory=list)
+
+
+class FakeChatRepository:
+    """Tasks, chats, messages and subtasks in memory. Rolls back like a transaction."""
+
+    def __init__(self, now: datetime) -> None:
+        self.now = now  # first message time; each message is 1 s later
+        # task id -> (owner id, task)
+        self.tasks: dict[UUID, tuple[UUID, ChatTask]] = {}
+        self.k_bias: dict[tuple[UUID, UUID], Decimal] = {}  # (user, domain) -> K
+        self.conversations: dict[UUID, FakeConversation] = {}
+        self.subtasks: dict[UUID, list[SavedSubtask]] = {}  # task id -> subtasks
+        self.locked: list[UUID] = []  # task ids locked with get_task(lock=True)
+        self.fail_on_add_message = False  # simulate a DB error while saving
+
+    def add_task(self, owner_id: UUID, task: ChatTask) -> None:
+        self.tasks[task.task_id] = (owner_id, task)
+
+    @asynccontextmanager
+    async def transaction(self) -> AsyncIterator[None]:
+        saved = (
+            copy.deepcopy(self.conversations),
+            copy.deepcopy(self.subtasks),
+            dict(self.tasks),
+        )
+        try:
+            yield
+        except BaseException:
+            self.conversations, self.subtasks, self.tasks = saved
+            raise
+
+    async def get_task(
+        self, user_id: UUID, task_id: UUID, lock: bool = False
+    ) -> ChatTask | None:
+        owner_and_task = self.tasks.get(task_id)
+        if owner_and_task is None or owner_and_task[0] != user_id:
+            return None
+        if lock:
+            self.locked.append(task_id)
+        task = owner_and_task[1]
+        return replace(task, subtask_count=len(self.subtasks.get(task_id, [])))
+
+    async def get_k_bias(self, user_id: UUID, domain_id: UUID) -> Decimal | None:
+        return self.k_bias.get((user_id, domain_id))
+
+    async def find_conversation(self, user_id: UUID, task_id: UUID) -> UUID | None:
+        for conversation_id, c in self.conversations.items():
+            if c.owner_id == user_id and c.task_id == task_id:
+                return conversation_id
+        return None
+
+    async def create_conversation(self, user_id: UUID, task: ChatTask) -> UUID:
+        conversation_id = uuid4()
+        self.conversations[conversation_id] = FakeConversation(
+            user_id, task.task_id, task.project_id, task.title[:200]
+        )
+        return conversation_id
+
+    def _own(self, user_id: UUID, conversation_id: UUID) -> FakeConversation | None:
+        c = self.conversations.get(conversation_id)
+        return c if c is not None and c.owner_id == user_id else None
+
+    async def list_messages(
+        self, user_id: UUID, conversation_id: UUID, limit: int | None = None
+    ) -> list[ChatMessage]:
+        c = self._own(user_id, conversation_id)
+        if c is None:
+            return []
+        return list(c.messages if limit is None else c.messages[-limit:])
+
+    async def latest_draft(
+        self, user_id: UUID, conversation_id: UUID
+    ) -> ChatMessage | None:
+        c = self._own(user_id, conversation_id)
+        drafts = [m for m in (c.messages if c else []) if m.draft is not None]
+        return drafts[-1] if drafts else None
+
+    async def add_message(
+        self,
+        user_id: UUID,
+        conversation_id: UUID,
+        role: ChatRole,
+        content: str,
+        draft: SavedDraft | None = None,
+    ) -> ChatMessage:
+        if self.fail_on_add_message:
+            raise RuntimeError("database error while saving a message")
+        c = self._own(user_id, conversation_id)
+        assert c is not None, "message for a chat of another user"
+        if draft is not None and role is not ChatRole.ASSISTANT:
+            raise ValueError("only AI messages have a draft (DB CHECK)")
+        count = sum(len(x.messages) for x in self.conversations.values())
+        message = ChatMessage(
+            uuid4(), role, content, self.now + timedelta(seconds=count), draft
+        )
+        c.messages.append(message)
+        return message
+
+    async def add_subtasks(
+        self, user_id: UUID, task_id: UUID, subtasks: Sequence[Subtask]
+    ) -> list[SavedSubtask]:
+        assert self.tasks[task_id][0] == user_id
+        saved = [
+            SavedSubtask(uuid4(), s.title, s.estimated_minutes, s.order_index)
+            for s in subtasks
+        ]
+        self.subtasks.setdefault(task_id, []).extend(saved)
+        return saved
+
+    async def mark_applied(
+        self, user_id: UUID, conversation_id: UUID, message_id: UUID
+    ) -> None:
+        c = self._own(user_id, conversation_id)
+        assert c is not None
+        if any(m.is_applied for m in c.messages):
+            raise ValueError("one applied draft per chat (DB unique index)")
+        c.messages = [
+            replace(m, is_applied=True) if m.message_id == message_id else m
+            for m in c.messages
+        ]
+        c.status = "Applied"

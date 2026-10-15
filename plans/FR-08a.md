@@ -223,7 +223,7 @@ Test cũ (FR-09, FR-10, FR-17, FR-19) phải pass nguyên vẹn.
   `BREAKDOWN_MANUAL_MAX_MINUTES` (480), `BREAKDOWN_WARNING_RATIO` (0.3) + `.env.example` — test cấu hình.
 - [x] **2.** Domain `task_breakdown.py`: kiểu + `check_draft` (AI và sửa tay) — test T1–T4.
 - [x] **3.** Domain `draft_numbers` — test T5–T7.
-- [ ] **4.** Prompt `task_breakdown_v1.md` + 10–20 mẫu trong `task_breakdown_samples.json` + JSON schema gửi Gemini.
+- [x] **4.** Prompt `task_breakdown_v1.md` + 10–20 mẫu trong `task_breakdown_samples.json` + JSON schema gửi Gemini.
   Cho Hiếu xem prompt trước khi đi tiếp.
 - [ ] **5.** `chat_writer.py` (gọi + kiểm + thử lại, theo kiểu `reason_writer.py`) — test T10, T11 (phần LLM).
 - [ ] **6.** Port `ChatRepository` + fake trong `tests/unit/application/fakes.py`.

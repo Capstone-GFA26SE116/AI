@@ -7,10 +7,12 @@ from metanoia_ai.domain.similar_tasks import (
     MatchSource,
     PastTask,
     SimilarOutcome,
+    SimilarSummary,
     SimilarTask,
     build_search_query,
     rrf_merge,
     search_terms,
+    summarize_similar,
 )
 
 VECTOR, TEXT = MatchSource.VECTOR, MatchSource.TEXT
@@ -177,3 +179,33 @@ def test_t7_cut_at_limit():
 )
 def test_ratio(task, ratio):
     assert SimilarTask(task, score=0.0164, matched_by=(TEXT,)).ratio == ratio
+
+
+# --- T8, T9: summary ---
+
+
+def result(task: PastTask) -> SimilarTask:
+    return SimilarTask(task, score=0.0164, matched_by=(TEXT,))
+
+
+def test_t8_summary_averages_done_tasks_with_time():
+    results = [
+        result(past(1, estimated=60, actual=90)),  # 1.5
+        result(past(2, estimated=50, actual=60)),  # 1.2
+        result(past(3, estimated=40, actual=0)),  # done, no time: not averaged
+        result(past(4, outcome=SimilarOutcome.SKIPPED, actual=30)),
+    ]
+    assert summarize_similar(results) == SimilarSummary(
+        count=4, done_count=3, average_ratio=1.35
+    )
+
+
+def test_t9_no_done_task_gives_no_average():
+    results = [result(past(1, outcome=SimilarOutcome.SKIPPED, actual=0))]
+    assert summarize_similar(results) == SimilarSummary(
+        count=1, done_count=0, average_ratio=None
+    )
+
+
+def test_summary_of_no_results():
+    assert summarize_similar([]) == SimilarSummary(0, 0, None)

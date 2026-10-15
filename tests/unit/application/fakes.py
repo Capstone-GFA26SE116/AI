@@ -30,7 +30,12 @@ from metanoia_ai.application.ports.schedule_repository import (
     NewProposal,
     PlanningData,
 )
+from metanoia_ai.application.ports.similar_task_repository import (
+    QueryTask,
+    VectorMatch,
+)
 from metanoia_ai.domain.memory_text import MemoryDraft
+from metanoia_ai.domain.similar_tasks import WORD, PastTask
 
 
 class FakeLearningRepository:
@@ -384,3 +389,79 @@ class FakeEmbeddingClient:
         return EmbeddingResponse(
             vector=answer, model=self.model, input_tokens=self.input_tokens
         )
+
+
+@dataclass(frozen=True)
+class FakeMemory:
+    """A stored memory. `similarity` stands in for the vector distance:
+    the fake vector search returns it whatever the query vector is."""
+
+    owner_id: UUID
+    task: PastTask
+    content: str
+    status: str = "Done"  # Pending / Done / Failed
+    similarity: float = 0.9
+
+
+class FakeSimilarTaskRepository:
+    """Tasks and memories in lists. Records each search call."""
+
+    def __init__(self) -> None:
+        # task id -> (owner id, task)
+        self.tasks: dict[UUID, tuple[UUID, QueryTask]] = {}
+        self.memories: list[FakeMemory] = []
+        self.vector_calls: list[tuple[UUID, UUID, list[float], int]] = []
+        self.text_calls: list[tuple[UUID, UUID, str, int]] = []
+        self.transactions: list[str] = []  # "read_only" / "write", in order
+
+    def add_task(self, owner_id: UUID, task: QueryTask) -> None:
+        self.tasks[task.task_id] = (owner_id, task)
+
+    def add_memory(self, memory: FakeMemory) -> None:
+        self.memories.append(memory)
+
+    @asynccontextmanager
+    async def read_only(self) -> AsyncIterator[None]:
+        self.transactions.append("read_only")
+        yield
+
+    @asynccontextmanager
+    async def transaction(self) -> AsyncIterator[None]:
+        self.transactions.append("write")
+        yield
+
+    async def get_task(self, user_id: UUID, task_id: UUID) -> QueryTask | None:
+        owner_and_task = self.tasks.get(task_id)
+        if owner_and_task is None or owner_and_task[0] != user_id:
+            return None
+        return owner_and_task[1]
+
+    def _candidates(self, user_id: UUID, exclude_task_id: UUID) -> list[FakeMemory]:
+        return [
+            m
+            for m in self.memories
+            if m.owner_id == user_id and m.task.task_id != exclude_task_id
+        ]
+
+    async def vector_search(
+        self, user_id: UUID, exclude_task_id: UUID, vector: list[float], limit: int
+    ) -> list[VectorMatch]:
+        self.vector_calls.append((user_id, exclude_task_id, vector, limit))
+        done = [
+            m for m in self._candidates(user_id, exclude_task_id) if m.status == "Done"
+        ]
+        done.sort(key=lambda m: m.similarity, reverse=True)
+        return [VectorMatch(m.task, m.similarity) for m in done[:limit]]
+
+    async def text_search(
+        self, user_id: UUID, exclude_task_id: UUID, terms: str, limit: int
+    ) -> list[PastTask]:
+        """Any status. More matching terms first (like ts_rank_cd, roughly)."""
+        self.text_calls.append((user_id, exclude_task_id, terms, limit))
+        wanted = set(terms.split(" | "))
+        scored = []
+        for m in self._candidates(user_id, exclude_task_id):
+            hits = len(wanted & set(WORD.findall(m.content.lower())))
+            if hits:
+                scored.append((-hits, len(scored), m.task))
+        return [task for _, _, task in sorted(scored)[:limit]]

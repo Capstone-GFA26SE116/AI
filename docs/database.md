@@ -64,6 +64,28 @@ Ký hiệu: **AI ghi** = AI service được INSERT/UPDATE · **Chỉ đọc** =
 - Extension `vector` 0.8.2: `SET LOCAL hnsw.iterative_scan = relaxed_order` chạy được trong transaction chỉ đọc
   (mặc định `hnsw.ef_search` = 40, `hnsw.max_scan_tuples` = 20000).
 
+### `ChatConversation` — AI ghi (FR-08a) ⚠️
+Đọc DB 2026-10-15 (chỉ đọc, FR-08a bước 0). Bảng đang trống.
+- `Id` uuid · `ProjectId` uuid **NOT NULL** · `TaskId` uuid trống được · `Scope` varchar(10) ∈ {`Project`, `Task`} ·
+  `Title` varchar(200) **NOT NULL** · `Status` varchar(10) ∈ {`Open`, `Applied`, `Closed`}, mặc định `Open` · `CreatedAt`.
+- CHECK: `Scope = 'Task'` ⇔ có `TaskId`; `Scope = 'Project'` ⇔ `TaskId` trống.
+- **Không có** unique trên `TaskId` (chỉ index thường `IX_ChatConversation_TaskId`) ⚠️ → DB không chặn 2 cuộc chat cho 1 task.
+- FK `ProjectId` → `Project`, `TaskId` → `Task`: `ON DELETE CASCADE`. Index (`ProjectId`, `CreatedAt`).
+
+### `ChatMessage` — AI ghi (FR-08a) ⚠️
+- `Id` uuid · `ConversationId` uuid NOT NULL · `Sender` varchar(10) ∈ {`User`, `AI`} · `Content` text NOT NULL ·
+  `ProposalJson` **jsonb** trống được · `IsApplied` bool NOT NULL mặc định false · `CreatedAt`.
+- CHECK: chỉ tin `AI` mới có `ProposalJson`.
+- Unique `UX_ChatMessage_OneAppliedPerConversation` (`ConversationId`) WHERE `IsApplied` → mỗi cuộc chat tối đa 1 bản nháp đã áp dụng.
+- **Không có** cột `kind`: `question` / `draft` phân biệt bằng `ProposalJson` trống hay không. Không có cột model / token.
+- FK `ConversationId` → `ChatConversation`: `ON DELETE CASCADE`. Index (`ConversationId`, `CreatedAt`).
+
+### `SubTask` — AI ghi lúc Apply (FR-08a) ⚠️
+- `Id` uuid · `TaskId` NOT NULL · `Title` varchar(200) NOT NULL · `EstimatedMinutes` int NOT NULL > 0 ·
+  `OrderIndex` int NOT NULL ≥ 1 · `Status` varchar(10) ∈ {`ToDo`, `Done`, `Skipped`}, mặc định `ToDo`. Không còn cột bắt buộc nào khác.
+- Unique (`TaskId`, `OrderIndex`) `DEFERRABLE INITIALLY DEFERRED`. FK `TaskId` → `Task`: `ON DELETE CASCADE`.
+- Không có deadline riêng (dùng deadline task cha).
+
 ### `UserSubscription.AiCallsUsed` — AI ghi (bộ đếm quota)
 - Chỉ 1 bộ đếm cho mọi loại ⚠️ (luật cần đếm riêng 3 loại). ≥ 0. Xem bảng `UserSubscription` bên dưới.
 
@@ -74,15 +96,12 @@ Ký hiệu: **AI ghi** = AI service được INSERT/UPDATE · **Chỉ đọc** =
 - `TaskType` ∈ {`Flexible`, `Fixed`} · `Status` ∈ {`ToDo`, `Scheduled`, `InProgress`, `Done`, `Skipped`}.
 - Task `Flexible` **bắt buộc** có `Deadline` và `EstimatedMinutes` > 0.
 - Task `Fixed` **bắt buộc** có `FixedStart`, `FixedEnd` (timestamptz, `FixedEnd > FixedStart`).
-- `Title`, `DomainId`, `CompletedAt` (timestamptz, trống được). Không có CHECK nối `CompletedAt` với `Status`.
+- `Title`, `Description` (text, trống được), `DomainId`, `CompletedAt` (timestamptz, trống được). Không có CHECK nối `CompletedAt` với `Status`.
   2026-10-15: 2 task `Done` đều có `CompletedAt`; chưa có task `Skipped` nào nên chưa biết Backend có ghi không → coi là trống được.
 
 ### `Project`
 - `UserId` — dùng để lọc mọi truy vấn theo chủ sở hữu.
 
-### `SubTask`
-- `Status` ∈ {`ToDo`, `Done`, `Skipped`} · `EstimatedMinutes` > 0 · `OrderIndex` ≥ 1, unique theo task · `Title`.
-- Không có deadline riêng (dùng deadline task cha).
 
 ### `FocusSession`
 - `TaskId`, `SubTaskId?`, `StartedAt`, `EndedAt?` (trống = đang chạy; có thì > `StartedAt`).

@@ -242,7 +242,9 @@ def print_guide() -> None:
 
     print("\n--- FR-10: POST /schedule/propose ---")
     print('  Body: {"language": "vi"}')
-    print("  Mong đợi: báo cáo + 2 subtask landing page được xếp, né cuộc họp ngày mai;")
+    print(
+        "  Mong đợi: báo cáo + 2 subtask landing page được xếp, né cuộc họp ngày mai;"
+    )
     print("  'Gửi báo giá' có cảnh báo overdue; 2 task Done không bị xếp.")
 
     print("\n--- FR-17: POST /learning/task-completed ---")
@@ -253,7 +255,9 @@ def print_guide() -> None:
     print("  Gọi lại task trên → already_learned (không học 2 lần)")
     print(f'  {{"task_id": "{IDS["report"]}"}}  → task_not_done')
     print(f'  {{"task_id": "{IDS["meeting"]}"}}  → fixed_task')
-    print("  Sau khi học xong, gọi lại /schedule/propose: slot Coding dài hơn một chút (K mới).")
+    print(
+        "  Sau khi học xong, gọi lại /schedule/propose: slot Coding dài hơn một chút (K mới)."
+    )
 
     print("\nToken (dán vào nút Authorize trên /docs, hết hạn sau 60 phút):\n")
     print(make_token())

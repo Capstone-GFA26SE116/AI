@@ -51,8 +51,10 @@ Ký hiệu: **AI ghi** = AI service được INSERT/UPDATE · **Chỉ đọc** =
   `Embedding` **vector(1536)** trống được · `EmbeddingStatus` varchar(10) ∈ {`Pending`, `Done`, `Failed`}, mặc định `Pending` ·
   `CreatedAt` mặc định now().
 - CHECK: `EmbeddingStatus = 'Done'` thì bắt buộc có `Embedding`.
-- **Không có** cột tên model, tỷ lệ, domain, `UpdatedAt` ⚠️.
-- **Không có** unique trên `TaskId` (chỉ index thường `IX_TaskExecutionMemory_TaskId`) ⚠️.
+- `EmbeddingModel` varchar(100) trống được: tên model đã tạo vector (FR-19 #21).
+- **Unique** `TaskId` (`TaskExecutionMemory_TaskId_key`): mỗi task 1 memory (FR-19 #22).
+  Hai mục này AI thêm bằng `ALTER` 2026-10-15 (Hiếu cho phép, đã báo Backend); bỏ index thường `IX_TaskExecutionMemory_TaskId` (thừa).
+- **Không có** cột tỷ lệ, domain, `UpdatedAt` (tính lúc đọc, #24).
 - Khóa ngoại `TaskId` → `Task`, `SubTaskId` → `SubTask`: **`ON DELETE RESTRICT`** ⚠️ (task còn memory thì không xóa được task).
 - Index: HNSW `IX_TaskExecutionMemory_Embedding_Hnsw` (`vector_cosine_ops`) **đã có** · GIN full-text trên `Content` · index `EmbeddingStatus <> 'Done'`.
 - Extension `vector` 0.8.2.

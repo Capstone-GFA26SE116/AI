@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from functools import lru_cache
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from metanoia_ai.domain.kbias import (
@@ -68,6 +68,30 @@ class Settings(BaseSettings):
     similar_default_limit: int = Field(default=5, ge=1, le=10)
     # Wait at most this long for the query vector, then search text only (#14).
     similar_embed_timeout_seconds: float = Field(default=1.5, gt=0)
+
+    # Task chat (FR-08a): split a big task into subtasks.
+    chat_history_limit: int = Field(default=20, ge=1)  # messages sent to the LLM
+    chat_message_max_chars: int = Field(default=2000, gt=0)
+    breakdown_min_subtasks: int = Field(default=2, ge=1)
+    breakdown_max_subtasks: int = Field(default=10, ge=1)
+    # Minutes per subtask: AI drafts stay small; manual edits may go higher.
+    breakdown_min_minutes: int = Field(default=5, ge=1)
+    breakdown_max_minutes: int = Field(default=120, ge=1)
+    breakdown_manual_max_minutes: int = Field(default=480, ge=1)
+    # Warn when the subtask total differs from T_est × K by more than this share.
+    breakdown_warning_ratio: float = Field(default=0.3, gt=0)
+    # Wait per Gemini call in the chat (#31). FR-10 keeps 10 s; Gemini needs ≥ 10.
+    chat_llm_timeout_seconds: float = Field(default=20, ge=10)
+
+    @model_validator(mode="after")
+    def check_breakdown_ranges(self) -> "Settings":
+        if self.breakdown_min_subtasks > self.breakdown_max_subtasks:
+            raise ValueError("BREAKDOWN_MIN_SUBTASKS > BREAKDOWN_MAX_SUBTASKS")
+        if self.breakdown_min_minutes > self.breakdown_max_minutes:
+            raise ValueError("BREAKDOWN_MIN_MINUTES > BREAKDOWN_MAX_MINUTES")
+        if self.breakdown_max_minutes > self.breakdown_manual_max_minutes:
+            raise ValueError("BREAKDOWN_MAX_MINUTES > BREAKDOWN_MANUAL_MAX_MINUTES")
+        return self
 
     def embedding_config(self) -> "EmbeddingConfig":
         """The embedding settings, all present. Raises MissingLlmSettingError otherwise."""

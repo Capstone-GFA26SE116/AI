@@ -31,6 +31,11 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 | Gọi `POST /learning/task-completed` cả khi task chuyển sang `Skipped` (không chỉ `Done`) | FR-19 #2 | |
 | Đồng ý AI ghi `TaskExecutionMemory` | FR-19, #9 | |
 | Chuyển tiếp `GET /memory/similar?task_id=&limit=` cho Frontend (đường gọi Frontend → Backend → AI) | FR-09 | Chỉ đọc + ghi `AIUsageLog`; không trừ quota. `search_mode` ∈ `hybrid`/`text_only`/`none` |
+| Đồng ý AI ghi `ChatConversation`, `ChatMessage`, `SubTask` (lúc Apply) | FR-08a #8 | Bản nháp nằm trong `ChatMessage.ProposalJson` (có `version`); chỉ AI đọc / ghi định dạng này |
+| Chuyển tiếp 3 endpoint chat cho Frontend: `POST /chat/tasks/{id}/messages`, `GET /chat/tasks/{id}`, `POST /chat/tasks/{id}/apply` | FR-08a | 409 có `detail.code`: `task_not_splittable` (+ `reason`), `no_active_plan`, `not_latest_draft`, `has_subtasks`; 502 = AI không trả lời được (không trừ lượt) |
+| Quota chat dùng chung `AiCallsUsed` với xếp lịch (1 tin = 1 lượt). Cần đếm riêng từng loại → đếm `AIUsageLog.Feature` | FR-08a #8c | Không đổi schema |
+| (Frontend) Tự hiện nút "Chia nhỏ với AI" khi task `Flexible` có `EstimatedMinutes > 120`; không gọi AI | FR-08a #3 | Không tốn lượt |
+| (Frontend) FR-08a không streaming: hiện "AI đang soạn…", câu trả lời < 10 s. Lệch NFR-07 (chữ đầu < 3 s) — streaming để FR-08b | FR-08a #1 | Ghi chú NFR-07 trong Google Doc |
 
 ## Chờ quyết định (team / giảng viên)
 

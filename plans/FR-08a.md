@@ -111,6 +111,7 @@ Mọi endpoint cần `Authorization: Bearer <JWT>`. Chỉ `messages` tốn lư�
 ```json
 {
   "kind": "question | draft",
+  "language": "vi | en",
   "reply": "câu hiện cho user, cùng ngôn ngữ với tin của user",
   "subtasks": [{"title": "…", "estimated_minutes": 60, "reason": "1 dòng"}]
 }
@@ -170,6 +171,7 @@ Thứ tự trong `subtasks` = `OrderIndex` (từ 1). Con số so sánh do code t
 | 27 | `ChatConversation.Title` NOT NULL (bước 0) | Title của task, cắt ≤ 200 ký tự. `ProjectId` = project của task, `Scope = 'Task'` | DB bắt buộc. |
 | 28 | Không có unique `ChatConversation.TaskId` (bước 0) | Transaction lưu tin khóa dòng `Task` (`FOR UPDATE`) rồi mới tìm / tạo cuộc chat | Giữ #2 "1 cuộc / task" khi 2 tin đầu đến cùng lúc; không đổi schema. |
 | 29 | Đánh dấu Apply (bước 0) | `ChatMessage.IsApplied = true` cho tin bản nháp + `ChatConversation.Status = 'Applied'` | Dùng đúng cột DB có sẵn. `Sender` DB là `User`/`AI` ↔ API `user`/`assistant` (đổi ở infrastructure). |
+| 30 | Ngôn ngữ câu cảnh báo (bước 3) | Gemini trả thêm trường `language` (`vi` / `en`) trong JSON; code dùng nó cho câu cảnh báo #20 (mặc định `vi` nếu thiếu / sai) | Cảnh báo cùng ngôn ngữ với câu trả lời mà không thêm tham số API (#14). |
 
 ## 3. Test
 
@@ -220,7 +222,7 @@ Test cũ (FR-09, FR-10, FR-17, FR-19) phải pass nguyên vẹn.
   `BREAKDOWN_MAX_SUBTASKS` (10), `BREAKDOWN_MIN_MINUTES` (5), `BREAKDOWN_MAX_MINUTES` (120),
   `BREAKDOWN_MANUAL_MAX_MINUTES` (480), `BREAKDOWN_WARNING_RATIO` (0.3) + `.env.example` — test cấu hình.
 - [x] **2.** Domain `task_breakdown.py`: kiểu + `check_draft` (AI và sửa tay) — test T1–T4.
-- [ ] **3.** Domain `draft_numbers` — test T5–T7.
+- [x] **3.** Domain `draft_numbers` — test T5–T7.
 - [ ] **4.** Prompt `task_breakdown_v1.md` + 10–20 mẫu trong `task_breakdown_samples.json` + JSON schema gửi Gemini.
   Cho Hiếu xem prompt trước khi đi tiếp.
 - [ ] **5.** `chat_writer.py` (gọi + kiểm + thử lại, theo kiểu `reason_writer.py`) — test T10, T11 (phần LLM).
@@ -244,3 +246,4 @@ Test cũ (FR-09, FR-10, FR-17, FR-19) phải pass nguyên vẹn.
 |---|---|---|
 | 2026-10-15 | Tạo plan | Chốt trên Claude web: tách FR-08 thành 08a/08b; Gemini; quota dùng chung `AiCallsUsed`; AI ghi `SubTask`; chỉ Apply khi chưa có subtask; bỏ streaming ở 08a; #1–#20 |
 | 2026-10-15 | Phase A + bước 0: thêm #21–#29 | Hiếu chọn "theo đề xuất". Bước 0: `ChatMessage.IsApplied` có sẵn; `ChatConversation` cần `ProjectId`, `Title`; không có unique `TaskId`. Claude Code ghi (Hiếu cho phép) |
+| 2026-10-15 | Bước 3: thêm #30, thêm `language` vào JSON Gemini trả về | Hiếu chọn A. Claude Code ghi (Hiếu cho phép) |

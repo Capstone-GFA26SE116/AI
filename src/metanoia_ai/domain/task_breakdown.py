@@ -2,7 +2,11 @@
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from decimal import Decimal
 from enum import StrEnum
+
+from metanoia_ai.domain.models import Language
+from metanoia_ai.domain.schedule_duration import scaled_minutes
 
 MAX_TITLE_CHARS = 200  # SubTask.Title is varchar(200)
 
@@ -106,3 +110,61 @@ def check_reply(
     if not items:
         raise BadDraftError("a draft must list subtasks")
     return check_draft(items, limits)
+
+
+@dataclass(frozen=True)
+class DraftNumbers:
+    """The numbers shown next to a draft. Computed by code, never by the LLM (AC5)."""
+
+    your_estimate_minutes: int  # T_est, the user's own estimate
+    adjusted_minutes: int  # ceil(T_est × K)
+    subtask_total_minutes: int
+    adjusted_is_hint: bool  # Free plan: the adjusted time is only a hint (#7)
+    warning: str | None  # set when the total is more than `ratio` away (#20)
+
+
+# No internal names (K_bias, T_proposed) in text the user sees.
+WARNINGS = {
+    (Language.VI, True): (
+        "Tổng các bước là {total} phút, nhiều hơn khoảng {percent}% so với "
+        "thời gian bạn thường cần cho việc này ({adjusted} phút)."
+    ),
+    (Language.VI, False): (
+        "Tổng các bước là {total} phút, ít hơn khoảng {percent}% so với "
+        "thời gian bạn thường cần cho việc này ({adjusted} phút). Có thể còn thiếu bước."
+    ),
+    (Language.EN, True): (
+        "The steps add up to {total} minutes, about {percent}% more than you "
+        "usually need for this ({adjusted} minutes)."
+    ),
+    (Language.EN, False): (
+        "The steps add up to {total} minutes, about {percent}% less than you "
+        "usually need for this ({adjusted} minutes). A step may be missing."
+    ),
+}
+
+
+def draft_numbers(
+    estimate_minutes: int,
+    k_bias: Decimal,
+    draft: Draft,
+    is_free_plan: bool,
+    warning_ratio: float,
+    language: Language = Language.VI,
+) -> DraftNumbers:
+    """T_est, T_est × K (rounded up), the subtask total and a warning if they differ a lot."""
+    adjusted = scaled_minutes(estimate_minutes, k_bias)
+    total = draft.total_minutes
+    gap = abs(total - adjusted) / adjusted
+    warning = None
+    if gap > warning_ratio:
+        warning = WARNINGS[(language, total > adjusted)].format(
+            total=total, adjusted=adjusted, percent=round(gap * 100)
+        )
+    return DraftNumbers(
+        your_estimate_minutes=estimate_minutes,
+        adjusted_minutes=adjusted,
+        subtask_total_minutes=total,
+        adjusted_is_hint=is_free_plan,
+        warning=warning,
+    )

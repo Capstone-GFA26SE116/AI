@@ -56,8 +56,13 @@ Ký hiệu: **AI ghi** = AI service được INSERT/UPDATE · **Chỉ đọc** =
   Hai mục này AI thêm bằng `ALTER` 2026-10-15 (Hiếu cho phép, đã báo Backend); bỏ index thường `IX_TaskExecutionMemory_TaskId` (thừa).
 - **Không có** cột tỷ lệ, domain, `UpdatedAt` (tính lúc đọc, #24).
 - Khóa ngoại `TaskId` → `Task`, `SubTaskId` → `SubTask`: **`ON DELETE RESTRICT`** ⚠️ (task còn memory thì không xóa được task).
-- Index: HNSW `IX_TaskExecutionMemory_Embedding_Hnsw` (`vector_cosine_ops`) **đã có** · GIN full-text trên `Content` · index `EmbeddingStatus <> 'Done'`.
-- Extension `vector` 0.8.2.
+- Index (đọc lại 2026-10-15, FR-09 bước 0):
+  - HNSW `IX_TaskExecutionMemory_Embedding_Hnsw` (`"Embedding" vector_cosine_ops`), tham số mặc định (`m` = 16, `ef_construction` = 64).
+  - GIN `IX_TaskExecutionMemory_Content_Fts` trên `to_tsvector('simple', "Content")` → câu SQL phải ghi rõ `'simple'`:
+    config mặc định của DB là `english`, thiếu `'simple'` thì Postgres không dùng index.
+  - `EmbeddingStatus <> 'Done'` (btree, partial) · unique `TaskId`.
+- Extension `vector` 0.8.2: `SET LOCAL hnsw.iterative_scan = relaxed_order` chạy được trong transaction chỉ đọc
+  (mặc định `hnsw.ef_search` = 40, `hnsw.max_scan_tuples` = 20000).
 
 ### `UserSubscription.AiCallsUsed` — AI ghi (bộ đếm quota)
 - Chỉ 1 bộ đếm cho mọi loại ⚠️ (luật cần đếm riêng 3 loại). ≥ 0. Xem bảng `UserSubscription` bên dưới.
@@ -69,7 +74,8 @@ Ký hiệu: **AI ghi** = AI service được INSERT/UPDATE · **Chỉ đọc** =
 - `TaskType` ∈ {`Flexible`, `Fixed`} · `Status` ∈ {`ToDo`, `Scheduled`, `InProgress`, `Done`, `Skipped`}.
 - Task `Flexible` **bắt buộc** có `Deadline` và `EstimatedMinutes` > 0.
 - Task `Fixed` **bắt buộc** có `FixedStart`, `FixedEnd` (timestamptz, `FixedEnd > FixedStart`).
-- `Title`, `DomainId`, `CompletedAt`.
+- `Title`, `DomainId`, `CompletedAt` (timestamptz, trống được). Không có CHECK nối `CompletedAt` với `Status`.
+  2026-10-15: 2 task `Done` đều có `CompletedAt`; chưa có task `Skipped` nào nên chưa biết Backend có ghi không → coi là trống được.
 
 ### `Project`
 - `UserId` — dùng để lọc mọi truy vấn theo chủ sở hữu.

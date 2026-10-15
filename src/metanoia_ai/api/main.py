@@ -11,7 +11,7 @@ from pydantic import BaseModel
 
 from metanoia_ai.api.auth import get_current_user_id
 from metanoia_ai.api.deps import embed_waiting_memories
-from metanoia_ai.api.routes import learning, memory, schedule
+from metanoia_ai.api.routes import chat, learning, memory, schedule
 from metanoia_ai.config import get_settings
 from metanoia_ai.infrastructure.db.engine import create_engine, create_session_factory
 
@@ -38,6 +38,7 @@ app = FastAPI(title="METANOIA AI", lifespan=lifespan)
 app.include_router(learning.router)
 app.include_router(schedule.router)
 app.include_router(memory.router)
+app.include_router(chat.router)
 
 
 class HealthResponse(BaseModel):

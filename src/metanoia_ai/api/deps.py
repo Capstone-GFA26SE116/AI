@@ -11,19 +11,29 @@ from uuid import UUID
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from metanoia_ai.application.chat_writer import ChatWriter
 from metanoia_ai.application.ports.embedding_client import EmbeddingClient
 from metanoia_ai.application.ports.llm_client import LLMClient
 from metanoia_ai.application.reason_writer import ReasonWriter
+from metanoia_ai.application.use_cases.apply_task_breakdown import (
+    ApplyTaskBreakdown,
+)
 from metanoia_ai.application.use_cases.embed_pending_memories import (
     EmbedPendingMemories,
 )
 from metanoia_ai.application.use_cases.find_similar_tasks import FindSimilarTasks
+from metanoia_ai.application.use_cases.get_task_chat import GetTaskChat
 from metanoia_ai.application.use_cases.propose_schedule import ProposeSchedule
 from metanoia_ai.application.use_cases.record_task_completion import (
     RecordTaskCompletion,
 )
 from metanoia_ai.application.use_cases.save_task_memory import SaveTaskMemory
+from metanoia_ai.application.use_cases.send_task_chat_message import (
+    SendTaskChatMessage,
+)
 from metanoia_ai.config import MissingLlmSettingError, Settings, get_settings
+from metanoia_ai.domain.task_breakdown import DraftLimits
+from metanoia_ai.infrastructure.db.chat_repository import SqlChatRepository
 from metanoia_ai.infrastructure.db.learning_repository import SqlLearningRepository
 from metanoia_ai.infrastructure.db.memory_repository import SqlMemoryRepository
 from metanoia_ai.infrastructure.db.quota_repository import SqlQuotaRepository
@@ -205,3 +215,65 @@ def get_find_similar_tasks(
         embed_timeout_seconds=settings.similar_embed_timeout_seconds,
         now=lambda: datetime.now(UTC),
     )
+
+
+def ai_draft_limits(settings: Settings) -> DraftLimits:
+    """Plan #9: what an AI draft may contain."""
+    return DraftLimits(
+        min_subtasks=settings.breakdown_min_subtasks,
+        max_subtasks=settings.breakdown_max_subtasks,
+        min_minutes=settings.breakdown_min_minutes,
+        max_minutes=settings.breakdown_max_minutes,
+    )
+
+
+def manual_draft_limits(settings: Settings) -> DraftLimits:
+    """Plan #19: a list edited by hand at Apply may be looser (1 subtask, 1 minute)."""
+    return DraftLimits(
+        min_subtasks=1,
+        max_subtasks=settings.breakdown_max_subtasks,
+        min_minutes=1,
+        max_minutes=settings.breakdown_manual_max_minutes,
+    )
+
+
+def get_send_task_chat_message(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    llm_client: Annotated[LLMClient, Depends(get_llm_client)],
+    find_similar: Annotated[FindSimilarTasks, Depends(get_find_similar_tasks)],
+) -> SendTaskChatMessage:
+    """FR-08a: one chat message → Gemini. Shares the request's session."""
+    llm = settings.llm_config()
+    return SendTaskChatMessage(
+        SqlChatRepository(session),
+        SqlQuotaRepository(session),
+        ChatWriter(
+            llm_client,
+            limits=ai_draft_limits(settings),
+            max_retries=llm.max_retries,
+            input_price_per_1m=llm.input_price_per_1m,
+            output_price_per_1m=llm.output_price_per_1m,
+        ),
+        find_similar,
+        initial_k=Decimal(str(settings.kbias_initial)),
+        history_limit=settings.chat_history_limit,
+        max_message_chars=settings.chat_message_max_chars,
+        similar_limit=settings.similar_default_limit,
+        warning_ratio=settings.breakdown_warning_ratio,
+        quota_daily_max=settings.quota_daily_max,
+        now=lambda: datetime.now(UTC),
+    )
+
+
+def get_task_chat(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> GetTaskChat:
+    return GetTaskChat(SqlChatRepository(session))
+
+
+def get_apply_task_breakdown(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> ApplyTaskBreakdown:
+    return ApplyTaskBreakdown(SqlChatRepository(session), manual_draft_limits(settings))

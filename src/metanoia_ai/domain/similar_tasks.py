@@ -1,6 +1,11 @@
 """FR-09: find similar past tasks. Pure functions, no I/O."""
 
 import re
+from collections.abc import Sequence
+from dataclasses import dataclass
+from datetime import datetime
+from enum import StrEnum
+from uuid import UUID
 
 from metanoia_ai.domain.memory_text import (
     CLIENT_MASK,
@@ -15,6 +20,59 @@ MASKS = (EMAIL_MASK, PHONE_MASK, CLIENT_MASK)
 # Letters and digits only (any language); "_" is not a letter.
 WORD = re.compile(r"[^\W_]+")
 MIN_TERM_LENGTH = 2
+SCORE_DECIMALS = 4  # plan #17
+RATIO_DECIMALS = 2
+
+
+class SimilarOutcome(StrEnum):
+    """How the past task ended (DB: Completed → done, NotDone → skipped)."""
+
+    DONE = "done"
+    SKIPPED = "skipped"
+
+
+class MatchSource(StrEnum):
+    """Which search found the task."""
+
+    VECTOR = "vector"
+    TEXT = "text"
+
+
+@dataclass(frozen=True)
+class PastTask:
+    """One past task found by a search branch, best match first."""
+
+    task_id: UUID
+    title: str
+    domain_name: str
+    outcome: SimilarOutcome
+    estimated_minutes: int
+    actual_minutes: int
+    finished_at: datetime | None  # Task.CompletedAt; may be empty
+
+
+@dataclass(frozen=True)
+class SimilarTask:
+    """A result: the past task, its RRF score and the searches that found it."""
+
+    task: PastTask
+    score: float  # rounded to 4 decimals
+    matched_by: tuple[MatchSource, ...]
+
+    @property
+    def ratio(self) -> float | None:
+        """T_act / T_est, 2 decimals. None for skipped tasks or no time measured."""
+        task = self.task
+        if task.outcome is not SimilarOutcome.DONE or task.actual_minutes <= 0:
+            return None
+        return round(task.actual_minutes / task.estimated_minutes, RATIO_DECIMALS)
+
+
+@dataclass(frozen=True)
+class SimilarSummary:
+    count: int
+    done_count: int
+    average_ratio: float | None  # None when no result has a ratio
 
 
 def build_search_query(title: str, domain_name: str, client_name: str | None) -> str:
@@ -37,3 +95,35 @@ def search_terms(title: str, domain_name: str, client_name: str | None) -> str |
         if len(word) >= MIN_TERM_LENGTH and word not in words:
             words.append(word)
     return " | ".join(words) or None
+
+
+def rrf_merge(
+    vector: Sequence[PastTask], text: Sequence[PastTask], k: int, limit: int
+) -> list[SimilarTask]:
+    """Reciprocal Rank Fusion: score = sum of 1 / (k + rank), rank starts at 1.
+
+    A task in both lists adds both scores. Ties (#16): tasks with a finish time
+    first, newer first, then by task id so the order is always the same.
+    """
+    scores: dict[UUID, float] = {}
+    sources: dict[UUID, list[MatchSource]] = {}
+    tasks: dict[UUID, PastTask] = {}
+    for source, found in ((MatchSource.VECTOR, vector), (MatchSource.TEXT, text)):
+        for rank, task in enumerate(found, start=1):
+            scores[task.task_id] = scores.get(task.task_id, 0.0) + 1 / (k + rank)
+            sources.setdefault(task.task_id, []).append(source)
+            tasks.setdefault(task.task_id, task)
+
+    def order(task_id: UUID) -> tuple:
+        finished = tasks[task_id].finished_at
+        newest_first = -finished.timestamp() if finished else 0.0
+        return (-scores[task_id], finished is None, newest_first, str(task_id))
+
+    return [
+        SimilarTask(
+            task=tasks[task_id],
+            score=round(scores[task_id], SCORE_DECIMALS),
+            matched_by=tuple(sources[task_id]),
+        )
+        for task_id in sorted(scores, key=order)[:limit]
+    ]

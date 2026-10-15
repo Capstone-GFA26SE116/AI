@@ -127,7 +127,7 @@ Full text in `docs/functional-requirements.md`. Status: first line of each `plan
 | FR-10 | Schedule proposal (planner + one-line reason per slot) | `plans/FR-10.md` |
 | — | Quota check + `AIUsageLog` (before every LLM call) | — |
 | FR-08 | AI chat: project level (brief → milestones + tasks) and task level (split task > 2 h) | — |
-| FR-09 | Context: free/busy time, workload, similar past tasks | — |
+| FR-09 | Similar past tasks: hybrid search (vector + full-text) + RRF. Free/busy time and workload are already in FR-10 | `plans/FR-09.md` |
 | FR-19 | Long-term memory: embeddings in pgvector, built in the background | `plans/FR-19.md` |
 | FR-12 | Daily "Today" briefing (text only) | — |
 | FR-18 | Productive hours: onboarding answers, then timer data | — |
@@ -146,6 +146,8 @@ Full text in `docs/functional-requirements.md`. Status: first line of each `plan
 - Documents go to the LLM **only when the user attaches them in chat** (from the project's
   library, FR-08). Extract text first, cap at **20,000 tokens**.
 - Never send email, full name, OAuth tokens or client contact details (see §9).
+- Similar task results (FR-09) return titles as the user wrote them. Mask them with
+  `mask_contact` before they go into any LLM prompt.
 
 **Output**
 - LLM returns JSON → validate with a Pydantic schema **and** business rules

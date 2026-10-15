@@ -230,7 +230,7 @@ Test cũ (FR-09, FR-10, FR-17, FR-19) phải pass nguyên vẹn.
 - [x] **7.** Use case `SendTaskChatMessage` — test T8–T18.
 - [x] **8.** Use case `GetTaskChat` + `ApplyTaskBreakdown` — test T19–T22.
 - [x] **9.** Infrastructure `SqlChatRepository` (T26). Chạy `EXPLAIN` (không thực thi) các câu SQL trên DB thật.
-- [ ] **10.** API `routes/chat.py` + `main.py` + `deps.py` — test T23–T25.
+- [x] **10.** API `routes/chat.py` + `main.py` + `deps.py` — test T23–T25.
 - [ ] **11.** Cập nhật `CLAUDE.md` §6 (FR-08a → `plans/FR-08a.md`), §2 (chuyển model theo gói dời sang sau FR-08a;
   FR-08a dùng Gemini), §7 (chat FR-08a: < 10 s, không streaming; streaming ở FR-08b), `docs/open-questions.md` (các dòng ⚠️:
   AI ghi `ChatConversation`/`ChatMessage`/`SubTask`; Frontend tự hiện nút chia nhỏ; bỏ streaming ở FR-08a — NFR-07;

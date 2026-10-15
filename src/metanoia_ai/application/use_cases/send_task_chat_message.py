@@ -12,6 +12,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Protocol
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from metanoia_ai.application.chat_writer import (
     BreakdownTask,
@@ -87,6 +88,7 @@ class ChatTurn:
     task_id: UUID
     user_message: ChatMessage
     ai_message: ChatMessage  # its `draft` holds the numbers and similar summary
+    time_zone: ZoneInfo  # the user's, for created_at in the answer
 
 
 def splittable_problem(task: ChatTask) -> str | None:
@@ -307,7 +309,7 @@ class SendTaskChatMessage:
             if not await self.quota.try_charge(subscription):
                 raise _LostLastCallError
             await self._log(subscription, calls, charged=True)
-        return ChatTurn(task_id, user_message, ai_message)
+        return ChatTurn(task_id, user_message, ai_message, task.time_zone)
 
     async def _log(
         self, subscription: Subscription, calls: Sequence[LLMCall], charged: bool

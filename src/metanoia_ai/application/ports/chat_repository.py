@@ -11,6 +11,7 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from metanoia_ai.domain.models import TaskType
+from metanoia_ai.domain.similar_tasks import SimilarSummary
 from metanoia_ai.domain.task_breakdown import Draft, DraftNumbers, Subtask
 
 
@@ -46,6 +47,7 @@ class SavedDraft:
 
     draft: Draft
     numbers: DraftNumbers
+    similar: SimilarSummary | None = None  # FR-09 summary shown with the draft
 
 
 @dataclass(frozen=True)

@@ -33,7 +33,7 @@ The team Google Doc is for humans only; Hieu copies decided facts into `docs/` o
 - Planned: LLM providers (OpenAI + Google)
 - LLM routing: Free plan → cheapest model; paid plans → cheap model ~90% of calls,
   stronger model ~10% "hard" calls. If one provider fails, switch to the other
-  (from FR-08; FR-10 uses Gemini only).
+  (planned after FR-08a; FR-08a and FR-10 use Gemini only, one model from config).
   Models come from **config, never hard-coded**. Embedding model: `gemini-embedding-2`,
   1536 dimensions (FR-19).
 
@@ -126,7 +126,8 @@ Full text in `docs/functional-requirements.md`. Status: first line of each `plan
 | FR-17 | Learn K_bias when a Flexible task is done | `plans/FR-17.md` |
 | FR-10 | Schedule proposal (planner + one-line reason per slot) | `plans/FR-10.md` |
 | — | Quota check + `AIUsageLog` (before every LLM call) | — |
-| FR-08 | AI chat: project level (brief → milestones + tasks) and task level (split task > 2 h) | — |
+| FR-08a | AI chat, task level: split a big task into subtasks, then Apply | `plans/FR-08a.md` |
+| FR-08b | AI chat, project level: brief → milestones + tasks, documents, streaming | — |
 | FR-09 | Similar past tasks: hybrid search (vector + full-text) + RRF. Free/busy time and workload are already in FR-10 | `plans/FR-09.md` |
 | FR-19 | Long-term memory: embeddings in pgvector, built in the background | `plans/FR-19.md` |
 | FR-12 | Daily "Today" briefing (text only) | — |
@@ -160,7 +161,8 @@ Full text in `docs/functional-requirements.md`. Status: first line of each `plan
 - Log every LLM/embedding call in `AIUsageLog`: feature, model, tokens, cost, latency.
 - Prompts live in separate versioned files; keep 10–20 sample inputs to re-run after each prompt change.
 - Background work (embeddings): retry up to 3 times; a missing embedding never blocks saving a task.
-- Targets: chat first words < 3 s (streaming) · schedule proposal < 10 s · similar-task search < 100 ms.
+- Targets: task chat (FR-08a) answer < 10 s, no streaming · project chat (FR-08b) first words < 3 s
+  (streaming) · schedule proposal < 10 s · similar-task search < 100 ms.
 
 ## 8. Database rules
 

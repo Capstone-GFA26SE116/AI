@@ -11,6 +11,7 @@ from metanoia_ai.api.deps import (
     embed_memory,
     embed_waiting_memories,
     get_embedding_client,
+    get_find_similar_tasks,
 )
 from metanoia_ai.config import Settings
 from metanoia_ai.infrastructure.llm.gemini_embedding_client import (
@@ -87,3 +88,21 @@ def test_embedding_client_is_made_once_without_showing_the_key():
     assert isinstance(first, GeminiEmbeddingClient)
     assert (first.model, first.dimensions) == ("gemini-embedding-2", 1536)
     assert FAKE_KEY not in repr(first)
+
+
+# --- FR-09 wiring ---
+
+
+def test_similar_search_without_embedding_settings_uses_no_client(caplog):
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace()))
+    with caplog.at_level(logging.WARNING):
+        use_case = get_find_similar_tasks(request, None, make_settings())
+    assert use_case.client is None  # text-only search (plan #6)
+    assert "text only" in caplog.text
+
+
+def test_similar_search_with_embedding_settings_has_a_client():
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace()))
+    use_case = get_find_similar_tasks(request, None, embedding_settings())
+    assert isinstance(use_case.client, GeminiEmbeddingClient)
+    assert use_case.branch_limit == 20

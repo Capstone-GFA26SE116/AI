@@ -17,6 +17,7 @@ from metanoia_ai.application.reason_writer import ReasonWriter
 from metanoia_ai.application.use_cases.embed_pending_memories import (
     EmbedPendingMemories,
 )
+from metanoia_ai.application.use_cases.find_similar_tasks import FindSimilarTasks
 from metanoia_ai.application.use_cases.propose_schedule import ProposeSchedule
 from metanoia_ai.application.use_cases.record_task_completion import (
     RecordTaskCompletion,
@@ -27,6 +28,9 @@ from metanoia_ai.infrastructure.db.learning_repository import SqlLearningReposit
 from metanoia_ai.infrastructure.db.memory_repository import SqlMemoryRepository
 from metanoia_ai.infrastructure.db.quota_repository import SqlQuotaRepository
 from metanoia_ai.infrastructure.db.schedule_repository import SqlScheduleRepository
+from metanoia_ai.infrastructure.db.similar_task_repository import (
+    SqlSimilarTaskRepository,
+)
 from metanoia_ai.infrastructure.llm.gemini_client import GeminiClient
 from metanoia_ai.infrastructure.llm.gemini_embedding_client import (
     GeminiEmbeddingClient,
@@ -174,3 +178,30 @@ def get_memory_embedder(
 ) -> EmbedMemory:
     """The background job, bound to this app (not to the request's session)."""
     return partial(embed_memory, request.app.state, settings)
+
+
+def get_find_similar_tasks(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> FindSimilarTasks:
+    """FR-09 use case. Without embedding settings it searches text only (plan #6)."""
+    try:
+        client: EmbeddingClient | None = get_embedding_client(
+            request.app.state, settings
+        )
+    except MissingLlmSettingError as error:
+        logger.warning("Missing %s: similar task search uses text only", error)
+        client = None
+    return FindSimilarTasks(
+        SqlSimilarTaskRepository(session),
+        SqlQuotaRepository(session),  # same session, its own short transaction
+        client,
+        dimensions=settings.embedding_dimensions,
+        price_per_1m=settings.embedding_price_per_1m,
+        min_similarity=settings.similar_min_similarity,
+        rrf_k=settings.similar_rrf_k,
+        branch_limit=settings.similar_branch_limit,
+        embed_timeout_seconds=settings.similar_embed_timeout_seconds,
+        now=lambda: datetime.now(UTC),
+    )

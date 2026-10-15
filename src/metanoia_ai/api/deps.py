@@ -237,10 +237,24 @@ def manual_draft_limits(settings: Settings) -> DraftLimits:
     )
 
 
+def get_chat_llm_client(
+    request: Request, settings: Annotated[Settings, Depends(get_settings)]
+) -> LLMClient:
+    """Gemini for the task chat: same model, longer wait than FR-10 (plan #31)."""
+    client = getattr(request.app.state, "chat_llm_client", None)
+    if client is None:
+        llm = settings.llm_config()
+        client = GeminiClient(
+            llm.api_key, llm.model, timeout_seconds=settings.chat_llm_timeout_seconds
+        )
+        request.app.state.chat_llm_client = client
+    return client
+
+
 def get_send_task_chat_message(
     session: Annotated[AsyncSession, Depends(get_session)],
     settings: Annotated[Settings, Depends(get_settings)],
-    llm_client: Annotated[LLMClient, Depends(get_llm_client)],
+    llm_client: Annotated[LLMClient, Depends(get_chat_llm_client)],
     find_similar: Annotated[FindSimilarTasks, Depends(get_find_similar_tasks)],
 ) -> SendTaskChatMessage:
     """FR-08a: one chat message → Gemini. Shares the request's session."""

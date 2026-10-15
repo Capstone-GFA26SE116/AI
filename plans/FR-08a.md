@@ -15,14 +15,14 @@ Trạng thái: Đã duyệt · Branch: `feature/fr08a-task-chat` · Cập nhật
 - **Ai gọi, khi nào:** Frontend → Backend → AI. Frontend hiện nút "Chia nhỏ với AI" khi task `Flexible` có
   `EstimatedMinutes > 120` (không gọi AI, không tốn lượt). User bấm thì mở chat của task đó.
 - **Tiêu chí xong:**
-  - [ ] AC1 — Đúng user: chỉ chat / Apply được task của chính user (qua `Project.UserId`). Task khác user → 404.
-  - [ ] AC2 — Chặn sớm: task `Fixed`, task `Done`/`Skipped`, task đã có subtask → 409, **không gọi Gemini, không trừ lượt**. Tin > 2.000 ký tự → 422.
-  - [ ] AC3 — Quota: kiểm trước khi gọi Gemini (không có gói `Active` → 409, hết lượt → 429). Trừ **1 lượt** chỉ khi có câu trả lời hợp lệ. Mỗi lần gọi Gemini ghi 1 dòng `AIUsageLog` (`Feature = 'Chat'`).
-  - [ ] AC4 — Câu trả lời luôn hợp lệ: JSON đúng schema + luật #9. Sai → thử lại tối đa 2 lần. Hỏng cả 3 → 502, không lưu tin nào, không trừ lượt.
-  - [ ] AC5 — Số liệu do code tính: T_est, thời gian đã chỉnh (T_est × K_bias), tổng subtask, cảnh báo lệch > 30%.
-  - [ ] AC6 — Riêng tư: prompt không có email, họ tên, liên hệ client. Title / mô tả / task tương tự đã che bằng `mask_contact`.
-  - [ ] AC7 — Apply: chỉ bản nháp mới nhất; ghi đủ subtask trong 1 transaction; bấm 2 lần không tạo trùng (lần 2 → 409).
-  - [ ] AC8 — Tốc độ: gửi tin < 10 s (p95), có thể đã tính cả lần thử lại.
+  - [x] AC1 — Đúng user: chỉ chat / Apply được task của chính user (qua `Project.UserId`). Task khác user → 404.
+  - [x] AC2 — Chặn sớm: task `Fixed`, task `Done`/`Skipped`, task đã có subtask → 409, **không gọi Gemini, không trừ lượt**. Tin > 2.000 ký tự → 422.
+  - [x] AC3 — Quota: kiểm trước khi gọi Gemini (không có gói `Active` → 409, hết lượt → 429). Trừ **1 lượt** chỉ khi có câu trả lời hợp lệ. Mỗi lần gọi Gemini ghi 1 dòng `AIUsageLog` (`Feature = 'Chat'`).
+  - [x] AC4 — Câu trả lời luôn hợp lệ: JSON đúng schema + luật #9. Sai → thử lại tối đa 2 lần. Hỏng cả 3 → 502, không lưu tin nào, không trừ lượt.
+  - [x] AC5 — Số liệu do code tính: T_est, thời gian đã chỉnh (T_est × K_bias), tổng subtask, cảnh báo lệch > 30%.
+  - [x] AC6 — Riêng tư: prompt không có email, họ tên, liên hệ client. Title / mô tả / task tương tự đã che bằng `mask_contact`.
+  - [x] AC7 — Apply: chỉ bản nháp mới nhất; ghi đủ subtask trong 1 transaction; bấm 2 lần không tạo trùng (lần 2 → 409).
+  - [ ] AC8 — Tốc độ: gửi tin < 10 s (p95), có thể đã tính cả lần thử lại. ⚠️ **Chưa đạt** trên gói Free của Gemini (#31). Đo 20 tin với timeout 20 s: trung vị 15,3 s, p95 21,4 s, 2/20 trả 502 (Gemini > 20 s). Đo lại khi chuyển gói trả phí, trước khi công bố.
 - **Ngoài phạm vi:** mức dự án, đọc tài liệu, upload file vào chat (FR-08b) · streaming (FR-08b) ·
   Apply khi task đã có subtask (thay / nối thêm) · chuyển model theo gói · nhiều cuộc chat cho 1 task.
 
@@ -172,6 +172,7 @@ Thứ tự trong `subtasks` = `OrderIndex` (từ 1). Con số so sánh do code t
 | 28 | Không có unique `ChatConversation.TaskId` (bước 0) | Transaction lưu tin khóa dòng `Task` (`FOR UPDATE`) rồi mới tìm / tạo cuộc chat | Giữ #2 "1 cuộc / task" khi 2 tin đầu đến cùng lúc; không đổi schema. |
 | 29 | Đánh dấu Apply (bước 0) | `ChatMessage.IsApplied = true` cho tin bản nháp + `ChatConversation.Status = 'Applied'` | Dùng đúng cột DB có sẵn. `Sender` DB là `User`/`AI` ↔ API `user`/`assistant` (đổi ở infrastructure). |
 | 30 | Ngôn ngữ câu cảnh báo (bước 3) | Gemini trả thêm trường `language` (`vi` / `en`) trong JSON; code dùng nó cho câu cảnh báo #20 (mặc định `vi` nếu thiếu / sai) | Cảnh báo cùng ngôn ngữ với câu trả lời mà không thêm tham số API (#14). |
+| 31 | Gemini chậm & thất thường (bước 12) | Chat dùng client Gemini riêng, timeout mỗi lần gọi **20 s** (`CHAT_LLM_TIMEOUT_SECONDS`, ≥ 10). FR-10 giữ 10 s. Luật thử lại #24 không đổi | Đo 20 tin: p95 12,1 s, **4/20 trả 502** do 1 lần gọi > 10 s. Gọi thẳng 6 lần: 5,6–12,6 s cho cùng prompt, chỉ 250–350 token ra, không có token thinking → do phía Gemini (gói Free khi dev), không do prompt. |
 
 ## 3. Test
 
@@ -236,7 +237,7 @@ Test cũ (FR-09, FR-10, FR-17, FR-19) phải pass nguyên vẹn.
   AI ghi `ChatConversation`/`ChatMessage`/`SubTask`; Frontend tự hiện nút chia nhỏ; bỏ streaming ở FR-08a — NFR-07;
   quota chat dùng chung `AiCallsUsed`, đếm riêng qua `AIUsageLog.Feature` nếu cần). Wrap-up một phần:
   `uv run pytest -q`, `uv run ruff check .`, `uv run ruff format --check .`.
-- [ ] **12.** Thử thật trên DB production (⚠️ hỏi Hiếu trước): T27, T28 → dọn sạch (chat, subtask, log, trả lại
+- [x] **12.** Thử thật trên DB production (⚠️ hỏi Hiếu trước): T27, T28 → dọn sạch (chat, subtask, log, trả lại
   `AiCallsUsed`), chứng minh còn 0 dòng test.
 - [ ] **13.** Wrap-up: tick AC, danh sách việc cho Backend/Frontend, gợi ý commit, hỏi trước khi push / mở PR.
 
@@ -247,3 +248,5 @@ Test cũ (FR-09, FR-10, FR-17, FR-19) phải pass nguyên vẹn.
 | 2026-10-15 | Tạo plan | Chốt trên Claude web: tách FR-08 thành 08a/08b; Gemini; quota dùng chung `AiCallsUsed`; AI ghi `SubTask`; chỉ Apply khi chưa có subtask; bỏ streaming ở 08a; #1–#20 |
 | 2026-10-15 | Phase A + bước 0: thêm #21–#29 | Hiếu chọn "theo đề xuất". Bước 0: `ChatMessage.IsApplied` có sẵn; `ChatConversation` cần `ProjectId`, `Title`; không có unique `TaskId`. Claude Code ghi (Hiếu cho phép) |
 | 2026-10-15 | Bước 3: thêm #30, thêm `language` vào JSON Gemini trả về | Hiếu chọn A. Claude Code ghi (Hiếu cho phép) |
+| 2026-10-15 | Bước 12: thêm #31, ghi chú AC8; thêm config `CHAT_LLM_TIMEOUT_SECONDS` | Chạy thật: 502 do Gemini > 10 s. Hiếu chọn đo thêm (A), rồi tăng timeout chat lên 20 s (A). Claude Code ghi (Hiếu cho phép) |
+| 2026-10-15 | Bước 12: đo lại sau #31 — 502 giảm 4 → 2/20 nhưng p95 21,4 s; AC8 để chưa tick | Hiếu chọn A: giữ 20 s, đo lại trên gói Gemini trả phí. Claude Code ghi (Hiếu cho phép) |

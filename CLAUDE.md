@@ -12,7 +12,7 @@ This repo is the **AI service** (Python), deployed separately from the Backend
 (ASP.NET Core). Both share one Supabase database and the same JWT.
 
 - Owner: Hieu (team leader). Other members build Backend and Frontend.
-- Python instead of C# is **waiting for the supervisor's approval** — keep core logic
+- Python instead of C# was **approved by the supervisor (2026-10-14)**. Still keep core logic
   framework-independent.
 
 **Where information lives — read in this order; if two disagree, STOP and tell Hieu:**
@@ -29,11 +29,13 @@ The team Google Doc is for humans only; Hieu copies decided facts into `docs/` o
 - PyJWT (verify Backend tokens, HS256)
 - SQLAlchemy 2 async + asyncpg (Supabase Postgres) — raw SQL with `text()`, no ORM models
 - pytest + httpx (tests), ruff (lint/format)
-- Planned: pgvector (FR-19), LLM providers (OpenAI + Google)
+- pgvector (FR-19): vectors go in as text `"[…]"` + `CAST(… AS vector)`, no extra library
+- Planned: LLM providers (OpenAI + Google)
 - LLM routing: Free plan → cheapest model; paid plans → cheap model ~90% of calls,
   stronger model ~10% "hard" calls. If one provider fails, switch to the other
   (from FR-08; FR-10 uses Gemini only).
-  Models come from **config, never hard-coded**. Embedding model: not chosen yet.
+  Models come from **config, never hard-coded**. Embedding model: `gemini-embedding-2`,
+  1536 dimensions (FR-19).
 
 ## 3. Commands
 
@@ -126,7 +128,7 @@ Full text in `docs/functional-requirements.md`. Status: first line of each `plan
 | — | Quota check + `AIUsageLog` (before every LLM call) | — |
 | FR-08 | AI chat: project level (brief → milestones + tasks) and task level (split task > 2 h) | — |
 | FR-09 | Context: free/busy time, workload, similar past tasks | — |
-| FR-19 | Long-term memory: embeddings in pgvector, built in the background | — |
+| FR-19 | Long-term memory: embeddings in pgvector, built in the background | `plans/FR-19.md` |
 | FR-12 | Daily "Today" briefing (text only) | — |
 | FR-18 | Productive hours: onboarding answers, then timer data | — |
 
@@ -172,6 +174,8 @@ All test data is wiped before public launch.
 
 **Every query**
 - Filtered by the owner's user ID (`Task` has no `UserId` → join `Project.UserId`).
+  Only exception: the FR-19 startup scan lists waiting memories of all users
+  (memory ID + user ID only, ≤ 100 rows); every later step filters by that row's user.
 - Raw SQL with `text()`; quote names (`"KBias"`) — Postgres is case-sensitive with quotes.
 - Convert DB strings (`Timer`, `Flexible`…) ↔ domain enums only in `infrastructure/`.
 

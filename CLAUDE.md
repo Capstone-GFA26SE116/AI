@@ -208,7 +208,9 @@ All test data is wiped before public launch.
 
 ## 11. Git
 
-- One plan = one branch = one PR. Branch from the latest `main`: `feature/frXX-<short-name>`.
+- One plan (FR) = one branch = one PR into `main`. Branch from the latest `main`: `feature/frXX-<short-name>`.
+- Small jobs with no plan (typo, docs, plan status) may be committed straight to `main`
+  after Hieu says OK.
 - PRs always target **`main`** (PR #2 was merged into the wrong branch once).
 - Commit messages: short, English, imperative (`feat: add K_bias EMA update`).
 - Before any commit: `git status` — no `.env`, no secrets, no `.venv`, no `__pycache__`.

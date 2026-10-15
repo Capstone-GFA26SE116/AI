@@ -31,6 +31,7 @@ CHAT_VARS = [
     "BREAKDOWN_MAX_MINUTES",
     "BREAKDOWN_MANUAL_MAX_MINUTES",
     "BREAKDOWN_WARNING_RATIO",
+    "CHAT_LLM_TIMEOUT_SECONDS",
 ]
 OPTIONAL_VARS = [
     "JWT_LEEWAY_SECONDS",
@@ -314,6 +315,7 @@ def test_chat_defaults(env):
     assert (settings.breakdown_min_minutes, settings.breakdown_max_minutes) == (5, 120)
     assert settings.breakdown_manual_max_minutes == 480
     assert settings.breakdown_warning_ratio == 0.3
+    assert settings.chat_llm_timeout_seconds == 20
 
 
 def test_chat_values_can_be_changed(env):
@@ -334,6 +336,7 @@ def test_chat_values_can_be_changed(env):
         ("BREAKDOWN_MIN_SUBTASKS", "0"),
         ("BREAKDOWN_MIN_MINUTES", "0"),
         ("BREAKDOWN_WARNING_RATIO", "0"),
+        ("CHAT_LLM_TIMEOUT_SECONDS", "9"),
     ],
 )
 def test_bad_chat_values_are_rejected(env, name, value):

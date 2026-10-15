@@ -80,6 +80,8 @@ class Settings(BaseSettings):
     breakdown_manual_max_minutes: int = Field(default=480, ge=1)
     # Warn when the subtask total differs from T_est × K by more than this share.
     breakdown_warning_ratio: float = Field(default=0.3, gt=0)
+    # Wait per Gemini call in the chat (#31). FR-10 keeps 10 s; Gemini needs ≥ 10.
+    chat_llm_timeout_seconds: float = Field(default=20, ge=10)
 
     @model_validator(mode="after")
     def check_breakdown_ranges(self) -> "Settings":

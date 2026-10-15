@@ -10,6 +10,7 @@ from pydantic import SecretStr
 from metanoia_ai.api.deps import (
     embed_memory,
     embed_waiting_memories,
+    get_chat_llm_client,
     get_embedding_client,
     get_find_similar_tasks,
 )
@@ -106,3 +107,22 @@ def test_similar_search_with_embedding_settings_has_a_client():
     use_case = get_find_similar_tasks(request, None, embedding_settings())
     assert isinstance(use_case.client, GeminiEmbeddingClient)
     assert use_case.branch_limit == 20
+
+
+# --- FR-08a wiring ---
+
+
+def test_chat_uses_its_own_gemini_client_with_a_longer_wait():
+    settings = make_settings().model_copy(
+        update={
+            "gemini_api_key": SecretStr(FAKE_KEY),
+            "llm_model": "gemini-flash-lite",
+            "llm_input_price_per_1m": 0.1,
+            "llm_output_price_per_1m": 0.4,
+        }
+    )
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace()))
+    chat_client = get_chat_llm_client(request, settings)
+    assert chat_client.timeout_seconds == 20  # plan #31
+    assert get_chat_llm_client(request, settings) is chat_client  # made once
+    assert not hasattr(request.app.state, "llm_client")  # FR-10 client untouched

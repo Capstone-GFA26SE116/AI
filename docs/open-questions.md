@@ -41,6 +41,7 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 
 | Câu hỏi | Liên quan | Hiện đang dùng |
 |---|---|---|
+| Chuyển Gemini sang gói trả phí (trước khi công bố) và đo lại tốc độ chat | FR-08a AC8, #31 | Gói Free: chat trung vị 15 s, p95 21 s, ~10% trả 502 (Gemini > 20 s). Chưa đạt AC8 (< 10 s) |
 | K ban đầu lấy từ onboarding hay cố định 1.3? | #10 | 1.3 |
 | Ngưỡng outlier | #12 | 5 (ngoài [1/5, 5] thì bỏ qua) |
 | Quota đọc tài liệu theo từng gói | #13 | — |

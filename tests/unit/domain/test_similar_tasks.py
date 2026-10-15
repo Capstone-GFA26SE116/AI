@@ -1,4 +1,44 @@
-from metanoia_ai.domain.similar_tasks import build_search_query, search_terms
+from datetime import UTC, datetime, timedelta
+from uuid import UUID
+
+import pytest
+
+from metanoia_ai.domain.similar_tasks import (
+    MatchSource,
+    PastTask,
+    SimilarOutcome,
+    SimilarTask,
+    build_search_query,
+    rrf_merge,
+    search_terms,
+)
+
+VECTOR, TEXT = MatchSource.VECTOR, MatchSource.TEXT
+OCT_10 = datetime(2026, 10, 10, 10, 0, tzinfo=UTC)
+
+
+def past(
+    n: int,
+    days_ago: int | None = 1,
+    outcome: SimilarOutcome = SimilarOutcome.DONE,
+    estimated: int = 60,
+    actual: int = 90,
+) -> PastTask:
+    """Task number n; the id is fixed so ties are easy to check."""
+    return PastTask(
+        task_id=UUID(int=n),
+        title=f"Task {n}",
+        domain_name="Coding",
+        outcome=outcome,
+        estimated_minutes=estimated,
+        actual_minutes=actual,
+        finished_at=None if days_ago is None else OCT_10 - timedelta(days=days_ago),
+    )
+
+
+def ids(results: list[SimilarTask]) -> list[int]:
+    return [r.task.task_id.int for r in results]
+
 
 # --- T1: the text to embed ---
 
@@ -59,3 +99,81 @@ def test_t3_only_symbols_gives_no_terms():
 
 def test_t3_only_masks_gives_no_terms():
     assert search_terms("ACME a.b@acme.com", "", "ACME") is None
+
+
+# --- T4: RRF adds the scores of both lists ---
+
+
+def test_t4_task_in_both_lists_wins():
+    a, b, c, d = past(1), past(2), past(3), past(4)
+
+    results = rrf_merge(vector=[a], text=[b, c, a], k=60, limit=5)
+
+    assert ids(results) == [1, 2, 3]
+    first, second, _ = results
+    assert first.score == round(1 / 61 + 1 / 63, 4) == 0.0323
+    assert first.matched_by == (VECTOR, TEXT)
+    assert second.score == round(1 / 61, 4) == 0.0164
+    assert second.matched_by == (TEXT,)
+    assert d.task_id not in [r.task.task_id for r in results]
+
+
+# --- T5: ties ---
+
+
+def test_t5_tie_newer_task_first():
+    older, newer = past(1, days_ago=5), past(2, days_ago=1)
+    # Both rank 1 in one list: the same score.
+    results = rrf_merge(vector=[older], text=[newer], k=60, limit=5)
+    assert ids(results) == [2, 1]
+
+
+def test_t5_tie_task_without_finish_time_last():
+    no_time, with_time = past(1, days_ago=None), past(2, days_ago=30)
+    results = rrf_merge(vector=[no_time], text=[with_time], k=60, limit=5)
+    assert ids(results) == [2, 1]
+
+
+def test_t5_full_tie_by_task_id():
+    results = rrf_merge(vector=[past(2)], text=[past(1)], k=60, limit=5)
+    assert ids(results) == [1, 2]
+
+
+# --- T6: text only (Gemini failed) ---
+
+
+def test_t6_text_only_keeps_the_text_order():
+    results = rrf_merge(vector=[], text=[past(3), past(1), past(2)], k=60, limit=5)
+    assert ids(results) == [3, 1, 2]
+    assert all(r.matched_by == (TEXT,) for r in results)
+
+
+def test_both_lists_empty():
+    assert rrf_merge(vector=[], text=[], k=60, limit=5) == []
+
+
+# --- T7: limit ---
+
+
+def test_t7_cut_at_limit():
+    text = [past(n) for n in range(1, 21)]
+    results = rrf_merge(vector=[], text=text, k=60, limit=5)
+    assert ids(results) == [1, 2, 3, 4, 5]
+
+
+# --- ratio of one result ---
+
+
+@pytest.mark.parametrize(
+    ("task", "ratio"),
+    [
+        pytest.param(past(1, estimated=60, actual=90), 1.5, id="done"),
+        pytest.param(past(1, estimated=90, actual=100), 1.11, id="rounded"),
+        pytest.param(past(1, actual=0), None, id="no-time"),
+        pytest.param(
+            past(1, outcome=SimilarOutcome.SKIPPED, actual=30), None, id="skipped"
+        ),
+    ],
+)
+def test_ratio(task, ratio):
+    assert SimilarTask(task, score=0.0164, matched_by=(TEXT,)).ratio == ratio

@@ -225,7 +225,7 @@ Test cũ (FR-09, FR-10, FR-17, FR-19) phải pass nguyên vẹn.
 - [x] **3.** Domain `draft_numbers` — test T5–T7.
 - [x] **4.** Prompt `task_breakdown_v1.md` + 10–20 mẫu trong `task_breakdown_samples.json` + JSON schema gửi Gemini.
   Cho Hiếu xem prompt trước khi đi tiếp.
-- [ ] **5.** `chat_writer.py` (gọi + kiểm + thử lại, theo kiểu `reason_writer.py`) — test T10, T11 (phần LLM).
+- [x] **5.** `chat_writer.py` (gọi + kiểm + thử lại, theo kiểu `reason_writer.py`) — test T10, T11 (phần LLM).
 - [ ] **6.** Port `ChatRepository` + fake trong `tests/unit/application/fakes.py`.
 - [ ] **7.** Use case `SendTaskChatMessage` — test T8–T18.
 - [ ] **8.** Use case `GetTaskChat` + `ApplyTaskBreakdown` — test T19–T22.

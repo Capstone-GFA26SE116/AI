@@ -1,6 +1,6 @@
 # FR-08a — Chat AI mức task (chia task lớn thành subtask)
 
-Trạng thái: Đã duyệt · Branch: `feature/fr08a-task-chat` · Cập nhật: 2026-10-15
+Trạng thái: Xong (AC8 chờ gói Gemini trả phí) · Branch: `feature/fr08a-task-chat` · Cập nhật: 2026-10-15
 
 <!-- Thiết kế trên Claude web (2026-10-15). Claude Code chỉ được tick checkbox ở mục 0 và 4.
 ⚠️ = cần báo Backend/team; danh sách đầy đủ ở docs/open-questions.md. -->
@@ -239,7 +239,7 @@ Test cũ (FR-09, FR-10, FR-17, FR-19) phải pass nguyên vẹn.
   `uv run pytest -q`, `uv run ruff check .`, `uv run ruff format --check .`.
 - [x] **12.** Thử thật trên DB production (⚠️ hỏi Hiếu trước): T27, T28 → dọn sạch (chat, subtask, log, trả lại
   `AiCallsUsed`), chứng minh còn 0 dòng test.
-- [ ] **13.** Wrap-up: tick AC, danh sách việc cho Backend/Frontend, gợi ý commit, hỏi trước khi push / mở PR.
+- [x] **13.** Wrap-up: tick AC, danh sách việc cho Backend/Frontend, gợi ý commit, hỏi trước khi push / mở PR.
 
 ## 5. Nhật ký thay đổi
 

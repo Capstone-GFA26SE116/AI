@@ -127,3 +127,19 @@ def rrf_merge(
         )
         for task_id in sorted(scores, key=order)[:limit]
     ]
+
+
+def summarize_similar(results: Sequence[SimilarTask]) -> SimilarSummary:
+    """How many results, how many done, and their average T_act / T_est.
+
+    The average uses the exact ratios of done tasks with measured time, then
+    rounds to 2 decimals. None when no result has a ratio.
+    """
+    done = [r.task for r in results if r.task.outcome is SimilarOutcome.DONE]
+    ratios = [
+        t.actual_minutes / t.estimated_minutes for t in done if t.actual_minutes > 0
+    ]
+    average = round(sum(ratios) / len(ratios), RATIO_DECIMALS) if ratios else None
+    return SimilarSummary(
+        count=len(results), done_count=len(done), average_ratio=average
+    )

@@ -1,6 +1,6 @@
 # Câu hỏi mở & việc chờ Backend/team
 
-Cập nhật: 2026-10-12. Đây là danh sách DUY NHẤT. Trong plan chỉ đánh dấu ⚠️ cạnh quyết định liên quan.
+Cập nhật: 2026-10-15. Đây là danh sách DUY NHẤT. Trong plan chỉ đánh dấu ⚠️ cạnh quyết định liên quan.
 Chốt xong → ghi kết quả vào `docs/` hoặc plan, rồi chuyển dòng xuống mục "Đã chốt".
 Số `#` = số trong tab Problems của Google Doc (nếu có).
 
@@ -25,7 +25,12 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 | Quota: DB chỉ có 1 bộ đếm `AiCallsUsed`, luật cần đếm riêng 3 loại | Quota, #13 | |
 | Đồng ý cách hiểu buffer (khoảng nghỉ riêng, không ghi lên lịch) | FR-10 | |
 | Role: không chặn Admin theo role; quyền gọi AI dựa vào gói + quota | — | Hiếu đã quyết, chỉ báo |
-| Refresh token: token sống 60', Focus mode dài hơn → Stop bị 401 | Backend + Frontend | Đưa vào tab Problems |
+| Refresh token: token sống 60', Focus mode dài hơn → Stop bị 401 | Backend + Frontend | Đưa vào tab Problems. 2026-10-14: Backend `develop` đã có refresh token trong `AuthController` → kiểm lại rồi đóng |
+| Thêm cột `TaskExecutionMemory.EmbeddingModel` (varchar, trống được) | FR-19 #21 | **Chặn bước 10, 12 của FR-19** |
+| Thêm `UNIQUE ("TaskId")` cho `TaskExecutionMemory` | FR-19 #22 | **Chặn bước 10, 12 của FR-19**. Hiện chỉ có index thường |
+| Chính sách xóa task: `TaskExecutionMemory`, `FocusSession`, `KBiasUpdateLog` đều `ON DELETE RESTRICT` (task đã có lịch sử thì không xóa được). Cố ý? Đề xuất memory → `CASCADE` | FR-19 #25, FR-17 | `SubTask`, `ScheduleSlot`, `ChatConversation` là `CASCADE` |
+| Gọi `POST /learning/task-completed` cả khi task chuyển sang `Skipped` (không chỉ `Done`) | FR-19 #2 | |
+| Đồng ý AI ghi `TaskExecutionMemory` | FR-19, #9 | |
 
 ## Chờ quyết định (team / giảng viên)
 

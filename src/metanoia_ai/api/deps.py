@@ -14,7 +14,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from metanoia_ai.application.chat_writer import ChatWriter
 from metanoia_ai.application.ports.embedding_client import EmbeddingClient
 from metanoia_ai.application.ports.llm_client import LLMClient
+from metanoia_ai.application.project_chat_writer import ProjectChatWriter
 from metanoia_ai.application.reason_writer import ReasonWriter
+from metanoia_ai.application.use_cases.apply_project_breakdown import (
+    ApplyProjectBreakdown,
+)
 from metanoia_ai.application.use_cases.apply_task_breakdown import (
     ApplyTaskBreakdown,
 )
@@ -22,20 +26,32 @@ from metanoia_ai.application.use_cases.embed_pending_memories import (
     EmbedPendingMemories,
 )
 from metanoia_ai.application.use_cases.find_similar_tasks import FindSimilarTasks
+from metanoia_ai.application.use_cases.get_project_chat import GetProjectChat
 from metanoia_ai.application.use_cases.get_task_chat import GetTaskChat
 from metanoia_ai.application.use_cases.propose_schedule import ProposeSchedule
 from metanoia_ai.application.use_cases.record_task_completion import (
     RecordTaskCompletion,
 )
 from metanoia_ai.application.use_cases.save_task_memory import SaveTaskMemory
+from metanoia_ai.application.use_cases.send_project_chat_message import (
+    SendProjectChatMessage,
+)
 from metanoia_ai.application.use_cases.send_task_chat_message import (
     SendTaskChatMessage,
 )
+from metanoia_ai.application.use_cases.start_project_chat import (
+    ListProjectChats,
+    StartProjectChat,
+)
 from metanoia_ai.config import MissingLlmSettingError, Settings, get_settings
+from metanoia_ai.domain.project_breakdown import ProjectLimits
 from metanoia_ai.domain.task_breakdown import DraftLimits
 from metanoia_ai.infrastructure.db.chat_repository import SqlChatRepository
 from metanoia_ai.infrastructure.db.learning_repository import SqlLearningRepository
 from metanoia_ai.infrastructure.db.memory_repository import SqlMemoryRepository
+from metanoia_ai.infrastructure.db.project_chat_repository import (
+    SqlProjectChatRepository,
+)
 from metanoia_ai.infrastructure.db.quota_repository import SqlQuotaRepository
 from metanoia_ai.infrastructure.db.schedule_repository import SqlScheduleRepository
 from metanoia_ai.infrastructure.db.similar_task_repository import (
@@ -291,3 +307,98 @@ def get_apply_task_breakdown(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> ApplyTaskBreakdown:
     return ApplyTaskBreakdown(SqlChatRepository(session), manual_draft_limits(settings))
+
+
+# --- project chat (FR-08b-1) ---
+
+
+def project_limits(settings: Settings, *, manual: bool) -> ProjectLimits:
+    """#7 for AI drafts; #21 (more minutes allowed) for edits at Apply."""
+    return ProjectLimits(
+        max_milestones=settings.project_max_milestones,
+        max_tasks_per_milestone=settings.project_max_tasks_per_milestone,
+        max_tasks=settings.project_max_tasks,
+        min_minutes=settings.project_manual_min_minutes
+        if manual
+        else settings.project_task_min_minutes,
+        max_minutes=settings.project_manual_max_minutes
+        if manual
+        else settings.project_task_max_minutes,
+        max_milestone_title_chars=settings.project_milestone_title_max_chars,
+    )
+
+
+def get_project_chat_llm_client(
+    request: Request, settings: Annotated[Settings, Depends(get_settings)]
+) -> LLMClient:
+    """Gemini for the project chat: same model, longer wait for big drafts (#23)."""
+    client = getattr(request.app.state, "project_chat_llm_client", None)
+    if client is None:
+        llm = settings.llm_config()
+        client = GeminiClient(
+            llm.api_key,
+            llm.model,
+            timeout_seconds=settings.chat_project_llm_timeout_seconds,
+        )
+        request.app.state.project_chat_llm_client = client
+    return client
+
+
+def get_start_project_chat(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> StartProjectChat:
+    return StartProjectChat(
+        SqlProjectChatRepository(session), now=lambda: datetime.now(UTC)
+    )
+
+
+def get_list_project_chats(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ListProjectChats:
+    return ListProjectChats(SqlProjectChatRepository(session))
+
+
+def get_send_project_chat_message(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    llm_client: Annotated[LLMClient, Depends(get_project_chat_llm_client)],
+) -> SendProjectChatMessage:
+    """FR-08b-1: one chat message → Gemini. Shares the request's session."""
+    llm = settings.llm_config()
+    return SendProjectChatMessage(
+        SqlProjectChatRepository(session),
+        SqlQuotaRepository(session),
+        ProjectChatWriter(
+            llm_client,
+            limits=project_limits(settings, manual=False),
+            max_retries=settings.chat_project_max_retries,
+            input_price_per_1m=llm.input_price_per_1m,
+            output_price_per_1m=llm.output_price_per_1m,
+            retry_budget_seconds=settings.chat_project_retry_budget_seconds,
+        ),
+        initial_k=Decimal(str(settings.kbias_initial)),
+        history_limit=settings.chat_project_history_limit,
+        max_message_chars=settings.chat_project_message_max_chars,
+        max_prompt_chars=settings.chat_project_prompt_max_chars,
+        existing_titles_limit=settings.chat_project_existing_titles_limit,
+        daily_work_hours=settings.chat_daily_work_hours,
+        quota_daily_max=settings.quota_daily_max,
+        now=lambda: datetime.now(UTC),
+    )
+
+
+def get_get_project_chat(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> GetProjectChat:
+    return GetProjectChat(SqlProjectChatRepository(session))
+
+
+def get_apply_project_breakdown(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> ApplyProjectBreakdown:
+    return ApplyProjectBreakdown(
+        SqlProjectChatRepository(session),
+        project_limits(settings, manual=True),
+        now=lambda: datetime.now(UTC),
+    )

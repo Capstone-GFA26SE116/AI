@@ -65,11 +65,12 @@ class Clock:
 class World:
     """One user with an Active project, a project chat and a paid plan."""
 
-    def __init__(self, project_status="Active", deadline=date(2026, 10, 30)):
+    def __init__(self, project_status="Active", deadline=date(2026, 10, 30), user=USER):
+        self.user = user
         self.repo = FakeProjectChatRepository(now=NOW)
         self.quota = FakeQuotaRepository(now=NOW)
         self.plan = Subscription(uuid4(), price=99, ai_call_limit=50, ai_calls_used=0)
-        self.quota.add_subscription(USER, self.plan, start_at=NOW)
+        self.quota.add_subscription(user, self.plan, start_at=NOW)
         self.project = ChatProject(
             uuid4(),
             "Landing page ACME",
@@ -79,13 +80,13 @@ class World:
             "ACME",
             SAIGON,
         )
-        self.repo.add_project(USER, self.project)
+        self.repo.add_project(user, self.project)
         self.repo.add_domain(DESIGN, "Design")
         self.repo.add_domain(CODING, "Coding")
         self.repo.add_domain(OLD, "Old", is_active=False)
-        self.repo.k_bias[(USER, CODING)] = Decimal("1.5")
+        self.repo.k_bias[(user, CODING)] = Decimal("1.5")
         self.chat = run(
-            self.repo.create_conversation(USER, self.project.project_id, "Brief")
+            self.repo.create_conversation(user, self.project.project_id, "Brief")
         )
 
     @property
@@ -118,7 +119,9 @@ class World:
 
     def send(self, llm, message="Brief của khách", chat_id=None, **kw):
         return run(
-            self.use_case(llm, **kw).execute(USER, chat_id or self.chat_id, message)
+            self.use_case(llm, **kw).execute(
+                self.user, chat_id or self.chat_id, message
+            )
         )
 
     @property
@@ -126,7 +129,7 @@ class World:
         return self.quota.calls_used[self.plan.subscription_id]
 
     def messages(self):
-        return run(self.repo.list_messages(USER, self.chat_id))
+        return run(self.repo.list_messages(self.user, self.chat_id))
 
 
 def run(coro):

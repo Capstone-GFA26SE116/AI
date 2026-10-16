@@ -1,6 +1,6 @@
 # Database — phần AI service đụng tới
 
-Cập nhật: 2026-10-15 · Nguồn: code Backend `develop` + đọc trực tiếp Supabase (chỉ đọc).
+Cập nhật: 2026-10-16 · Nguồn: code Backend `develop` + đọc trực tiếp Supabase (chỉ đọc).
 Schema do **Backend** sở hữu. File này chỉ ghi những bảng/cột AI dùng. Thấy lệch với DB thật → báo Hiếu.
 
 Ký hiệu: **AI ghi** = AI service được INSERT/UPDATE · **Chỉ đọc** = không bao giờ ghi.
@@ -98,6 +98,10 @@ Ký hiệu: **AI ghi** = AI service được INSERT/UPDATE · **Chỉ đọc** =
 - Task `Fixed` **bắt buộc** có `FixedStart`, `FixedEnd` (timestamptz, `FixedEnd > FixedStart`).
 - `Title`, `Description` (text, trống được), `DomainId`, `CompletedAt` (timestamptz, trống được). Không có CHECK nối `CompletedAt` với `Status`.
   2026-10-15: 2 task `Done` đều có `CompletedAt`; chưa có task `Skipped` nào nên chưa biết Backend có ghi không → coi là trống được.
+- `AiEstimatedMinutes` int trống được, CHECK > 0 ⚠️ (FR-17b): số phút AI đoán. **Không có** cột `EstimateSource`.
+  Ước lượng là "của AI" khi `AiEstimatedMinutes IS NOT NULL AND EstimatedMinutes = AiEstimatedMinutes`;
+  user sửa số → hai số khác nhau → là "của user". Đọc DB 2026-10-16: 39 task, 0 task có giá trị, cột không có comment
+  → chưa ai ghi. Chưa xác nhận với Backend nghĩa của cột.
 
 ### `Project`
 - `UserId` — dùng để lọc mọi truy vấn theo chủ sở hữu.

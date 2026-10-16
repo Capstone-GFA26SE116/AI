@@ -21,6 +21,7 @@ from metanoia_ai.domain.project_breakdown import (
     drop_duplicates,
     project_numbers,
     resolve_deadlines,
+    restore_client,
     split_duplicates,
     task_deadline,
 )
@@ -408,3 +409,25 @@ def test_t8_ai_minutes_and_estimate_source():
     for key, minutes, ai_minutes, source in cases:
         assert ai_minutes_of(key, saved) == ai_minutes
         assert estimate_source(minutes, ai_minutes_of(key, saved)) is source
+
+
+# --- #32: the client name back in titles ---
+
+
+def test_restore_client_in_milestone_and_task_titles():
+    draft = draft_of(milestone("Gặp [client]", [task("Logo cho [client]")]))
+    restored = restore_client(draft, "ACME", 150)
+    assert restored.milestones[0].title == "Gặp ACME"
+    assert restored.milestones[0].tasks[0].title == "Logo cho ACME"
+
+
+def test_restore_client_keeps_the_mask_when_too_long():
+    draft = draft_of(milestone("x" * 140 + " [client]", [task("[client] [email]")]))
+    restored = restore_client(draft, "Công ty TNHH Rất Dài", 150)
+    assert restored.milestones[0].title.endswith("[client]")
+    assert restored.milestones[0].tasks[0].title == "Công ty TNHH Rất Dài [email]"
+
+
+def test_restore_client_without_client_changes_nothing():
+    draft = draft_of(milestone("Gặp [client]"))
+    assert restore_client(draft, None, 150) == draft

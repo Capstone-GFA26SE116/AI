@@ -1,4 +1,5 @@
 import asyncio
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
@@ -18,6 +19,7 @@ from metanoia_ai.application.use_cases.record_task_completion import (
 from metanoia_ai.domain.models import (
     ActualTimeSource,
     ConfidenceTier,
+    EstimateSource,
     FocusSessionRecord,
     SkipReason,
     TaskType,
@@ -239,6 +241,56 @@ def test_skipped_tasks_write_nothing(task, reason):
     assert repo.profiles == {}
     assert repo.logs == {}
     assert repo.locked == []
+
+
+# --- FR-17b: estimates set by the AI are not learned from ---
+
+AI = EstimateSource.AI
+
+
+def test_fr17b_t1_ai_estimate_is_skipped_and_writes_nothing():
+    # Done, Flexible, valid T_act (90' on 60'): would learn if the user had set 60.
+    task = replace(make_task(), estimate_source=AI)
+    repo, use_case = setup(task)
+
+    result = run(use_case, task.task_id)
+
+    assert result == LearningResult(learned=False, reason=SkipReason.AI_ESTIMATE)
+    assert repo.profiles == {}
+    assert repo.logs == {}
+    assert repo.locked == []
+
+
+@pytest.mark.parametrize(
+    ("task", "reason"),
+    [
+        pytest.param(
+            make_task(task_type=TaskType.FIXED, estimated=None),
+            SkipReason.FIXED_TASK,
+            id="fixed-first",
+        ),
+        pytest.param(make_task(is_done=False), SkipReason.TASK_NOT_DONE, id="not-done"),
+        pytest.param(
+            make_task(sessions=[]), SkipReason.AI_ESTIMATE, id="before-actual-time"
+        ),
+    ],
+)
+def test_fr17b_t2_check_order(task, reason):
+    # Fixed → not done → ai_estimate → actual time.
+    ai_task = replace(task, estimate_source=AI)
+    _, use_case = setup(ai_task)
+    assert run(use_case, ai_task.task_id).reason == reason
+
+
+def test_fr17b_t3_user_estimate_is_learned_as_before():
+    task = replace(make_task(), estimate_source=EstimateSource.USER)
+    _, use_case = setup(task)
+    result = run(use_case, task.task_id)
+    assert result == LearningResult(learned=True, k_old=1.3, k_new=1.34, sample_index=1)
+
+
+def test_task_is_the_users_estimate_by_default():
+    assert make_task().estimate_source is EstimateSource.USER
 
 
 def test_flexible_task_without_estimate_is_bad_data():

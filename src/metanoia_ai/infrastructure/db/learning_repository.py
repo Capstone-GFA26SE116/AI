@@ -22,6 +22,7 @@ from metanoia_ai.domain.models import (
     ConfidenceTier,
     FocusSessionRecord,
     TaskType,
+    estimate_source,
 )
 
 # Domain names <-> the strings allowed by the DB CHECK constraints.
@@ -42,7 +43,8 @@ DONE_STATUS = "Done"
 TASK_ALREADY_LEARNED_CONSTRAINT = "KBiasUpdateLog_TaskId_key"
 
 GET_TASK = text("""
-    SELECT t."Id", t."DomainId", t."TaskType", t."Status", t."EstimatedMinutes"
+    SELECT t."Id", t."DomainId", t."TaskType", t."Status", t."EstimatedMinutes",
+           t."AiEstimatedMinutes"
     FROM "Task" t
     JOIN "Project" p ON p."Id" = t."ProjectId"
     WHERE t."Id" = :task_id AND p."UserId" = :user_id
@@ -131,6 +133,9 @@ class SqlLearningRepository:
                     is_confirmed=s.IsConfirmed,
                 )
                 for s in sessions
+            ),
+            estimate_source=estimate_source(
+                row.EstimatedMinutes, row.AiEstimatedMinutes
             ),
         )
 

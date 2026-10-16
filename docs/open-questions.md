@@ -65,6 +65,9 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 | Quota đọc tài liệu theo từng gói | #13 | — |
 | Chọn model LLM (FR-08) | — | FR-10 dùng Gemini, tên model trong config |
 | Database doc lệch với schema Supabase | #19 | Tin DB thật |
+| Đo lại tốc độ recompute (FR-18 AC7) khi đã deploy server cùng vùng với Supabase | FR-18 AC7 | 2026-10-16: phía server (DB + Python) p95 20 ms; đo từ máy dev ~380 ms vì mạng (1 transaction rỗng ~390 ms). `scripts/try_productive_hours.py` in cả hai số |
+| `PRODUCTIVE_PRIOR_WEIGHT` = 5: 1 giờ cần ≥ 13 phiên tốt để vượt khung onboarding 0.8 khi điểm gốc 0.3. Có muốn dữ liệu thật chiếm ưu thế nhanh hơn? | FR-18 #2, AC5 | Chỉ đổi config, không đổi code |
+| FR-10 slot không có lời giải thích khi chạy thử FR-18 (2026-10-16): Gemini không trả lời kịp? | FR-10 | Dữ liệu thử đã xóa nên chưa xem `AIUsageLog`. Có thể cùng nguyên nhân Gemini gói Free chậm ở trên |
 | Dọn dữ liệu test còn sót: 4 user `@example.invalid` (từ `scripts/try_schedule.py`) còn dòng `UserCircadianProfile` (14–16h) và 7 `FocusSession` | FR-18 bước 0 | Chưa xóa (không phải dòng FR-18 tạo). Sẽ xóa hết trước khi công bố |
 | Ngưỡng `SIMILAR_MIN_SIMILARITY` (FR-09 #4) | FR-09 | 0.5. Chạy thật 2026-10-15: task không liên quan vẫn qua ngưỡng (Gemini cho câu khác nghĩa ~0.69) → cân nhắc ~0.75 khi có thêm dữ liệu |
 

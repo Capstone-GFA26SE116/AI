@@ -13,6 +13,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from enum import StrEnum
 from zoneinfo import ZoneInfo
 
+from metanoia_ai.domain.memory_text import StopReason  # shared with FR-19
 from metanoia_ai.domain.models import TaskType
 
 HOURS = range(24)
@@ -39,15 +40,6 @@ ONBOARDING_BLOCKS: dict[OnboardingBlock, tuple[int, ...]] = {
     OnboardingBlock.EVENING: (18, 19, 20, 21),
     OnboardingBlock.LATE_NIGHT: (22, 23, 0, 1),
 }
-
-
-class StopReason(StrEnum):
-    """Why a focus session was stopped (FocusSession.StopReason)."""
-
-    COMPLETED = "completed"
-    INTERRUPTED = "interrupted"
-    BLOCKED = "blocked"
-    OTHER = "other"
 
 
 class ScoreSource(StrEnum):

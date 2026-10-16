@@ -150,13 +150,15 @@ Ký hiệu: **AI ghi** = AI service được INSERT/UPDATE · **Chỉ đọc** =
 - `UserId` NOT NULL · `Name` NOT NULL · `ContactEmail`, `Phone`, `Notes`: **không đọc**.
 - `Project.ClientId` trống được (project không có khách).
 
-### `UserCircadianProfile` (FR-10, FR-18) ⚠️
+### `UserCircadianProfile` (FR-10, FR-18) — AI ghi (FR-18) ⚠️
 Đọc DB 2026-10-16 (chỉ đọc, FR-18 bước 0).
+- **`PriorScore` numeric(4,3) NOT NULL DEFAULT 0.500**, CHECK `UserCircadianProfile_PriorScore_check` [0, 1]: điểm onboarding của giờ đó.
+  AI thêm bằng `ALTER` 2026-10-16 (Hiếu cho phép, Backend đồng ý). Dòng cũ đều `Onboarding` → đã chép `PriorScore = Score` (132 dòng).
+  Script/entity của Backend phải giữ cột này ⚠️.
 - `Id` uuid · `UserId` uuid NOT NULL (FK → `User`, `ON DELETE RESTRICT`) · `HourOfDay` **smallint** 0–23 ·
   `Score` **numeric(4,3)** NOT NULL trong [0, 1], mặc định 0.500 · `Source` varchar NOT NULL ∈ {`Onboarding`, `Learned`},
   mặc định `Onboarding` · `UpdatedAt` timestamptz NOT NULL, mặc định now() (không có trigger → ai ghi phải tự đặt).
 - Unique `UQ_UserCircadianProfile_User_Hour` (`UserId`, `HourOfDay`) → mỗi giờ 1 dòng.
-- **Không có** cột `PriorScore` (FR-18 #3).
 - FR-10 đọc mọi dòng, không lọc theo `Source`.
 - Dữ liệu 2026-10-16: 132 dòng, 9 user, tất cả `Source = Onboarding`, chưa dòng nào `Learned`.
   - 5 user thật có đủ 24 dòng, `UpdatedAt` ≈ `User.CreatedAt` → **Backend đã tự ghi lúc tạo user** ⚠️.
@@ -177,6 +179,12 @@ Ký hiệu: **AI ghi** = AI service được INSERT/UPDATE · **Chỉ đọc** =
 - `TimeZone` mặc định `Asia/Ho_Chi_Minh` · `WorkDayStart`, `WorkDayEnd` kiểu `time` (mặc định 08:00, 18:00; End > Start) ·
   `WorksOnWeekend` mặc định false · `DefaultBufferMinutes` 0–120, mặc định 15.
 - Không đọc `Email`, `FullName` để gửi LLM.
+- `OnboardingCompleted` bool NOT NULL, mặc định false (cột của Backend; đọc DB 2026-10-16). Chỉ 1 user thật = true,
+  đúng user có điểm `UserCircadianProfile` khác 0.5 → Backend bật cờ này sau màn onboarding (gồm cả phần khác ngoài giờ hiệu quả?) ⚠️.
+- **`ProductiveBlocks` text[] NULL** — AI ghi (FR-18 #19, chỉ lúc onboarding giờ hiệu quả). `NULL` = chưa trả lời.
+  CHECK `CK_User_ProductiveBlocks`: 1–5 phần tử, mỗi phần tử ∈ {`morning`, `midday`, `afternoon`, `evening`, `late_night`}.
+  AI thêm bằng `ALTER` 2026-10-16 (Hiếu cho phép, Backend đồng ý). Script/entity của Backend phải giữ cột này ⚠️.
+  User đã onboarding theo cách cũ của Backend (1 user) vẫn `NULL` → hiện `onboarded: false` cho tới khi trả lời lại.
 
 ### `UserSubscription`
 - `Status` ∈ {`Active`, `Scheduled`, `Expired`, `Cancelled`} · `StartAt`, `EndAt?` · `AiCallsUsed` ≥ 0 · `QuotaResetAt`.

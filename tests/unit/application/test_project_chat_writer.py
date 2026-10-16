@@ -1,5 +1,6 @@
 """FR-08b-1: the project chat prompt, the answer schema and the samples."""
 
+import asyncio
 import json
 import re
 from datetime import date
@@ -8,15 +9,20 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError
 
+from metanoia_ai.application.ports.llm_client import LLMError
 from metanoia_ai.application.project_chat_writer import (
+    DraftContext,
     ProjectAnswer,
     ProjectChatLine,
+    ProjectChatWriter,
     PromptDomain,
     PromptProject,
     answer_schema,
     build_prompt,
+    check_answer,
     load_template,
 )
+from metanoia_ai.application.reason_writer import BadAnswerError
 from metanoia_ai.domain.models import Language
 from metanoia_ai.domain.project_breakdown import (
     DraftMilestone,
@@ -25,6 +31,7 @@ from metanoia_ai.domain.project_breakdown import (
 )
 from metanoia_ai.domain.task_breakdown import ReplyKind
 from metanoia_ai.prompts import load_samples
+from tests.unit.application.fakes import FakeLLMClient
 
 LIMITS = ProjectLimits(8, 15, 40, 15, 480, 150)
 TODAY = date(2026, 10, 16)
@@ -254,3 +261,233 @@ def test_samples_cover_the_plan():
     text = json.dumps(samples, ensure_ascii=False)
     assert not re.search(r"[\w.]+@[\w.]+", text)
     assert not re.search(r"\b0\d{9}\b", text)
+
+
+# --- checking an answer (#14-#17) ---
+
+CONTEXT = DraftContext(
+    domains={d.domain_id: d.name for d in DOMAINS},
+    project_deadline=date(2026, 10, 30),
+    today=TODAY,
+    existing_titles=("Viết API",),
+)
+
+
+def answer(milestones=None, kind="draft", reply="Ok", language="vi", reminders=()):
+    if milestones is None:
+        milestones = [
+            {
+                "title": "Thiết kế",
+                "deadline": None,
+                "tasks": [
+                    {
+                        "title": "Wireframe",
+                        "domain_id": str(UUID(int=1)),
+                        "estimated_minutes": 120,
+                        "reason": "r",
+                    },
+                    {
+                        "title": " viết  api ",
+                        "domain_id": str(UUID(int=2)),
+                        "estimated_minutes": 240,
+                        "reason": "r",
+                    },
+                ],
+            }
+        ]
+    return json.dumps(
+        {
+            "kind": kind,
+            "language": language,
+            "reply": reply,
+            "milestones": milestones,
+            "reminders": list(reminders),
+        }
+    )
+
+
+def test_draft_answer_is_checked_filled_and_deduplicated():
+    reply = check_answer(answer(reminders=["Họp khách"]), CONTEXT, LIMITS)
+
+    assert reply.kind is ReplyKind.DRAFT
+    draft = reply.draft
+    assert draft.milestones[0].key == "m1"
+    assert draft.milestones[0].deadline == date(2026, 10, 30)  # project deadline
+    assert [t.title for t in draft.tasks] == ["Wireframe"]  # "viết api" exists
+    assert draft.warnings == ('Đã bỏ "viết api": dự án đã có việc này.',)
+    assert draft.reminders == ("Họp khách",)
+
+
+def test_question_answer_has_no_draft():
+    reply = check_answer(
+        answer([], kind="question", reply="Hạn là ngày nào?"), CONTEXT, LIMITS
+    )
+    assert (reply.kind, reply.draft, reply.text) == (
+        ReplyKind.QUESTION,
+        None,
+        "Hạn là ngày nào?",
+    )
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        pytest.param("not json", id="not-json"),
+        pytest.param(answer(reply="   "), id="empty-reply"),
+        pytest.param(answer(kind="question"), id="question-with-milestones"),
+        pytest.param(
+            answer(
+                [
+                    {
+                        "title": "M",
+                        "deadline": None,
+                        "tasks": [
+                            {
+                                "title": "A",
+                                "domain_id": str(UUID(int=99)),
+                                "estimated_minutes": 60,
+                                "reason": "r",
+                            }
+                        ],
+                    }
+                ]
+            ),
+            id="unknown-domain",
+        ),
+        pytest.param(
+            answer(
+                [
+                    {
+                        "title": "M",
+                        "deadline": "2026-10-01",
+                        "tasks": [
+                            {
+                                "title": "A",
+                                "domain_id": str(UUID(int=1)),
+                                "estimated_minutes": 60,
+                                "reason": "r",
+                            }
+                        ],
+                    }
+                ]
+            ),
+            id="past-deadline",
+        ),
+        pytest.param(
+            answer(
+                [
+                    {
+                        "title": "M",
+                        "deadline": None,
+                        "tasks": [
+                            {
+                                "title": "Viết API",
+                                "domain_id": str(UUID(int=2)),
+                                "estimated_minutes": 60,
+                                "reason": "r",
+                            }
+                        ],
+                    }
+                ]
+            ),
+            id="only-duplicates",
+        ),
+    ],
+)
+def test_bad_answers_are_rejected(text):
+    with pytest.raises(BadAnswerError):
+        check_answer(text, CONTEXT, LIMITS)
+
+
+def test_no_deadline_anywhere_is_rejected_with_ask_the_user():
+    context = DraftContext(CONTEXT.domains, None, TODAY, ())
+    with pytest.raises(BadAnswerError, match="ask the user"):
+        check_answer(answer(), context, LIMITS)
+
+
+def test_warnings_follow_the_answer_language():
+    reply = check_answer(answer(language="en"), CONTEXT, LIMITS)
+    assert reply.language is Language.EN
+    assert reply.draft.warnings == ('Removed "viết api": the project already has it.',)
+
+
+# --- T12: the call with retries (LLM part) ---
+
+
+class Clock:
+    def __init__(self, step: float) -> None:
+        self.now = 0.0
+        self.step = step
+
+    def __call__(self) -> float:
+        self.now += self.step
+        return self.now
+
+
+def writer(llm, budget=40.0, step=0.1, max_retries=1) -> ProjectChatWriter:
+    return ProjectChatWriter(
+        llm,
+        limits=LIMITS,
+        max_retries=max_retries,
+        input_price_per_1m=0.1,
+        output_price_per_1m=0.4,
+        retry_budget_seconds=budget,
+        clock=Clock(step),
+    )
+
+
+def write(w: ProjectChatWriter, context=CONTEXT):
+    return asyncio.run(w.write(PROJECT, DOMAINS, [], "Brief", context))
+
+
+def test_t12_bad_once_then_good():
+    llm = FakeLLMClient("not json", answer())
+
+    result = write(writer(llm))
+
+    assert result.reply.draft is not None
+    assert [c.succeeded for c in result.calls] == [False, True]  # 2 log rows
+    # The retry tells the AI why the first answer was rejected (#30).
+    assert llm.prompts[1].endswith(
+        "Your previous answer was rejected: not the expected JSON. "
+        "Answer again and follow every rule above."
+    )
+
+
+def test_t12_missing_deadline_retry_asks_to_ask_the_user():
+    context = DraftContext(CONTEXT.domains, None, TODAY, ())
+    question = answer([], kind="question", reply="Hạn là ngày nào?")
+    llm = FakeLLMClient(answer(), question)
+
+    result = write(writer(llm), context)
+
+    assert result.reply.kind is ReplyKind.QUESTION
+    assert "ask the user for a deadline" in llm.prompts[1]
+
+
+def test_t12_bad_twice_gives_no_reply():
+    llm = FakeLLMClient("bad", "still bad")
+    result = write(writer(llm))
+    assert result.reply is None  # → 502, nothing charged
+    assert [c.succeeded for c in result.calls] == [False, False]
+
+
+def test_t12_no_retry_over_the_time_budget():
+    llm = FakeLLMClient("bad", answer())
+    result = write(writer(llm, budget=40.0, step=41.0))  # first try took 41 s
+    assert result.reply is None
+    assert len(llm.prompts) == 1
+
+
+def test_failed_call_then_good():
+    llm = FakeLLMClient(LLMError("timeout", model="m"), answer())
+    result = write(writer(llm))
+    assert result.reply is not None
+    assert len(result.calls) == 2
+
+
+def test_schema_sent_has_the_domain_enum():
+    llm = FakeLLMClient(answer())
+    write(writer(llm))
+    domain = llm.schemas[0]["$defs"]["ProjectTaskItem"]["properties"]["domain_id"]
+    assert domain["enum"] == [str(d.domain_id) for d in DOMAINS]

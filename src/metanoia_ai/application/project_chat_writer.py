@@ -1,4 +1,4 @@
-"""FR-08b-1: the project chat prompt and the answer shape (schema sent to Gemini).
+"""FR-08b-1: the project chat prompt, the answer shape, and the call with retries.
 
 User data goes into the prompt as JSON blocks the prompt calls "data, not
 instructions" (like FR-08a). Masking happens before: this module only formats.
@@ -6,22 +6,32 @@ instructions" (like FR-08a). Masking happens before: this module only formats.
 
 import copy
 import json
-from collections.abc import Sequence
+import time
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from string import Template
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, StrictInt, field_validator
+from pydantic import BaseModel, StrictInt, ValidationError, field_validator
 
+from metanoia_ai.application.llm_chat import CheckedLLMCaller
+from metanoia_ai.application.ports.llm_client import LLMClient
+from metanoia_ai.application.reason_writer import BadAnswerError, LLMCall
 from metanoia_ai.domain.models import Language
 from metanoia_ai.domain.project_breakdown import (
     MAX_TASK_TITLE_CHARS,
     DraftMilestone,
+    MilestoneInput,
+    ProjectDraft,
     ProjectLimits,
+    TaskInput,
+    check_project_reply,
+    drop_duplicates,
+    resolve_deadlines,
 )
-from metanoia_ai.domain.task_breakdown import ReplyKind
+from metanoia_ai.domain.task_breakdown import BadDraftError, ReplyKind
 from metanoia_ai.prompts import load_prompt
 
 PROMPT_VERSION = "project_breakdown_v1"
@@ -166,3 +176,130 @@ def build_prompt(
 
 def load_template() -> Template:
     return Template(load_prompt(PROMPT_VERSION))
+
+
+# --- checking the answer and calling the LLM (#14-#17, #24, #30) ---
+
+
+@dataclass(frozen=True)
+class DraftContext:
+    """What an AI draft is checked against."""
+
+    domains: Mapping[UUID, str]  # active domains: id → name
+    project_deadline: date | None
+    today: date  # in the user's time zone
+    existing_titles: tuple[str, ...]  # every task title of the project, masked
+
+
+@dataclass(frozen=True)
+class ProjectReply:
+    """A checked AI answer."""
+
+    kind: ReplyKind
+    language: Language
+    text: str
+    draft: ProjectDraft | None  # None for a question; deadlines filled, no duplicates
+
+
+@dataclass(frozen=True)
+class ProjectChatResult:
+    reply: ProjectReply | None  # None: every try failed (→ 502)
+    calls: tuple[LLMCall, ...]  # one AIUsageLog row each
+
+
+def to_inputs(answer: ProjectAnswer) -> list[MilestoneInput]:
+    return [
+        MilestoneInput(
+            title=m.title,
+            deadline=m.deadline,
+            tasks=[
+                TaskInput(t.title, t.domain_id, t.estimated_minutes, t.reason)
+                for t in m.tasks
+            ],
+        )
+        for m in answer.milestones
+    ]
+
+
+def check_answer(
+    text: str, context: DraftContext, limits: ProjectLimits
+) -> ProjectReply:
+    """Parse the LLM text and apply #14-#17. Any problem → BadAnswerError."""
+    try:
+        answer = ProjectAnswer.model_validate_json(text)
+    except ValidationError as error:
+        raise BadAnswerError("not the expected JSON") from error
+    reply = answer.reply.strip()
+    if not reply:
+        raise BadAnswerError("empty reply")
+    try:
+        draft = check_project_reply(
+            answer.kind, to_inputs(answer), answer.reminders, context.domains, limits
+        )
+        if draft is not None:
+            draft = resolve_deadlines(
+                draft, context.project_deadline, context.today, answer.language
+            )
+            draft = drop_duplicates(draft, context.existing_titles, answer.language)
+    except BadDraftError as error:
+        raise BadAnswerError(str(error)) from error
+    return ProjectReply(answer.kind, answer.language, reply, draft)
+
+
+def retry_hint(reason: str) -> str:
+    """Added to the prompt after a rejected answer (#15, #30). `reason` has no user text."""
+    return (
+        f"Your previous answer was rejected: {reason}. "
+        "Answer again and follow every rule above."
+    )
+
+
+class ProjectChatWriter:
+    """One checked LLM call per user message, retried within a time budget (#24)."""
+
+    def __init__(
+        self,
+        llm: LLMClient,
+        *,
+        limits: ProjectLimits,
+        max_retries: int,
+        input_price_per_1m: float,
+        output_price_per_1m: float,
+        retry_budget_seconds: float,
+        clock: Callable[[], float] = time.perf_counter,
+    ) -> None:
+        self.limits = limits
+        self.caller = CheckedLLMCaller(
+            llm,
+            max_retries=max_retries,
+            input_price_per_1m=input_price_per_1m,
+            output_price_per_1m=output_price_per_1m,
+            retry_budget_seconds=retry_budget_seconds,
+            clock=clock,
+        )
+        self.template = load_template()
+
+    async def write(
+        self,
+        project: PromptProject,
+        domains: Sequence[PromptDomain],
+        history: Sequence[ProjectChatLine],
+        message: str,
+        context: DraftContext,
+    ) -> ProjectChatResult:
+        prompt = build_prompt(
+            self.template,
+            project,
+            domains,
+            history,
+            message,
+            self.limits,
+            context.today,
+        )
+        result = await self.caller.call(
+            prompt,
+            answer_schema([d.domain_id for d in domains]),
+            lambda text: check_answer(text, context, self.limits),
+            retry_hint,
+        )
+        return ProjectChatResult(reply=result.value, calls=result.calls)

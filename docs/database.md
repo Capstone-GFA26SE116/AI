@@ -139,6 +139,8 @@ Ký hiệu: **AI ghi** = AI service được INSERT/UPDATE · **Chỉ đọc** =
 - Có `EndedAt` thì bắt buộc `StopReason` ∈ {`Completed`, `Interrupted`, `Blocked`, `Other`}.
 - `RemainingMinutes` trống hoặc > 0 (Hiếu thêm 2026-10-07; Backend ghi ở FR-16).
 - `Note` text trống được (ghi chú của phiên; FR-19 đưa vào text memory sau khi che thông tin).
+- Cột khác: `ScheduleSlotId?`, `FocusTrackId?` (AI không dùng). Index: `TaskId`, `StartedAt`, `ScheduleSlotId`.
+- 2026-10-16: 7 dòng, **đều của user test** (`@example.invalid`, sót từ các lần chạy thử) → chưa có phiên thật.
 
 ### `Domain`
 - `Name` varchar(50) NOT NULL · `IsActive` bool NOT NULL, mặc định true. Dùng chung, **không có** `UserId`.
@@ -148,9 +150,19 @@ Ký hiệu: **AI ghi** = AI service được INSERT/UPDATE · **Chỉ đọc** =
 - `UserId` NOT NULL · `Name` NOT NULL · `ContactEmail`, `Phone`, `Notes`: **không đọc**.
 - `Project.ClientId` trống được (project không có khách).
 
-### `UserCircadianProfile` (FR-10, FR-18)
-- `HourOfDay` 0–23, unique (`UserId`, `HourOfDay`) → mỗi giờ 1 dòng · `Score` trong [0, 1], mặc định 0.5.
-- `Source` ∈ {`Onboarding`, `Learned`}. FR-10 đọc mọi dòng, không lọc theo `Source`.
+### `UserCircadianProfile` (FR-10, FR-18) ⚠️
+Đọc DB 2026-10-16 (chỉ đọc, FR-18 bước 0).
+- `Id` uuid · `UserId` uuid NOT NULL (FK → `User`, `ON DELETE RESTRICT`) · `HourOfDay` **smallint** 0–23 ·
+  `Score` **numeric(4,3)** NOT NULL trong [0, 1], mặc định 0.500 · `Source` varchar NOT NULL ∈ {`Onboarding`, `Learned`},
+  mặc định `Onboarding` · `UpdatedAt` timestamptz NOT NULL, mặc định now() (không có trigger → ai ghi phải tự đặt).
+- Unique `UQ_UserCircadianProfile_User_Hour` (`UserId`, `HourOfDay`) → mỗi giờ 1 dòng.
+- **Không có** cột `PriorScore` (FR-18 #3).
+- FR-10 đọc mọi dòng, không lọc theo `Source`.
+- Dữ liệu 2026-10-16: 132 dòng, 9 user, tất cả `Source = Onboarding`, chưa dòng nào `Learned`.
+  - 5 user thật có đủ 24 dòng, `UpdatedAt` ≈ `User.CreatedAt` → **Backend đã tự ghi lúc tạo user** ⚠️.
+    4 user toàn 0.500; 1 user có mẫu 0.2 (0–7h, 18–23h) / 0.8 (9–10h, 14–15h) / 0.5 (còn lại) → có vẻ Backend đã ghi điểm onboarding.
+  - 4 user test (`@example.invalid`) có 3 dòng (14h 0.9, 15h 0.8, 16h 0.7): sót lại từ `scripts/try_schedule.py` (FR-10).
+  - 8/17 user chưa có dòng nào.
 
 ### `GoogleCalendarEvent` (FR-09, FR-10)
 - Giờ bận đã đồng bộ từ Google. Bỏ qua dòng có `IsCreatedByMetanoia = true` (đã có trong `ScheduleSlot`).
@@ -173,3 +185,5 @@ Ký hiệu: **AI ghi** = AI service được INSERT/UPDATE · **Chỉ đọc** =
 
 ### `SubscriptionPlan`
 - `Price` bigint ≥ 0 (Free = 0) · `AiCallLimit` ≥ 0, trống = không giới hạn · `Name` unique.
+- Tên gói **tiếng Việt** (2026-10-16): `Miễn phí` (0) · `test` (2.000) · `Tiêu chuẩn` (79.000) · `Cao cấp` (149.000).
+  **Không có** gói tên `Premium` → gói cao nhất là `Cao cấp`.

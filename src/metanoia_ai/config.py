@@ -2,9 +2,10 @@
 
 from dataclasses import dataclass
 from functools import lru_cache
+from typing import Annotated
 
-from pydantic import Field, SecretStr, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from metanoia_ai.domain.kbias import (
     DEFAULT_ALPHA,
@@ -107,6 +108,36 @@ class Settings(BaseSettings):
     # No retry once this much time has passed since the first try (#24).
     chat_project_retry_budget_seconds: float = Field(default=40, gt=0)
     chat_project_max_retries: int = Field(default=1, ge=0, le=2)  # #29
+
+    # Productive hours (FR-18). Scores fit UserCircadianProfile.Score: [0, 1].
+    onboarding_selected_score: float = Field(default=0.8, ge=0, le=1)
+    onboarding_unselected_score: float = Field(default=0.3, ge=0, le=1)
+    # How many sessions the onboarding answer is worth in the learned score.
+    productive_prior_weight: float = Field(default=5, gt=0)
+    # A session stopped for "Other" counts as good only if at least this long.
+    productive_min_session_minutes: int = Field(default=25, gt=0)
+    productive_hours_window_days: int = Field(default=90, gt=0)
+    # Plan names (SubscriptionPlan.Name) that learn from timer data (#16).
+    # In .env: comma-separated, e.g. "Cao cấp,Doanh nghiệp".
+    productive_learning_plans: Annotated[tuple[str, ...], NoDecode] = ("Cao cấp",)
+
+    @field_validator("productive_learning_plans", mode="before")
+    @classmethod
+    def split_plan_names(cls, value: object) -> object:
+        if isinstance(value, str):
+            value = tuple(name.strip() for name in value.split(","))
+        if isinstance(value, tuple | list) and not all(value):
+            raise ValueError("PRODUCTIVE_LEARNING_PLANS has an empty name")
+        return value
+
+    @model_validator(mode="after")
+    def check_onboarding_scores(self) -> "Settings":
+        # A chosen block must rank above the others (AC2).
+        if self.onboarding_selected_score <= self.onboarding_unselected_score:
+            raise ValueError(
+                "ONBOARDING_SELECTED_SCORE must be > ONBOARDING_UNSELECTED_SCORE"
+            )
+        return self
 
     @model_validator(mode="after")
     def check_breakdown_ranges(self) -> "Settings":

@@ -1,8 +1,10 @@
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import pytest
 
+from metanoia_ai.domain.models import EstimateSource
 from metanoia_ai.domain.similar_tasks import (
     MatchSource,
     PastTask,
@@ -16,6 +18,7 @@ from metanoia_ai.domain.similar_tasks import (
 )
 
 VECTOR, TEXT = MatchSource.VECTOR, MatchSource.TEXT
+AI = EstimateSource.AI
 OCT_10 = datetime(2026, 10, 10, 10, 0, tzinfo=UTC)
 
 
@@ -209,3 +212,32 @@ def test_t9_no_done_task_gives_no_average():
 
 def test_summary_of_no_results():
     assert summarize_similar([]) == SimilarSummary(0, 0, None)
+
+
+# --- FR-17b T4: AI-estimated tasks have no ratio ---
+
+
+def test_fr17b_t4_ai_estimate_has_no_ratio_and_is_not_averaged():
+    ai_task = replace(past(1, estimated=60, actual=180), estimate_source=AI)
+    results = [
+        result(ai_task),  # 3.0, but the AI's number: left out
+        result(past(2, estimated=60, actual=90)),  # 1.5
+        result(past(3, estimated=50, actual=60)),  # 1.2
+    ]
+
+    assert results[0].ratio is None
+    assert results[1].ratio == 1.5
+    assert summarize_similar(results) == SimilarSummary(
+        count=3, done_count=3, average_ratio=1.35
+    )
+
+
+def test_fr17b_only_ai_estimates_gives_no_average():
+    results = [result(replace(past(1), estimate_source=AI))]
+    assert summarize_similar(results) == SimilarSummary(
+        count=1, done_count=1, average_ratio=None
+    )
+
+
+def test_past_task_is_the_users_estimate_by_default():
+    assert past(1).estimate_source is EstimateSource.USER

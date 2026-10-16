@@ -69,7 +69,7 @@ Test cũ (FR-08a, FR-09, FR-10, FR-17, FR-19) phải pass nguyên vẹn. Memory 
 ## 4. Các bước code
 *(Mỗi bước = 1 việc nhỏ + test của nó. Claude Code DỪNG sau mỗi bước.)*
 - [x] **0.** Branch từ `main` mới nhất. **Chỉ đọc** DB: cột `Task.AiEstimatedMinutes` đúng kiểu / CHECK, đang dùng thế nào. Cập nhật `docs/database.md`.
-- [ ] **1.** Domain: `EstimateSource`, `estimate_source`, `SkipReason.AI_ESTIMATE`, FR-09 `ratio` / `summarize_similar` — test T4, T6.
+- [x] **1.** Domain: `EstimateSource`, `estimate_source`, `SkipReason.AI_ESTIMATE`, FR-09 `ratio` / `summarize_similar` — test T4, T6.
 - [ ] **2.** FR-17: use case + repository đọc cột — test T1–T3.
 - [ ] **3.** FR-09: repository + API thêm `estimate_source` — test T5.
 - [ ] **4.** Cập nhật `CLAUDE.md` §5 (Learning: thêm "skip khi ước lượng do AI đặt"), `docs/open-questions.md` (⚠️ #2, #3). Wrap-up: `uv run pytest -q`, `uv run ruff check .`, `uv run ruff format --check .`, tick AC, hỏi trước khi push / mở PR.

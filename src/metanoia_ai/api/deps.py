@@ -26,9 +26,13 @@ from metanoia_ai.application.use_cases.embed_pending_memories import (
     EmbedPendingMemories,
 )
 from metanoia_ai.application.use_cases.find_similar_tasks import FindSimilarTasks
+from metanoia_ai.application.use_cases.get_productive_hours import GetProductiveHours
 from metanoia_ai.application.use_cases.get_project_chat import GetProjectChat
 from metanoia_ai.application.use_cases.get_task_chat import GetTaskChat
 from metanoia_ai.application.use_cases.propose_schedule import ProposeSchedule
+from metanoia_ai.application.use_cases.recompute_productive_hours import (
+    RecomputeProductiveHours,
+)
 from metanoia_ai.application.use_cases.record_task_completion import (
     RecordTaskCompletion,
 )
@@ -39,6 +43,7 @@ from metanoia_ai.application.use_cases.send_project_chat_message import (
 from metanoia_ai.application.use_cases.send_task_chat_message import (
     SendTaskChatMessage,
 )
+from metanoia_ai.application.use_cases.set_onboarding_hours import SetOnboardingHours
 from metanoia_ai.application.use_cases.start_project_chat import (
     ListProjectChats,
     StartProjectChat,
@@ -49,6 +54,9 @@ from metanoia_ai.domain.task_breakdown import DraftLimits
 from metanoia_ai.infrastructure.db.chat_repository import SqlChatRepository
 from metanoia_ai.infrastructure.db.learning_repository import SqlLearningRepository
 from metanoia_ai.infrastructure.db.memory_repository import SqlMemoryRepository
+from metanoia_ai.infrastructure.db.productive_hours_repository import (
+    SqlProductiveHoursRepository,
+)
 from metanoia_ai.infrastructure.db.project_chat_repository import (
     SqlProjectChatRepository,
 )
@@ -401,4 +409,46 @@ def get_apply_project_breakdown(
         SqlProjectChatRepository(session),
         project_limits(settings, manual=True),
         now=lambda: datetime.now(UTC),
+    )
+
+
+# --- productive hours (FR-18) ---
+
+
+def get_recompute_productive_hours(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> RecomputeProductiveHours:
+    return RecomputeProductiveHours(
+        SqlProductiveHoursRepository(session),
+        prior_weight=Decimal(str(settings.productive_prior_weight)),
+        min_session_minutes=settings.productive_min_session_minutes,
+        window_days=settings.productive_hours_window_days,
+        learning_plans=settings.productive_learning_plans,
+        now=lambda: datetime.now(UTC),
+    )
+
+
+def get_set_onboarding_hours(
+    recompute: Annotated[
+        RecomputeProductiveHours, Depends(get_recompute_productive_hours)
+    ],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> SetOnboardingHours:
+    return SetOnboardingHours(
+        recompute,
+        selected_score=Decimal(str(settings.onboarding_selected_score)),
+        unselected_score=Decimal(str(settings.onboarding_unselected_score)),
+        top_count=settings.schedule_top_productive_hours,
+    )
+
+
+def get_get_productive_hours(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> GetProductiveHours:
+    # Same count as FR-10, so top_hours = the hours the schedule prefers (AC6).
+    return GetProductiveHours(
+        SqlProductiveHoursRepository(session),
+        top_count=settings.schedule_top_productive_hours,
     )

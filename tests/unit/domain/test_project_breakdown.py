@@ -1,18 +1,27 @@
+from dataclasses import replace
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
 import pytest
 
-from metanoia_ai.domain.models import Language
+from metanoia_ai.domain.models import EstimateSource, Language, estimate_source
 from metanoia_ai.domain.project_breakdown import (
+    DomainNumbers,
+    DroppedTask,
+    DuplicateOf,
     MilestoneInput,
     ProjectDraft,
     ProjectLimits,
     TaskInput,
+    ai_minutes_of,
     check_project_draft,
     check_project_reply,
+    drop_duplicates,
+    project_numbers,
     resolve_deadlines,
+    split_duplicates,
     task_deadline,
 )
 from metanoia_ai.domain.task_breakdown import BadDraftError, ReplyKind
@@ -240,3 +249,162 @@ def test_t9_manual_minutes(minutes, ok):
     else:
         with pytest.raises(BadDraftError):
             check(milestones, MANUAL_LIMITS, assign_keys=False)
+
+
+# --- T6: duplicates ---
+
+
+def draft_of(*milestones: MilestoneInput) -> ProjectDraft:
+    return ProjectDraft(check(list(milestones)))
+
+
+def titles(draft: ProjectDraft) -> list[list[str]]:
+    return [[t.title for t in m.tasks] for m in draft.milestones]
+
+
+def test_t6_task_like_an_existing_one_is_dropped():
+    draft = draft_of(milestone(tasks=[task(" viết   api "), task("Viết test")]))
+
+    result = drop_duplicates(draft, ["Viết API"])
+
+    assert titles(result) == [["Viết test"]]
+    assert result.warnings == ('Đã bỏ "viết api": dự án đã có việc này.',)
+
+
+def test_t6_second_same_title_in_the_draft_is_dropped():
+    draft = draft_of(
+        milestone("M1", [task("Header")]),
+        milestone("M2", [task("HEADER"), task("Footer")]),
+    )
+
+    kept, dropped = split_duplicates(draft, [])
+
+    assert titles(kept) == [["Header"], ["Footer"]]
+    assert dropped == [DroppedTask("HEADER", DuplicateOf.IN_DRAFT)]
+
+
+def test_t6_milestone_left_empty_is_dropped_and_keys_stay():
+    draft = draft_of(milestone("M1", [task("Logo")]), milestone("M2", [task("Form")]))
+
+    result = drop_duplicates(draft, ["logo"])
+
+    assert [m.key for m in result.milestones] == ["m2"]
+    assert result.milestones[0].tasks[0].key == "m2-t1"
+
+
+def test_t6_nothing_left_is_an_error():
+    draft = draft_of(milestone(tasks=[task("Logo")]))
+    with pytest.raises(BadDraftError):
+        drop_duplicates(draft, ["LOGO"])
+
+
+def test_split_may_leave_nothing_without_error():
+    # Used at Apply (#22): everything skipped is reported, not an error here.
+    kept, dropped = split_duplicates(
+        draft_of(milestone(tasks=[task("Logo")])), ["Logo"]
+    )
+    assert kept.milestones == ()
+    assert dropped == [DroppedTask("Logo", DuplicateOf.EXISTING_TASK)]
+
+
+def test_duplicate_warning_in_english():
+    draft = draft_of(milestone(tasks=[task("Logo"), task("Form")]))
+    result = drop_duplicates(draft, ["logo"], Language.EN)
+    assert result.warnings == ('Removed "Logo": the project already has it.',)
+
+
+def test_duplicate_reason_values_are_stable_api_strings():
+    assert [r.value for r in DuplicateOf] == ["existing_task", "in_draft"]
+
+
+# --- T7: numbers ---
+
+
+def numbers_draft(deadline=None) -> ProjectDraft:
+    return draft_of(
+        milestone(
+            "M1",
+            [task("A", DESIGN, 240), task("B", CODING, 300), task("C", DESIGN, 360)],
+            deadline=deadline,
+        )
+    )
+
+
+def numbers(draft, project_deadline, k=None, free=False, language=Language.VI):
+    return project_numbers(
+        draft,
+        k if k is not None else {CODING: Decimal("1.5")},
+        Decimal("1.3"),
+        project_deadline,
+        TODAY,
+        free,
+        6,
+        language,
+    )
+
+
+def test_t7_numbers_per_domain_with_initial_k_for_a_new_domain():
+    result = numbers(numbers_draft(), date(2026, 10, 25))
+
+    # Design has no K yet → 1.3: 600 → 780. Coding K 1.5: 300 → 450.
+    assert result.by_domain == (
+        DomainNumbers("Design", 600, 780),
+        DomainNumbers("Coding", 300, 450),
+    )
+    assert (result.total_estimated_minutes, result.total_adjusted_minutes) == (
+        900,
+        1230,
+    )
+    assert result.days_left == 9
+    assert result.adjusted_is_hint is False
+    assert result.warning is None  # 1230' < 9 days × 6 h
+
+
+def test_t7_overload_warning():
+    result = numbers(numbers_draft(), date(2026, 10, 18))  # 2 days × 6 h = 720'
+    assert result.days_left == 2
+    assert result.warning == (
+        "Khoảng 20.5 giờ làm việc, nhưng chỉ còn 2 ngày "
+        "(~12 giờ nếu làm 6 giờ/ngày). Cân nhắc dời hạn hoặc bớt việc."
+    )
+
+
+def test_overload_warning_in_english():
+    result = numbers(numbers_draft(), date(2026, 10, 18), language=Language.EN)
+    assert result.warning.startswith("About 20.5 hours of work, but only 2 days left")
+
+
+def test_t7_free_plan_numbers_are_a_hint():
+    assert numbers(numbers_draft(), date(2026, 10, 25), free=True).adjusted_is_hint
+
+
+def test_days_left_counts_to_the_latest_milestone_without_project_deadline():
+    draft = draft_of(
+        milestone("M1", [task("A")], deadline=date(2026, 10, 20)),
+        milestone("M2", [task("B")], deadline=date(2026, 10, 30)),
+    )
+    assert numbers(draft, None).days_left == 14
+
+
+def test_no_deadline_at_all_gives_no_days_and_no_warning():
+    result = numbers(numbers_draft(), None)
+    assert (result.days_left, result.warning) == (None, None)
+
+
+# --- T8: the AI's number for each task ---
+
+
+def test_t8_ai_minutes_and_estimate_source():
+    saved = draft_of(milestone(tasks=[task("A", minutes=240), task("B", minutes=60)]))
+    kept_task, changed_task = saved.tasks
+    changed_task = replace(changed_task, estimated_minutes=90)
+
+    cases = [
+        (kept_task.key, 240, 240, EstimateSource.AI),  # AI number kept
+        (changed_task.key, 90, 60, EstimateSource.USER),  # user changed it
+        (None, 120, None, EstimateSource.USER),  # new task, no key
+        ("m9-t9", 120, None, EstimateSource.USER),  # key not in the draft
+    ]
+    for key, minutes, ai_minutes, source in cases:
+        assert ai_minutes_of(key, saved) == ai_minutes
+        assert estimate_source(minutes, ai_minutes_of(key, saved)) is source

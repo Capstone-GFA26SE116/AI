@@ -1,12 +1,15 @@
 """FR-08b-1: a client brief → milestones + Flexible tasks. Pure rules, no I/O."""
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, datetime, time
+from decimal import Decimal
+from enum import StrEnum
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from metanoia_ai.domain.models import Language
+from metanoia_ai.domain.schedule_duration import scaled_minutes
 from metanoia_ai.domain.task_breakdown import BadDraftError, ReplyKind, clean_title
 
 MAX_TASK_TITLE_CHARS = 200  # Task.Title is varchar(200)
@@ -219,3 +222,199 @@ def resolve_deadlines(
 def task_deadline(day: date, zone: ZoneInfo) -> datetime:
     """Task.Deadline for a milestone due on `day`: 23:59 that day, user's time (#16)."""
     return datetime.combine(day, END_OF_DAY, tzinfo=zone)
+
+
+# --- duplicates (#9, #17, #22) ---
+
+
+class DuplicateOf(StrEnum):
+    """Why a task was dropped. Values are sent in the API (`skipped[].reason`)."""
+
+    EXISTING_TASK = "existing_task"  # the project already has a task with this title
+    IN_DRAFT = "in_draft"  # an earlier task of the same draft has this title
+
+
+@dataclass(frozen=True)
+class DroppedTask:
+    title: str
+    reason: DuplicateOf
+
+
+def same_title_key(title: str) -> str:
+    """Compare titles ignoring case and extra spaces: " Viết  API" = "viết api"."""
+    return clean_title(title).casefold()
+
+
+def split_duplicates(
+    draft: ProjectDraft, existing_titles: Iterable[str]
+) -> tuple[ProjectDraft, list[DroppedTask]]:
+    """Drop tasks whose title is already used; drop milestones left empty.
+
+    Keys stay as they were (gaps are fine). The draft may end up with no milestone.
+    """
+    seen_existing = {same_title_key(t) for t in existing_titles}
+    seen_draft: set[str] = set()
+    dropped: list[DroppedTask] = []
+    milestones: list[DraftMilestone] = []
+    for milestone in draft.milestones:
+        kept: list[DraftTask] = []
+        for task in milestone.tasks:
+            key = same_title_key(task.title)
+            if key in seen_existing:
+                dropped.append(DroppedTask(task.title, DuplicateOf.EXISTING_TASK))
+            elif key in seen_draft:
+                dropped.append(DroppedTask(task.title, DuplicateOf.IN_DRAFT))
+            else:
+                seen_draft.add(key)
+                kept.append(task)
+        if kept:
+            milestones.append(replace(milestone, tasks=tuple(kept)))
+    return replace(draft, milestones=tuple(milestones)), dropped
+
+
+DUPLICATE_WARNINGS = {
+    (Language.VI, DuplicateOf.EXISTING_TASK): 'Đã bỏ "{title}": dự án đã có việc này.',
+    (
+        Language.VI,
+        DuplicateOf.IN_DRAFT,
+    ): 'Đã bỏ "{title}": trùng một việc khác trong bản nháp.',
+    (
+        Language.EN,
+        DuplicateOf.EXISTING_TASK,
+    ): 'Removed "{title}": the project already has it.',
+    (
+        Language.EN,
+        DuplicateOf.IN_DRAFT,
+    ): 'Removed "{title}": same as another task in the draft.',
+}
+
+
+def drop_duplicates(
+    draft: ProjectDraft,
+    existing_titles: Iterable[str],
+    language: Language = Language.VI,
+) -> ProjectDraft:
+    """An AI draft without duplicates, one warning per dropped task (#17).
+
+    Nothing left → BadDraftError (the answer is retried).
+    """
+    kept, dropped = split_duplicates(draft, existing_titles)
+    if not kept.milestones:
+        raise BadDraftError("every task repeats an existing task")
+    warnings = [
+        DUPLICATE_WARNINGS[(language, d.reason)].format(title=d.title) for d in dropped
+    ]
+    return replace(kept, warnings=(*kept.warnings, *warnings))
+
+
+# --- numbers (#8, #20) ---
+
+
+@dataclass(frozen=True)
+class DomainNumbers:
+    domain: str
+    estimated_minutes: int  # sum of the AI's minutes
+    adjusted_minutes: int  # ceil(sum × the user's K for this domain)
+
+
+@dataclass(frozen=True)
+class ProjectNumbers:
+    """The numbers shown next to a draft. Computed by code, never by the LLM (AC6)."""
+
+    by_domain: tuple[DomainNumbers, ...]  # in the order the domains first appear
+    total_estimated_minutes: int
+    total_adjusted_minutes: int
+    days_left: int | None  # None: no deadline to count to
+    adjusted_is_hint: bool  # Free plan: the adjusted time is only a hint
+    warning: str | None  # set when the work does not fit in the days left
+
+
+OVERLOAD_WARNINGS = {
+    Language.VI: (
+        "Khoảng {hours} giờ làm việc, nhưng chỉ còn {days} ngày "
+        "(~{capacity} giờ nếu làm {daily} giờ/ngày). Cân nhắc dời hạn hoặc bớt việc."
+    ),
+    Language.EN: (
+        "About {hours} hours of work, but only {days} days left "
+        "(~{capacity} hours at {daily} hours a day). Consider a later deadline or less work."
+    ),
+}
+
+
+def _hours(minutes: float) -> str:
+    """90 → "1.5", 120 → "2"."""
+    return f"{minutes / 60:.1f}".removesuffix(".0")
+
+
+def project_numbers(
+    draft: ProjectDraft,
+    k_by_domain: Mapping[UUID, Decimal],
+    initial_k: Decimal,
+    project_deadline: date | None,
+    today: date,
+    is_free_plan: bool,
+    daily_work_hours: float,
+    language: Language = Language.VI,
+) -> ProjectNumbers:
+    """Totals per domain × that domain's K (initial K when not learned yet).
+
+    days_left counts from today to the project deadline, or to the latest milestone
+    when the project has none. The warning compares the adjusted total with
+    days_left × daily_work_hours (rough: FR-10 places the real slots).
+    """
+    estimated: dict[UUID, int] = {}
+    names: dict[UUID, str] = {}
+    for task in draft.tasks:
+        estimated[task.domain_id] = (
+            estimated.get(task.domain_id, 0) + task.estimated_minutes
+        )
+        names[task.domain_id] = task.domain_name
+    by_domain = tuple(
+        DomainNumbers(
+            names[domain_id],
+            minutes,
+            scaled_minutes(minutes, k_by_domain.get(domain_id, initial_k)),
+        )
+        for domain_id, minutes in estimated.items()
+    )
+    total_adjusted = sum(d.adjusted_minutes for d in by_domain)
+
+    deadlines = [m.deadline for m in draft.milestones if m.deadline is not None]
+    last_day = project_deadline or (max(deadlines) if deadlines else None)
+    days_left = max(0, (last_day - today).days) if last_day else None
+
+    warning = None
+    if days_left is not None:
+        capacity_minutes = days_left * daily_work_hours * 60
+        if total_adjusted > capacity_minutes:
+            warning = OVERLOAD_WARNINGS[language].format(
+                hours=_hours(total_adjusted),
+                days=days_left,
+                capacity=_hours(capacity_minutes),
+                daily=_hours(daily_work_hours * 60),
+            )
+    return ProjectNumbers(
+        by_domain=by_domain,
+        total_estimated_minutes=sum(d.estimated_minutes for d in by_domain),
+        total_adjusted_minutes=total_adjusted,
+        days_left=days_left,
+        adjusted_is_hint=is_free_plan,
+        warning=warning,
+    )
+
+
+# --- who set the minutes (#11, #21, FR-17b) ---
+
+
+def ai_minutes_of(key: str | None, saved: ProjectDraft) -> int | None:
+    """The AI's minutes for the task with this key in the saved draft.
+
+    Written to Task.AiEstimatedMinutes. None for a task the user added (no key)
+    or a key that is not in the draft: the client cannot invent an AI number.
+    """
+    if key is None:
+        return None
+    for task in saved.tasks:
+        if task.key == key:
+            return task.estimated_minutes
+    return None

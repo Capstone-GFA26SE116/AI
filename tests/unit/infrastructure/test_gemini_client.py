@@ -1,10 +1,11 @@
 """GeminiClient data conversion only. No network: the SDK client is a stand-in."""
 
 import asyncio
+import logging
 from types import SimpleNamespace
 
 import pytest
-from google.genai import types
+from google.genai import errors, types
 from pydantic import SecretStr
 
 from metanoia_ai.application.ports.llm_client import LLMError
@@ -12,6 +13,7 @@ from metanoia_ai.application.reason_writer import ReasonsAnswer
 from metanoia_ai.infrastructure.llm.gemini_client import (
     GeminiClient,
     build_config,
+    describe_error,
     to_response,
 )
 
@@ -120,6 +122,43 @@ def test_sdk_error_becomes_llm_error_without_details():
     assert "TimeoutError" in str(error.value)
     assert "fake-gemini-key" not in str(error.value)
     assert error.value.model == "gemini-flash-lite"
+
+
+def google_error(code: int = 400, status: str = "INVALID_ARGUMENT") -> errors.APIError:
+    """What the SDK raises when Google rejects a call; the message echoes the key."""
+    body = {
+        "error": {
+            "code": code,
+            "message": "API key not valid: fake-gemini-key",
+            "status": status,
+        }
+    }
+    return errors.ClientError(code, body)
+
+
+def test_google_error_is_logged_with_code_and_status_only(caplog):
+    sdk = StandInSDK(google_error())
+    client = GeminiClient(FAKE_KEY, "gemini-flash-lite", client=sdk)
+    with caplog.at_level(logging.WARNING), pytest.raises(LLMError) as error:
+        asyncio.run(client.generate_json("p", SCHEMA))
+    assert "ClientError 400 INVALID_ARGUMENT" in caplog.text
+    assert "gemini-flash-lite" in caplog.text
+    assert "ClientError 400 INVALID_ARGUMENT" in str(error.value)
+    for leaked in ("fake-gemini-key", "API key not valid"):
+        assert leaked not in caplog.text
+        assert leaked not in str(error.value)
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (google_error(429, "RESOURCE_EXHAUSTED"), "ClientError 429 RESOURCE_EXHAUSTED"),
+        (TimeoutError("fake-gemini-key"), "TimeoutError"),
+        (google_error(400, "not a status: fake-gemini-key"), "ClientError 400"),
+    ],
+)
+def test_describe_error(error, expected):
+    assert describe_error(error) == expected
 
 
 def test_real_sdk_client_is_built_without_network():

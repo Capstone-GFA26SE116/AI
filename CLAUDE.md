@@ -135,7 +135,7 @@ Full text in `docs/functional-requirements.md`. Status: first line of each `plan
 | FR-09 | Similar past tasks: hybrid search (vector + full-text) + RRF. Free/busy time and workload are already in FR-10 | `plans/FR-09.md` |
 | FR-19 | Long-term memory: embeddings in pgvector, built in the background | `plans/FR-19.md` |
 | FR-12 | Daily "Today" briefing (text only) | — |
-| FR-18 | Productive hours: onboarding answers, then timer data | — |
+| FR-18 | Productive hours: onboarding answers, then timer data | `plans/FR-18.md` |
 
 **Not this repo:** FR-11 schedule approval + writing to Google Calendar (Backend).
 **Deferred:** FR-13 blind test. **Out of scope:** voice, Eisenhower matrix, training our own model.

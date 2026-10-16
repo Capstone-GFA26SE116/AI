@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 from metanoia_ai.application.ports.chat_repository import (
     ChatMessage,
@@ -30,6 +31,9 @@ from metanoia_ai.application.ports.llm_client import LLMError, LLMResponse
 from metanoia_ai.application.ports.memory_repository import (
     PendingMemory,
     TaskForMemory,
+)
+from metanoia_ai.application.ports.productive_hours_repository import (
+    ProductiveProfile,
 )
 from metanoia_ai.application.ports.project_chat_repository import (
     ChatProject,
@@ -54,6 +58,12 @@ from metanoia_ai.application.ports.similar_task_repository import (
     VectorMatch,
 )
 from metanoia_ai.domain.memory_text import MemoryDraft
+from metanoia_ai.domain.productive_hours import (
+    SCORE_STEP,
+    FocusSample,
+    HourScore,
+    OnboardingBlock,
+)
 from metanoia_ai.domain.similar_tasks import WORD, PastTask
 from metanoia_ai.domain.task_breakdown import Subtask
 
@@ -848,3 +858,86 @@ class FakeProjectChatRepository:
         chat.conversation = replace(
             chat.conversation, status=ConversationStatus.APPLIED
         )
+
+
+# --- Productive hours (FR-18) ---
+
+
+@dataclass
+class FakeProductiveUser:
+    """One User row (the parts FR-18 reads) and its Active plan."""
+
+    time_zone: ZoneInfo
+    plan_name: str | None = None
+    blocks: tuple[OnboardingBlock, ...] | None = None
+
+
+class FakeProductiveHoursRepository:
+    """Users, sessions and UserCircadianProfile rows in memory. Rolls back on error.
+
+    get_sessions returns every session of the user, even ones that cannot be
+    learned from (allowed by the port), so use case tests prove the filter.
+    """
+
+    def __init__(self) -> None:
+        self.users: dict[UUID, FakeProductiveUser] = {}
+        self.sessions: dict[UUID, list[FocusSample]] = {}
+        self.hours: dict[UUID, dict[int, HourScore]] = {}  # user -> hour -> row
+        self.session_reads: list[tuple[UUID, datetime]] = []
+        self.saves = 0  # number of save_hours calls
+        self.fail_on_save_hours = False  # simulate a DB error while saving
+
+    # --- test setup ---
+
+    def add_user(
+        self, user_id: UUID, time_zone: str = "Asia/Ho_Chi_Minh", **kwargs: Any
+    ) -> None:
+        self.users[user_id] = FakeProductiveUser(ZoneInfo(time_zone), **kwargs)
+
+    def add_session(self, user_id: UUID, sample: FocusSample) -> None:
+        self.sessions.setdefault(user_id, []).append(sample)
+
+    # --- the port ---
+
+    @asynccontextmanager
+    async def transaction(self) -> AsyncIterator[None]:
+        saved = (copy.deepcopy(self.users), copy.deepcopy(self.hours))
+        try:
+            yield
+        except BaseException:
+            self.users, self.hours = saved
+            raise
+
+    async def get_profile(self, user_id: UUID) -> ProductiveProfile | None:
+        user = self.users.get(user_id)
+        if user is None:
+            return None
+        return ProductiveProfile(
+            time_zone=user.time_zone,
+            blocks=user.blocks,
+            plan_name=user.plan_name,
+            hours=dict(self.hours.get(user_id, {})),
+        )
+
+    async def get_sessions(self, user_id: UUID, since: datetime) -> list[FocusSample]:
+        assert since.tzinfo is not None
+        self.session_reads.append((user_id, since))
+        return list(self.sessions.get(user_id, []))
+
+    async def save_blocks(
+        self, user_id: UUID, blocks: Sequence[OnboardingBlock]
+    ) -> None:
+        self.users[user_id].blocks = tuple(blocks)
+
+    async def save_hours(self, user_id: UUID, hours: Sequence[HourScore]) -> None:
+        if self.fail_on_save_hours:
+            raise RuntimeError("database error while saving hours")
+        assert user_id in self.users, "UserCircadianProfile_UserId_fkey"
+        assert len({h.hour for h in hours}) == len(hours), "one row per hour"
+        for h in hours:
+            assert 0 <= h.hour <= 23, "UserCircadianProfile_HourOfDay_check"
+            for value in (h.score, h.prior):
+                assert 0 <= value <= 1, "UserCircadianProfile_Score_check"
+                assert value == value.quantize(SCORE_STEP), "numeric(4,3)"
+        self.saves += 1
+        self.hours.setdefault(user_id, {}).update({h.hour: h for h in hours})

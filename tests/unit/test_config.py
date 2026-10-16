@@ -51,6 +51,14 @@ PROJECT_CHAT_VARS = [
     "CHAT_PROJECT_RETRY_BUDGET_SECONDS",
     "CHAT_PROJECT_MAX_RETRIES",
 ]
+PRODUCTIVE_VARS = [
+    "ONBOARDING_SELECTED_SCORE",
+    "ONBOARDING_UNSELECTED_SCORE",
+    "PRODUCTIVE_PRIOR_WEIGHT",
+    "PRODUCTIVE_MIN_SESSION_MINUTES",
+    "PRODUCTIVE_HOURS_WINDOW_DAYS",
+    "PRODUCTIVE_LEARNING_PLANS",
+]
 OPTIONAL_VARS = [
     "JWT_LEEWAY_SECONDS",
     "KBIAS_ALPHA",
@@ -70,6 +78,7 @@ OPTIONAL_VARS = [
     *SIMILAR_VARS,
     *CHAT_VARS,
     *PROJECT_CHAT_VARS,
+    *PRODUCTIVE_VARS,
 ]
 EMBEDDING_VARS = {
     "GEMINI_API_KEY": "fake-gemini-key",
@@ -457,5 +466,58 @@ def test_bad_project_chat_values_are_rejected(env, name, value):
 def test_project_ranges_must_make_sense(env, changes):
     for name, value in changes.items():
         env.setenv(name, value)
+    with pytest.raises(ValidationError):
+        load()
+
+
+# --- productive hours (FR-18) ---
+
+
+def test_productive_defaults(env):
+    s = load()
+    assert s.onboarding_selected_score == 0.8
+    assert s.onboarding_unselected_score == 0.3
+    assert s.productive_prior_weight == 5
+    assert s.productive_min_session_minutes == 25
+    assert s.productive_hours_window_days == 90
+    assert s.productive_learning_plans == ("Cao cấp",)
+
+
+def test_productive_values_can_be_changed(env):
+    env.setenv("ONBOARDING_SELECTED_SCORE", "0.9")
+    env.setenv("ONBOARDING_UNSELECTED_SCORE", "0.2")
+    env.setenv("PRODUCTIVE_PRIOR_WEIGHT", "2.5")
+    env.setenv("PRODUCTIVE_MIN_SESSION_MINUTES", "30")
+    env.setenv("PRODUCTIVE_HOURS_WINDOW_DAYS", "60")
+    env.setenv("PRODUCTIVE_LEARNING_PLANS", " Cao cấp , Tiêu chuẩn ")
+    s = load()
+    assert (s.onboarding_selected_score, s.onboarding_unselected_score) == (0.9, 0.2)
+    assert s.productive_prior_weight == 2.5
+    assert s.productive_min_session_minutes == 30
+    assert s.productive_hours_window_days == 60
+    assert s.productive_learning_plans == ("Cao cấp", "Tiêu chuẩn")
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("ONBOARDING_SELECTED_SCORE", "1.1"),
+        ("ONBOARDING_UNSELECTED_SCORE", "-0.1"),
+        ("PRODUCTIVE_PRIOR_WEIGHT", "0"),
+        ("PRODUCTIVE_MIN_SESSION_MINUTES", "0"),
+        ("PRODUCTIVE_HOURS_WINDOW_DAYS", "0"),
+        ("PRODUCTIVE_LEARNING_PLANS", "Cao cấp,,Tiêu chuẩn"),
+    ],
+)
+def test_bad_productive_values_are_rejected(env, name, value):
+    env.setenv(name, value)
+    with pytest.raises(ValidationError):
+        load()
+
+
+@pytest.mark.parametrize(("selected", "unselected"), [("0.3", "0.3"), ("0.2", "0.3")])
+def test_selected_score_must_be_higher(env, selected, unselected):
+    env.setenv("ONBOARDING_SELECTED_SCORE", selected)
+    env.setenv("ONBOARDING_UNSELECTED_SCORE", unselected)
     with pytest.raises(ValidationError):
         load()

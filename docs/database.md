@@ -86,13 +86,31 @@ Ký hiệu: **AI ghi** = AI service được INSERT/UPDATE · **Chỉ đọc** =
 - Unique (`TaskId`, `OrderIndex`) `DEFERRABLE INITIALLY DEFERRED`. FK `TaskId` → `Task`: `ON DELETE CASCADE`.
 - Không có deadline riêng (dùng deadline task cha).
 
+### `Milestone` — AI ghi lúc Apply (FR-08b-1) ⚠️
+Đọc DB 2026-10-16 (chỉ đọc, FR-08b-1 bước 0). Đang có 2 dòng.
+- `Id` uuid · `ProjectId` uuid NOT NULL · `Name` **varchar(150)** NOT NULL (plan gọi là `title`) ·
+  `OrderIndex` int NOT NULL ≥ 1 · `DueDate` **date** trống được (plan gọi là `deadline`) ·
+  `Status` varchar ∈ {`Planned`, `InProgress`, `Delivered`, `InRevision`, `Approved`}, mặc định `Planned` ·
+  `DeliveredAt`, `ApprovedAt` timestamptz trống được · `RevisionCount` int NOT NULL ≥ 0, mặc định 0.
+- AI chỉ ghi `ProjectId`, `Name`, `OrderIndex`, `DueDate`; các cột khác để mặc định.
+- Unique `UQ_Milestone_ProjectId_OrderIndex` (`ProjectId`, `OrderIndex`) `DEFERRABLE INITIALLY DEFERRED`.
+  FK `ProjectId` → `Project`: `ON DELETE CASCADE`. **Không có** `CreatedAt`.
+
+### `Task` — AI ghi lúc Apply (FR-08b-1) ⚠️
+- Chỉ tạo mới task `Flexible`, `ToDo`: `ProjectId`, `MilestoneId`, `DomainId`, `Title`, `Deadline`, `EstimatedMinutes`,
+  `AiEstimatedMinutes`. Không sửa task có sẵn. Cột và CHECK: xem `Task` ở mục chỉ đọc.
+
 ### `UserSubscription.AiCallsUsed` — AI ghi (bộ đếm quota)
 - Chỉ 1 bộ đếm cho mọi loại ⚠️ (luật cần đếm riêng 3 loại). ≥ 0. Xem bảng `UserSubscription` bên dưới.
 
 ## Bảng chỉ đọc
 
-### `Task`
+### `Task` (chỉ đọc, trừ lúc Apply FR-08b-1)
 - **Không có `UserId`** → chủ sở hữu qua `Project.UserId` (luôn JOIN `Project`).
+- Cột (đọc DB 2026-10-16): `Id` · `ProjectId` NOT NULL · `MilestoneId` trống được (FK → `Milestone`, `ON DELETE SET NULL`) ·
+  `DomainId` NOT NULL (FK `ON DELETE RESTRICT`) · `Title` **varchar(200)** NOT NULL · `Description` · `TaskType` mặc định `Flexible` ·
+  `Status` mặc định `ToDo` · `CreatedAt` mặc định now() · `CompletedAt` · `Deadline` · `EstimatedMinutes` · `AiEstimatedMinutes` ·
+  `FixedStart`, `FixedEnd`. **Không có** `OrderIndex`, `Priority`.
 - `TaskType` ∈ {`Flexible`, `Fixed`} · `Status` ∈ {`ToDo`, `Scheduled`, `InProgress`, `Done`, `Skipped`}.
 - Task `Flexible` **bắt buộc** có `Deadline` và `EstimatedMinutes` > 0.
 - Task `Fixed` **bắt buộc** có `FixedStart`, `FixedEnd` (timestamptz, `FixedEnd > FixedStart`).
@@ -105,6 +123,10 @@ Ký hiệu: **AI ghi** = AI service được INSERT/UPDATE · **Chỉ đọc** =
 
 ### `Project`
 - `UserId` — dùng để lọc mọi truy vấn theo chủ sở hữu.
+- `Name` varchar(150) NOT NULL · `Description` text trống được · `ClientId` trống được ·
+  `StartDate`, `Deadline` **date** trống được (`Deadline >= StartDate`) · `IsDefault` bool · `CreatedAt`.
+- `Status` ∈ {`Active`, `OnHold`, `Completed`, `Archived`}, mặc định `Active`. FR-08b-1 #28: `Completed` / `Archived` = đã đóng.
+  2026-10-16: 20 project, đều `Active`.
 
 
 ### `FocusSession`
@@ -115,7 +137,8 @@ Ký hiệu: **AI ghi** = AI service được INSERT/UPDATE · **Chỉ đọc** =
 - `Note` text trống được (ghi chú của phiên; FR-19 đưa vào text memory sau khi che thông tin).
 
 ### `Domain`
-- `Name` varchar NOT NULL · `IsActive`.
+- `Name` varchar(50) NOT NULL · `IsActive` bool NOT NULL, mặc định true. Dùng chung, **không có** `UserId`.
+  2026-10-16: 4 domain, cả 4 `IsActive`.
 
 ### `Client` (chỉ đọc `Name`, để che tên trong text FR-19)
 - `UserId` NOT NULL · `Name` NOT NULL · `ContactEmail`, `Phone`, `Notes`: **không đọc**.

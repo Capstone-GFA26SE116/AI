@@ -86,6 +86,10 @@ Ký hiệu: **AI ghi** = AI service được INSERT/UPDATE · **Chỉ đọc** =
 - Unique (`TaskId`, `OrderIndex`) `DEFERRABLE INITIALLY DEFERRED`. FK `TaskId` → `Task`: `ON DELETE CASCADE`.
 - Không có deadline riêng (dùng deadline task cha).
 
+### `ChatConversation`, `ChatMessage` — cũng dùng cho chat dự án (FR-08b-1)
+- `Scope = 'Project'`, `TaskId` trống. Mọi truy vấn chat dự án lọc `Scope = 'Project'`.
+- `ProposalJson` của bản nháp dự án có `"version": "project_v1"` (bản nháp FR-08a: `version` = 1).
+
 ### `Milestone` — AI ghi lúc Apply (FR-08b-1) ⚠️
 Đọc DB 2026-10-16 (chỉ đọc, FR-08b-1 bước 0). Đang có 2 dòng.
 - `Id` uuid · `ProjectId` uuid NOT NULL · `Name` **varchar(150)** NOT NULL (plan gọi là `title`) ·

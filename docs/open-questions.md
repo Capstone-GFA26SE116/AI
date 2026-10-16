@@ -45,6 +45,14 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 | (Frontend) `reminders` của bản nháp = việc giờ cố định (họp, demo…): hiện nút "Tạo task cố định", AI không tạo | FR-08b-1 #13b | Không ghi DB |
 | (Frontend) Hiện `estimated_minutes` là "AI đoán — sửa nếu bạn nghĩ khác"; khi Apply gửi lại `key` của task để giữ số AI | FR-08b-1 #11, #21 | Task không có `key` = user tự thêm |
 | (Frontend) FR-08b-1 không streaming: hiện "AI đang lên kế hoạch…", mục tiêu p95 < 20 s. Lệch NFR-07 (chữ đầu < 3 s) | FR-08b-1 #23, AC9 | Streaming để FR-08b-2 hoặc bỏ; ghi chú NFR-07 |
+| Cập nhật script/entity cho 2 cột mới: `UserCircadianProfile.PriorScore` numeric(4,3) NOT NULL DEFAULT 0.500 (+ CHECK [0, 1]) và `User.ProductiveBlocks` text[] NULL (+ CHECK `CK_User_ProductiveBlocks`) | FR-18 #3, #19 | 2026-10-16: AI đã chạy `ALTER` trên DB (Backend đồng ý, Hiếu cho phép) và chép `PriorScore = Score` cho 132 dòng cũ. Migration của Backend phải giữ 2 cột này |
+| Đồng ý AI ghi `UserCircadianProfile` (`Score`, `PriorScore`, `Source`, `UpdatedAt`) và `User.ProductiveBlocks`. Backend **ngừng tự chấm điểm** giờ hiệu quả lúc onboarding | FR-18 #1 | Tạo sẵn 24 dòng 0.5 lúc đăng ký vẫn được (#18), AI ghi đè sau |
+| Gọi `POST /learning/productive-hours/recompute` ngay sau mỗi lần Stop timer: **không chờ** kết quả, bỏ qua lỗi | FR-18 #5 | Tính lại từ đầu nên gọi trùng / gọi lỗi tự đúng lại ở lần Stop sau. Trả `{"hours_updated", "sessions_used"}`; 404 = user không còn |
+| (Tùy chọn) Gọi recompute khi user đổi gói | FR-18 #17 | Nếu không: hạ gói → điểm đã học còn tới lần Stop kế tiếp |
+| Chuyển tiếp cho Frontend: `PUT /profile/productive-hours/onboarding` (`{"blocks": [...]}`) và `GET /profile/productive-hours` | FR-18 #1 | 422 = `blocks` sai (1–5 mục trong `morning`/`midday`/`afternoon`/`evening`/`late_night`, không trùng); 404 = user không còn. Không tốn lượt AI |
+| Quan hệ `User.OnboardingCompleted` (cột của Backend) với `ProductiveBlocks`? AI chỉ dùng `ProductiveBlocks` cho `onboarded` | FR-18 #19 | 2026-10-16: 1 user thật có `OnboardingCompleted = true` nhưng `ProductiveBlocks` trống → hiện `onboarded: false` tới khi trả lời lại |
+| Chỉ gói `Cao cấp` học từ timer (`PRODUCTIVE_LEARNING_PLANS`). Đổi tên gói trong `SubscriptionPlan` → báo AI sửa config | FR-18 #16 | Gói khác: điểm = điểm onboarding |
+| (Frontend) Màn onboarding / Cài đặt: chọn 1–5 khung, nhãn tiếng Việt ("Sáng 6h–11h", "Trưa 11h–14h", "Chiều 14h–18h", "Tối 18h–22h", "Khuya 22h–2h"); không hiện chữ `Score`, `Source` | FR-18 §1 | Nên ẩn `top_hours` khi `onboarded: false` (24 giờ bằng điểm → `[0, 1, 2]`) |
 
 ## Chờ quyết định (team / giảng viên)
 
@@ -57,6 +65,7 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 | Quota đọc tài liệu theo từng gói | #13 | — |
 | Chọn model LLM (FR-08) | — | FR-10 dùng Gemini, tên model trong config |
 | Database doc lệch với schema Supabase | #19 | Tin DB thật |
+| Dọn dữ liệu test còn sót: 4 user `@example.invalid` (từ `scripts/try_schedule.py`) còn dòng `UserCircadianProfile` (14–16h) và 7 `FocusSession` | FR-18 bước 0 | Chưa xóa (không phải dòng FR-18 tạo). Sẽ xóa hết trước khi công bố |
 | Ngưỡng `SIMILAR_MIN_SIMILARITY` (FR-09 #4) | FR-09 | 0.5. Chạy thật 2026-10-15: task không liên quan vẫn qua ngưỡng (Gemini cho câu khác nghĩa ~0.69) → cân nhắc ~0.75 khi có thêm dữ liệu |
 
 ## Cập nhật Google Doc

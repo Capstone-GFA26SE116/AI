@@ -33,6 +33,24 @@ CHAT_VARS = [
     "BREAKDOWN_WARNING_RATIO",
     "CHAT_LLM_TIMEOUT_SECONDS",
 ]
+PROJECT_CHAT_VARS = [
+    "CHAT_PROJECT_MESSAGE_MAX_CHARS",
+    "CHAT_PROJECT_HISTORY_LIMIT",
+    "CHAT_PROJECT_PROMPT_MAX_CHARS",
+    "CHAT_PROJECT_EXISTING_TITLES_LIMIT",
+    "PROJECT_MAX_MILESTONES",
+    "PROJECT_MAX_TASKS_PER_MILESTONE",
+    "PROJECT_MAX_TASKS",
+    "PROJECT_TASK_MIN_MINUTES",
+    "PROJECT_TASK_MAX_MINUTES",
+    "PROJECT_MANUAL_MIN_MINUTES",
+    "PROJECT_MANUAL_MAX_MINUTES",
+    "PROJECT_MILESTONE_TITLE_MAX_CHARS",
+    "CHAT_DAILY_WORK_HOURS",
+    "CHAT_PROJECT_LLM_TIMEOUT_SECONDS",
+    "CHAT_PROJECT_RETRY_BUDGET_SECONDS",
+    "CHAT_PROJECT_MAX_RETRIES",
+]
 OPTIONAL_VARS = [
     "JWT_LEEWAY_SECONDS",
     "KBIAS_ALPHA",
@@ -51,6 +69,7 @@ OPTIONAL_VARS = [
     "MEMORY_TEXT_MAX_CHARS",
     *SIMILAR_VARS,
     *CHAT_VARS,
+    *PROJECT_CHAT_VARS,
 ]
 EMBEDDING_VARS = {
     "GEMINI_API_KEY": "fake-gemini-key",
@@ -354,6 +373,88 @@ def test_bad_chat_values_are_rejected(env, name, value):
     ],
 )
 def test_breakdown_ranges_must_make_sense(env, changes):
+    for name, value in changes.items():
+        env.setenv(name, value)
+    with pytest.raises(ValidationError):
+        load()
+
+
+# --- project chat (FR-08b-1) ---
+
+
+def test_project_chat_defaults(env):
+    s = load()
+    assert s.chat_project_message_max_chars == 8000
+    assert s.chat_project_history_limit == 10
+    assert s.chat_project_prompt_max_chars == 30000
+    assert s.chat_project_existing_titles_limit == 50
+    assert (s.project_max_milestones, s.project_max_tasks_per_milestone) == (8, 15)
+    assert s.project_max_tasks == 40
+    assert (s.project_task_min_minutes, s.project_task_max_minutes) == (15, 480)
+    assert (s.project_manual_min_minutes, s.project_manual_max_minutes) == (5, 960)
+    assert s.project_milestone_title_max_chars == 150
+    assert s.chat_daily_work_hours == 6
+    assert s.chat_project_llm_timeout_seconds == 30
+    assert s.chat_project_retry_budget_seconds == 40
+    assert s.chat_project_max_retries == 1
+
+
+def test_project_chat_values_can_be_changed(env):
+    env.setenv("PROJECT_MAX_TASKS", "30")
+    env.setenv("CHAT_DAILY_WORK_HOURS", "7.5")
+    env.setenv("CHAT_PROJECT_MAX_RETRIES", "0")
+    s = load()
+    assert s.project_max_tasks == 30
+    assert s.chat_daily_work_hours == 7.5
+    assert s.chat_project_max_retries == 0
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("CHAT_PROJECT_MESSAGE_MAX_CHARS", "0"),
+        ("CHAT_PROJECT_HISTORY_LIMIT", "0"),
+        ("CHAT_PROJECT_EXISTING_TITLES_LIMIT", "-1"),
+        ("PROJECT_MAX_MILESTONES", "0"),
+        ("PROJECT_TASK_MIN_MINUTES", "0"),
+        ("PROJECT_MILESTONE_TITLE_MAX_CHARS", "151"),  # longer than the DB column
+        ("CHAT_DAILY_WORK_HOURS", "0"),
+        ("CHAT_DAILY_WORK_HOURS", "25"),
+        ("CHAT_PROJECT_LLM_TIMEOUT_SECONDS", "9"),
+        ("CHAT_PROJECT_RETRY_BUDGET_SECONDS", "0"),
+        ("CHAT_PROJECT_MAX_RETRIES", "3"),
+        ("CHAT_PROJECT_MAX_RETRIES", "-1"),
+    ],
+)
+def test_bad_project_chat_values_are_rejected(env, name, value):
+    env.setenv(name, value)
+    with pytest.raises(ValidationError):
+        load()
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        pytest.param(
+            {"PROJECT_MAX_TASKS_PER_MILESTONE": "41"}, id="per-milestone-over-total"
+        ),
+        pytest.param({"PROJECT_TASK_MIN_MINUTES": "481"}, id="ai-min-over-ai-max"),
+        pytest.param(
+            {
+                "PROJECT_MANUAL_MIN_MINUTES": "961",
+                "PROJECT_TASK_MIN_MINUTES": "961",
+                "PROJECT_TASK_MAX_MINUTES": "961",
+            },
+            id="manual-min-over-manual-max",
+        ),
+        pytest.param({"PROJECT_MANUAL_MIN_MINUTES": "20"}, id="manual-min-over-ai-min"),
+        pytest.param({"PROJECT_TASK_MAX_MINUTES": "1000"}, id="ai-max-over-manual-max"),
+        pytest.param(
+            {"CHAT_PROJECT_MESSAGE_MAX_CHARS": "40000"}, id="message-over-prompt"
+        ),
+    ],
+)
+def test_project_ranges_must_make_sense(env, changes):
     for name, value in changes.items():
         env.setenv(name, value)
     with pytest.raises(ValidationError):

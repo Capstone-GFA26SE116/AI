@@ -41,6 +41,23 @@ class SkipReason(StrEnum):
     SESSION_RUNNING = "session_running"
     UNCONFIRMED_TIME = "unconfirmed_time"
     OUTLIER = "outlier"
+    AI_ESTIMATE = "ai_estimate"  # the estimate was set by the AI (FR-17b)
+
+
+class EstimateSource(StrEnum):
+    """Who set a task's estimate. Only the user's own estimates teach K_bias."""
+
+    USER = "user"
+    AI = "ai"
+
+
+def estimate_source(
+    estimated_minutes: int | None, ai_estimated_minutes: int | None
+) -> EstimateSource:
+    """AI when the task still has the AI's number; a changed number is the user's."""
+    if ai_estimated_minutes is not None and estimated_minutes == ai_estimated_minutes:
+        return EstimateSource.AI
+    return EstimateSource.USER
 
 
 @dataclass(frozen=True)

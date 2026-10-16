@@ -83,6 +83,31 @@ class Settings(BaseSettings):
     # Wait per Gemini call in the chat (#31). FR-10 keeps 10 s; Gemini needs ≥ 10.
     chat_llm_timeout_seconds: float = Field(default=20, ge=10)
 
+    # Project chat (FR-08b-1): a client brief → milestones + Flexible tasks.
+    chat_project_message_max_chars: int = Field(default=8000, gt=0)
+    # The first message (the brief) is always sent, plus this many recent ones (#18).
+    chat_project_history_limit: int = Field(default=10, ge=1)
+    chat_project_prompt_max_chars: int = Field(default=30000, gt=0)
+    # Newest existing milestone/task titles sent so the AI does not repeat them.
+    chat_project_existing_titles_limit: int = Field(default=50, ge=0)
+    project_max_milestones: int = Field(default=8, ge=1)
+    project_max_tasks_per_milestone: int = Field(default=15, ge=1)
+    project_max_tasks: int = Field(default=40, ge=1)
+    # Minutes per task: AI drafts 15-480; manual edits at Apply 5-960 (#21).
+    project_task_min_minutes: int = Field(default=15, ge=1)
+    project_task_max_minutes: int = Field(default=480, ge=1)
+    project_manual_min_minutes: int = Field(default=5, ge=1)
+    project_manual_max_minutes: int = Field(default=960, ge=1)
+    # Milestone.Name is varchar(150) in the DB (#27).
+    project_milestone_title_max_chars: int = Field(default=150, ge=1, le=150)
+    # Work hours per day for the rough overload warning (#20).
+    chat_daily_work_hours: float = Field(default=6, gt=0, le=24)
+    # Output can be up to 40 tasks, so it waits longer than the task chat (#23).
+    chat_project_llm_timeout_seconds: float = Field(default=30, ge=10)
+    # No retry once this much time has passed since the first try (#24).
+    chat_project_retry_budget_seconds: float = Field(default=40, gt=0)
+    chat_project_max_retries: int = Field(default=1, ge=0, le=2)  # #29
+
     @model_validator(mode="after")
     def check_breakdown_ranges(self) -> "Settings":
         if self.breakdown_min_subtasks > self.breakdown_max_subtasks:
@@ -91,6 +116,26 @@ class Settings(BaseSettings):
             raise ValueError("BREAKDOWN_MIN_MINUTES > BREAKDOWN_MAX_MINUTES")
         if self.breakdown_max_minutes > self.breakdown_manual_max_minutes:
             raise ValueError("BREAKDOWN_MAX_MINUTES > BREAKDOWN_MANUAL_MAX_MINUTES")
+        return self
+
+    @model_validator(mode="after")
+    def check_project_ranges(self) -> "Settings":
+        if self.project_max_tasks_per_milestone > self.project_max_tasks:
+            raise ValueError("PROJECT_MAX_TASKS_PER_MILESTONE > PROJECT_MAX_TASKS")
+        if self.project_task_min_minutes > self.project_task_max_minutes:
+            raise ValueError("PROJECT_TASK_MIN_MINUTES > PROJECT_TASK_MAX_MINUTES")
+        if self.project_manual_min_minutes > self.project_manual_max_minutes:
+            raise ValueError("PROJECT_MANUAL_MIN_MINUTES > PROJECT_MANUAL_MAX_MINUTES")
+        # Whatever the AI may propose, the user may keep at Apply.
+        if self.project_manual_min_minutes > self.project_task_min_minutes:
+            raise ValueError("PROJECT_MANUAL_MIN_MINUTES > PROJECT_TASK_MIN_MINUTES")
+        if self.project_task_max_minutes > self.project_manual_max_minutes:
+            raise ValueError("PROJECT_TASK_MAX_MINUTES > PROJECT_MANUAL_MAX_MINUTES")
+        # The brief alone must fit in the prompt.
+        if self.chat_project_message_max_chars > self.chat_project_prompt_max_chars:
+            raise ValueError(
+                "CHAT_PROJECT_MESSAGE_MAX_CHARS > CHAT_PROJECT_PROMPT_MAX_CHARS"
+            )
         return self
 
     def embedding_config(self) -> "EmbeddingConfig":

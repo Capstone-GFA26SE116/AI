@@ -21,6 +21,7 @@ from metanoia_ai.application.chat_writer import (
     ChatWriter,
     SimilarLine,
 )
+from metanoia_ai.application.llm_chat import ChatQuota
 from metanoia_ai.application.ports.chat_repository import (
     ChatMessage,
     ChatRepository,
@@ -29,18 +30,12 @@ from metanoia_ai.application.ports.chat_repository import (
     SavedDraft,
 )
 from metanoia_ai.application.ports.quota_repository import (
-    AIFeature,
     QuotaRepository,
     Subscription,
-    UsageLogEntry,
 )
 from metanoia_ai.application.reason_writer import LLMCall
 from metanoia_ai.application.use_cases.find_similar_tasks import SimilarTasksResult
-from metanoia_ai.application.use_cases.propose_schedule import (
-    DAY,
-    NoSubscriptionError,
-    QuotaExceededError,
-)
+from metanoia_ai.application.use_cases.propose_schedule import QuotaExceededError
 from metanoia_ai.application.use_cases.record_task_completion import (
     TaskNotFoundError,
 )
@@ -134,6 +129,7 @@ class SendTaskChatMessage:
         self.warning_ratio = warning_ratio
         self.quota_daily_max = quota_daily_max
         self.now = now
+        self.chat_quota = ChatQuota(quota_repo, daily_max=quota_daily_max, now=now)
 
     async def execute(self, user_id: UUID, task_id: UUID, message: str) -> ChatTurn:
         text = message.strip()
@@ -194,16 +190,7 @@ class SendTaskChatMessage:
             raise QuotaExceededError("plan limit reached") from None
 
     async def _check_quota(self, user_id: UUID) -> Subscription:
-        now = self.now()
-        subscription = await self.quota.get_subscription(user_id, now)
-        if subscription is None:
-            raise NoSubscriptionError(str(user_id))
-        if not subscription.has_calls_left:
-            raise QuotaExceededError("plan limit reached")
-        used_today = await self.quota.count_charged_calls(user_id, now - DAY)
-        if used_today >= self.quota_daily_max:
-            raise QuotaExceededError("daily limit reached")
-        return subscription
+        return await self.chat_quota.check(user_id)
 
     async def _similar(self, user_id: UUID, task_id: UUID) -> SimilarTasksResult | None:
         """FR-09 results; any error → None, the chat goes on (plan #23)."""
@@ -315,17 +302,4 @@ class SendTaskChatMessage:
         self, subscription: Subscription, calls: Sequence[LLMCall], charged: bool
     ) -> None:
         """One AIUsageLog row per LLM call; only the good call is charged."""
-        for call in calls:
-            await self.quota.log_usage(
-                UsageLogEntry(
-                    subscription_id=subscription.subscription_id,
-                    feature=AIFeature.CHAT,
-                    model=call.model,
-                    input_tokens=call.input_tokens,
-                    output_tokens=call.output_tokens,
-                    cost=call.cost,
-                    latency_ms=call.latency_ms,
-                    succeeded=call.succeeded,
-                    quota_charged=charged and call.succeeded,
-                )
-            )
+        await self.chat_quota.log(subscription, calls, charged)

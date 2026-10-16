@@ -31,6 +31,16 @@ from metanoia_ai.application.ports.memory_repository import (
     PendingMemory,
     TaskForMemory,
 )
+from metanoia_ai.application.ports.project_chat_repository import (
+    ChatProject,
+    ConversationStatus,
+    ExistingWork,
+    NewMilestone,
+    NewTask,
+    ProjectChatMessage,
+    ProjectConversation,
+    SavedProjectDraft,
+)
 from metanoia_ai.application.ports.quota_repository import (
     Subscription,
     UsageLogEntry,
@@ -609,3 +619,232 @@ class FakeChatRepository:
             for m in c.messages
         ]
         c.status = "Applied"
+
+
+# --- Project chat (FR-08b-1) ---
+
+
+@dataclass
+class FakeProjectChat:
+    """One ChatConversation row (Scope Project) with its messages."""
+
+    owner_id: UUID
+    conversation: ProjectConversation
+    messages: list[ProjectChatMessage] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class FakeMilestoneRow:
+    milestone_id: UUID
+    project_id: UUID
+    milestone: NewMilestone
+
+
+@dataclass(frozen=True)
+class FakeTaskRow:
+    task_id: UUID
+    project_id: UUID
+    task: NewTask
+
+
+class FakeProjectChatRepository:
+    """Projects, project chats, milestones and tasks in memory.
+
+    Rolls back like a transaction. Task chats (FR-08a) live in FakeChatRepository:
+    `task_chat_ids` stands for them, so they are never found here.
+    """
+
+    def __init__(self, now: datetime) -> None:
+        self.now = now  # first row time; each new row is 1 s later
+        self.projects: dict[UUID, tuple[UUID, ChatProject]] = {}  # id -> (owner, p)
+        self.domains: dict[UUID, tuple[str, bool]] = {}  # id -> (name, is_active)
+        self.k_bias: dict[tuple[UUID, UUID], Decimal] = {}  # (user, domain) -> K
+        self.chats: dict[UUID, FakeProjectChat] = {}
+        self.task_chat_ids: set[UUID] = set()  # FR-08a chats: Scope Task
+        # Rows the Backend made before (titles only): project id -> titles, oldest first
+        self.old_milestones: dict[UUID, list[tuple[int, str]]] = {}  # (order, name)
+        self.old_tasks: dict[UUID, list[str]] = {}
+        self.new_milestones: list[FakeMilestoneRow] = []
+        self.new_tasks: list[FakeTaskRow] = []
+        self.locked: list[UUID] = []  # project / chat ids locked
+        self.clock_ticks = 0
+
+    # --- test setup ---
+
+    def add_project(self, owner_id: UUID, project: ChatProject) -> None:
+        self.projects[project.project_id] = (owner_id, project)
+
+    def add_domain(self, domain_id: UUID, name: str, is_active: bool = True) -> None:
+        self.domains[domain_id] = (name, is_active)
+
+    def add_old_task(self, project_id: UUID, title: str) -> None:
+        self.old_tasks.setdefault(project_id, []).append(title)
+
+    def add_old_milestone(self, project_id: UUID, order_index: int, title: str) -> None:
+        self.old_milestones.setdefault(project_id, []).append((order_index, title))
+
+    def _tick(self) -> datetime:
+        self.clock_ticks += 1
+        return self.now + timedelta(seconds=self.clock_ticks)
+
+    def _owns_project(self, user_id: UUID, project_id: UUID) -> bool:
+        row = self.projects.get(project_id)
+        return row is not None and row[0] == user_id
+
+    def _own_chat(self, user_id: UUID, conversation_id: UUID) -> FakeProjectChat | None:
+        if conversation_id in self.task_chat_ids:
+            return None
+        chat = self.chats.get(conversation_id)
+        return chat if chat is not None and chat.owner_id == user_id else None
+
+    # --- the port ---
+
+    @asynccontextmanager
+    async def transaction(self) -> AsyncIterator[None]:
+        saved = (
+            copy.deepcopy(self.chats),
+            list(self.new_milestones),
+            list(self.new_tasks),
+        )
+        try:
+            yield
+        except BaseException:
+            self.chats, self.new_milestones, self.new_tasks = saved
+            raise
+
+    async def get_project(
+        self, user_id: UUID, project_id: UUID, lock: bool = False
+    ) -> ChatProject | None:
+        if not self._owns_project(user_id, project_id):
+            return None
+        if lock:
+            self.locked.append(project_id)
+        return self.projects[project_id][1]
+
+    async def get_conversation(
+        self, user_id: UUID, conversation_id: UUID, lock: bool = False
+    ) -> ProjectConversation | None:
+        chat = self._own_chat(user_id, conversation_id)
+        if chat is None:
+            return None
+        if lock:
+            self.locked.append(conversation_id)
+        return chat.conversation
+
+    async def list_conversations(
+        self, user_id: UUID, project_id: UUID
+    ) -> list[ProjectConversation]:
+        found = [
+            c.conversation
+            for c in self.chats.values()
+            if c.owner_id == user_id and c.conversation.project_id == project_id
+        ]
+        return sorted(found, key=lambda c: c.created_at, reverse=True)
+
+    async def create_conversation(
+        self, user_id: UUID, project_id: UUID, title: str
+    ) -> ProjectConversation:
+        assert self._owns_project(user_id, project_id), "chat for another user"
+        assert len(title) <= 200, "ChatConversation.Title is varchar(200)"
+        conversation = ProjectConversation(
+            uuid4(), project_id, title, ConversationStatus.OPEN, self._tick()
+        )
+        self.chats[conversation.conversation_id] = FakeProjectChat(
+            user_id, conversation
+        )
+        return conversation
+
+    async def list_messages(
+        self, user_id: UUID, conversation_id: UUID
+    ) -> list[ProjectChatMessage]:
+        chat = self._own_chat(user_id, conversation_id)
+        return list(chat.messages) if chat else []
+
+    async def latest_draft(
+        self, user_id: UUID, conversation_id: UUID
+    ) -> ProjectChatMessage | None:
+        chat = self._own_chat(user_id, conversation_id)
+        drafts = [m for m in (chat.messages if chat else []) if m.draft is not None]
+        return drafts[-1] if drafts else None
+
+    async def add_message(
+        self,
+        user_id: UUID,
+        conversation_id: UUID,
+        role: ChatRole,
+        content: str,
+        draft: SavedProjectDraft | None = None,
+    ) -> ProjectChatMessage:
+        chat = self._own_chat(user_id, conversation_id)
+        assert chat is not None, "message for a chat of another user"
+        if draft is not None and role is not ChatRole.ASSISTANT:
+            raise ValueError("only AI messages have a draft (DB CHECK)")
+        message = ProjectChatMessage(uuid4(), role, content, self._tick(), draft)
+        chat.messages.append(message)
+        return message
+
+    async def active_domains(self) -> dict[UUID, str]:
+        return {d: name for d, (name, active) in self.domains.items() if active}
+
+    async def get_k_biases(self, user_id: UUID) -> dict[UUID, Decimal]:
+        return {d: k for (u, d), k in self.k_bias.items() if u == user_id}
+
+    async def existing_work(self, user_id: UUID, project_id: UUID) -> ExistingWork:
+        assert self._owns_project(user_id, project_id)
+        milestones = [t for _, t in self.old_milestones.get(project_id, [])] + [
+            r.milestone.title for r in self.new_milestones if r.project_id == project_id
+        ]
+        tasks = list(self.old_tasks.get(project_id, [])) + [
+            r.task.title for r in self.new_tasks if r.project_id == project_id
+        ]
+        return ExistingWork(tuple(reversed(milestones)), tuple(reversed(tasks)))
+
+    async def next_milestone_order(self, user_id: UUID, project_id: UUID) -> int:
+        assert self._owns_project(user_id, project_id)
+        orders = [o for o, _ in self.old_milestones.get(project_id, [])] + [
+            r.milestone.order_index
+            for r in self.new_milestones
+            if r.project_id == project_id
+        ]
+        return max(orders, default=0) + 1
+
+    async def add_milestone(
+        self, user_id: UUID, project_id: UUID, milestone: NewMilestone
+    ) -> UUID:
+        assert self._owns_project(user_id, project_id)
+        assert len(milestone.title) <= 150, "Milestone.Name is varchar(150)"
+        orders = [o for o, _ in self.old_milestones.get(project_id, [])] + [
+            r.milestone.order_index
+            for r in self.new_milestones
+            if r.project_id == project_id
+        ]
+        if milestone.order_index in orders:
+            raise ValueError("UQ_Milestone_ProjectId_OrderIndex")
+        row = FakeMilestoneRow(uuid4(), project_id, milestone)
+        self.new_milestones.append(row)
+        return row.milestone_id
+
+    async def add_task(self, user_id: UUID, project_id: UUID, task: NewTask) -> UUID:
+        assert self._owns_project(user_id, project_id)
+        assert any(r.milestone_id == task.milestone_id for r in self.new_milestones)
+        assert task.deadline.tzinfo is not None
+        assert len(task.title) <= 200, "Task.Title is varchar(200)"
+        assert task.domain_id in self.domains
+        row = FakeTaskRow(uuid4(), project_id, task)
+        self.new_tasks.append(row)
+        return row.task_id
+
+    async def mark_applied(
+        self, user_id: UUID, conversation_id: UUID, message_id: UUID
+    ) -> None:
+        chat = self._own_chat(user_id, conversation_id)
+        assert chat is not None
+        if any(m.is_applied for m in chat.messages):
+            raise ValueError("one applied draft per chat (DB unique index)")
+        chat.messages = [
+            replace(m, is_applied=True) if m.message_id == message_id else m
+            for m in chat.messages
+        ]
+        chat.conversation = replace(
+            chat.conversation, status=ConversationStatus.APPLIED
+        )

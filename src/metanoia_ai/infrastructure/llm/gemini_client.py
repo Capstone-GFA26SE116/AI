@@ -1,5 +1,7 @@
 """LLMClient on Google Gemini (google-genai SDK)."""
 
+import logging
+import re
 from typing import Any
 
 from google import genai
@@ -8,9 +10,28 @@ from pydantic import SecretStr
 
 from metanoia_ai.application.ports.llm_client import LLMError, LLMResponse
 
+logger = logging.getLogger(__name__)
+
 # Gemini rejects a request deadline under 10 s (400 INVALID_ARGUMENT).
 MIN_TIMEOUT_SECONDS = 10.0
 DEFAULT_TIMEOUT_SECONDS = MIN_TIMEOUT_SECONDS
+# Google status names look like INVALID_ARGUMENT, PERMISSION_DENIED.
+STATUS_NAME = re.compile(r"^[A-Z_]{1,40}$")
+
+
+def describe_error(error: Exception) -> str:
+    """Error type + HTTP code + Google status, e.g. "ClientError 400 INVALID_ARGUMENT".
+
+    Never the message: provider messages can echo the request or the key.
+    """
+    parts = [type(error).__name__]
+    code = getattr(error, "code", None)
+    if isinstance(code, int):
+        parts.append(str(code))
+    status = getattr(error, "status", None)
+    if isinstance(status, str) and STATUS_NAME.match(status):
+        parts.append(status)
+    return " ".join(parts)
 
 
 def build_config(
@@ -73,8 +94,7 @@ class GeminiClient:
                 config=build_config(response_schema, self.timeout_seconds),
             )
         except Exception as error:
-            # Only the error type: provider messages could echo request details.
-            raise LLMError(
-                f"Gemini call failed: {type(error).__name__}", model=self.model
-            ) from error
+            reason = describe_error(error)
+            logger.warning("Gemini call failed (model %s): %s", self.model, reason)
+            raise LLMError(f"Gemini call failed: {reason}", model=self.model) from error
         return to_response(response, self.model)

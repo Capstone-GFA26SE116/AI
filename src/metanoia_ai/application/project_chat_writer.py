@@ -279,6 +279,19 @@ class ProjectChatWriter:
         )
         self.template = load_template()
 
+    def render(
+        self,
+        project: PromptProject,
+        domains: Sequence[PromptDomain],
+        history: Sequence[ProjectChatLine],
+        message: str,
+        today: date,
+    ) -> str:
+        """The prompt as sent (the caller uses its length to cut history, #18)."""
+        return build_prompt(
+            self.template, project, domains, history, message, self.limits, today
+        )
+
     async def write(
         self,
         project: PromptProject,
@@ -287,15 +300,7 @@ class ProjectChatWriter:
         message: str,
         context: DraftContext,
     ) -> ProjectChatResult:
-        prompt = build_prompt(
-            self.template,
-            project,
-            domains,
-            history,
-            message,
-            self.limits,
-            context.today,
-        )
+        prompt = self.render(project, domains, history, message, context.today)
         result = await self.caller.call(
             prompt,
             answer_schema([d.domain_id for d in domains]),

@@ -1,5 +1,6 @@
 """EmbeddingClient on Google Gemini (google-genai SDK). FR-19."""
 
+import logging
 from typing import Any
 
 from google import genai
@@ -10,7 +11,12 @@ from metanoia_ai.application.ports.embedding_client import (
     EmbeddingError,
     EmbeddingResponse,
 )
-from metanoia_ai.infrastructure.llm.gemini_client import MIN_TIMEOUT_SECONDS
+from metanoia_ai.infrastructure.llm.gemini_client import (
+    MIN_TIMEOUT_SECONDS,
+    describe_error,
+)
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_SECONDS = MIN_TIMEOUT_SECONDS
 
@@ -69,8 +75,9 @@ class GeminiEmbeddingClient:
                 config=build_config(self.dimensions, self.timeout_seconds),
             )
         except Exception as error:
-            # Only the error type: provider messages could echo request details.
+            reason = describe_error(error)
+            logger.warning("Gemini embedding failed (model %s): %s", self.model, reason)
             raise EmbeddingError(
-                f"Gemini embedding failed: {type(error).__name__}", model=self.model
+                f"Gemini embedding failed: {reason}", model=self.model
             ) from error
         return to_response(response, self.model)

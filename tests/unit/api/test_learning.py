@@ -1,5 +1,6 @@
 """The learning endpoint, with fake repositories (no database)."""
 
+from dataclasses import replace
 from uuid import uuid4
 
 import pytest
@@ -18,7 +19,7 @@ from metanoia_ai.application.use_cases.record_task_completion import (
 )
 from metanoia_ai.application.use_cases.save_task_memory import SaveTaskMemory
 from metanoia_ai.config import get_settings
-from metanoia_ai.domain.models import TaskType
+from metanoia_ai.domain.models import EstimateSource, TaskType
 from tests.unit.api.test_auth import USER_ID, make_settings, make_token
 from tests.unit.application.fakes import FakeLearningRepository, FakeMemoryRepository
 from tests.unit.application.test_record_task_completion import make_task, session
@@ -139,6 +140,26 @@ def test_outlier_returns_the_reason(client, repos):
     task = make_task(sessions=[session(400)])
     repos.add(USER_ID, task)
     assert post(client, task.task_id).json()["reason"] == "outlier"
+
+
+def test_fr17b_t5_ai_estimate_returns_the_reason_and_keeps_memory(client, repos):
+    # AC1 + AC3: not learned, but the FR-19 memory is still saved.
+    task = replace(make_task(), estimate_source=EstimateSource.AI)
+    repos.add(USER_ID, task)
+
+    response = post(client, task.task_id)
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "learned": False,
+        "reason": "ai_estimate",
+        "k_old": None,
+        "k_new": None,
+        "sample_index": None,
+        "memory": "queued",
+    }
+    assert repos.learning.logs == {}
+    assert len(repos.embedded) == 1
 
 
 def test_unknown_task_returns_404(client, repos):

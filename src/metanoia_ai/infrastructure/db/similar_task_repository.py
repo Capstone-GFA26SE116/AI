@@ -17,6 +17,7 @@ from metanoia_ai.application.ports.similar_task_repository import (
     QueryTask,
     VectorMatch,
 )
+from metanoia_ai.domain.models import estimate_source
 from metanoia_ai.domain.similar_tasks import WORD, PastTask, SimilarOutcome
 from metanoia_ai.infrastructure.db.learning_repository import TASK_TYPE_FROM_DB
 from metanoia_ai.infrastructure.db.memory_repository import to_pgvector
@@ -48,6 +49,7 @@ ITERATIVE_SCAN = text("SET LOCAL hnsw.iterative_scan = relaxed_order")
 VECTOR_SEARCH = text("""
     SELECT m."TaskId", t."Title", d."Name" AS "DomainName", m."Outcome",
            m."EstimatedMinutes", m."ActualMinutes", t."CompletedAt",
+           t."EstimatedMinutes" AS "TaskEstimatedMinutes", t."AiEstimatedMinutes",
            1 - (m."Embedding" <=> CAST(CAST(:vector AS text) AS vector)) AS "Similarity"
     FROM "TaskExecutionMemory" m
     JOIN "Task" t ON t."Id" = m."TaskId"
@@ -64,6 +66,7 @@ VECTOR_SEARCH = text("""
 TEXT_SEARCH = text("""
     SELECT m."TaskId", t."Title", d."Name" AS "DomainName", m."Outcome",
            m."EstimatedMinutes", m."ActualMinutes", t."CompletedAt",
+           t."EstimatedMinutes" AS "TaskEstimatedMinutes", t."AiEstimatedMinutes",
            ts_rank_cd(to_tsvector('simple', m."Content"),
                       to_tsquery('simple', :terms)) AS "Rank"
     FROM "TaskExecutionMemory" m
@@ -97,6 +100,10 @@ def to_past_task(row: Row) -> PastTask:
         estimated_minutes=row.EstimatedMinutes,
         actual_minutes=row.ActualMinutes,
         finished_at=row.CompletedAt,
+        # Who set the estimate is read from the task itself (FR-17b).
+        estimate_source=estimate_source(
+            row.TaskEstimatedMinutes, row.AiEstimatedMinutes
+        ),
     )
 
 

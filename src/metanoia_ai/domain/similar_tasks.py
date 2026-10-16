@@ -13,6 +13,7 @@ from metanoia_ai.domain.memory_text import (
     PHONE_MASK,
     mask_contact,
 )
+from metanoia_ai.domain.models import EstimateSource
 
 # Gemini Embedding 2 uses prefixes instead of task_type (FR-19 stores "title: … | text: …").
 QUERY_PREFIX = "task: search result | query: "
@@ -49,6 +50,19 @@ class PastTask:
     estimated_minutes: int
     actual_minutes: int
     finished_at: datetime | None  # Task.CompletedAt; may be empty
+    estimate_source: EstimateSource = EstimateSource.USER
+
+    @property
+    def exact_ratio(self) -> float | None:
+        """T_act / T_est, not rounded. None when it says nothing about the user:
+        skipped, no time measured, or the estimate was the AI's (FR-17b)."""
+        if (
+            self.outcome is not SimilarOutcome.DONE
+            or self.actual_minutes <= 0
+            or self.estimate_source is EstimateSource.AI
+        ):
+            return None
+        return self.actual_minutes / self.estimated_minutes
 
 
 @dataclass(frozen=True)
@@ -61,11 +75,9 @@ class SimilarTask:
 
     @property
     def ratio(self) -> float | None:
-        """T_act / T_est, 2 decimals. None for skipped tasks or no time measured."""
-        task = self.task
-        if task.outcome is not SimilarOutcome.DONE or task.actual_minutes <= 0:
-            return None
-        return round(task.actual_minutes / task.estimated_minutes, RATIO_DECIMALS)
+        """T_act / T_est, 2 decimals. None for skipped, unmeasured or AI-estimated tasks."""
+        ratio = self.task.exact_ratio
+        return None if ratio is None else round(ratio, RATIO_DECIMALS)
 
 
 @dataclass(frozen=True)
@@ -132,13 +144,11 @@ def rrf_merge(
 def summarize_similar(results: Sequence[SimilarTask]) -> SimilarSummary:
     """How many results, how many done, and their average T_act / T_est.
 
-    The average uses the exact ratios of done tasks with measured time, then
-    rounds to 2 decimals. None when no result has a ratio.
+    The average uses the exact ratios of done tasks with measured time and the
+    user's own estimate, then rounds to 2 decimals. None when no result has a ratio.
     """
     done = [r.task for r in results if r.task.outcome is SimilarOutcome.DONE]
-    ratios = [
-        t.actual_minutes / t.estimated_minutes for t in done if t.actual_minutes > 0
-    ]
+    ratios = [t.exact_ratio for t in done if t.exact_ratio is not None]
     average = round(sum(ratios) / len(ratios), RATIO_DECIMALS) if ratios else None
     return SimilarSummary(
         count=len(results), done_count=len(done), average_ratio=average

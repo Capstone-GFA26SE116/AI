@@ -13,7 +13,7 @@ from metanoia_ai.application.ports.quota_repository import Subscription
 from metanoia_ai.application.ports.similar_task_repository import QueryTask
 from metanoia_ai.application.use_cases.find_similar_tasks import FindSimilarTasks
 from metanoia_ai.config import get_settings
-from metanoia_ai.domain.models import TaskType
+from metanoia_ai.domain.models import EstimateSource, TaskType
 from metanoia_ai.domain.similar_tasks import PastTask, SimilarOutcome
 from tests.unit.api.test_auth import USER_ID, make_settings, make_token
 from tests.unit.application.fakes import (
@@ -116,6 +116,7 @@ def test_t19_answer_matches_the_plan(client, fakes):
                 "outcome": "done",
                 "estimated_minutes": 120,
                 "actual_minutes": 180,
+                "estimate_source": "user",
                 "ratio": 1.5,
                 "finished_at": "2026-10-10T17:00:00+07:00",  # user's time zone
                 "score": 0.0328,
@@ -139,6 +140,16 @@ def test_skipped_task_without_finish_time(client, fakes):
         None,
         None,
     )
+
+
+def test_fr17b_t5_ai_estimate_has_no_ratio(client, fakes):
+    fakes.add("Landing page AI đoán", estimate_source=EstimateSource.AI)
+
+    body = get(client, fakes.task.task_id).json()
+
+    item = body["items"][0]
+    assert (item["estimate_source"], item["ratio"]) == ("ai", None)
+    assert body["summary"] == {"count": 1, "done_count": 1, "average_ratio": None}
 
 
 def test_limit_is_used(client, fakes):

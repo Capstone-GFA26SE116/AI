@@ -8,6 +8,7 @@ import pytest
 
 from metanoia_ai.domain.models import (
     ActualTimeSource,
+    EstimateSource,
     FocusSessionRecord,
     PlannedSlot,
     ScheduleUnit,
@@ -16,6 +17,7 @@ from metanoia_ai.domain.models import (
     TimeRange,
     WarningType,
     WorkingHours,
+    estimate_source,
 )
 
 SAIGON = ZoneInfo("Asia/Ho_Chi_Minh")
@@ -36,7 +38,28 @@ def test_skip_reason_values_are_stable_api_strings():
         "session_running",
         "unconfirmed_time",
         "outlier",
+        "ai_estimate",
     ]
+
+
+def test_estimate_source_values_are_stable_api_strings():
+    assert [source.value for source in EstimateSource] == ["user", "ai"]
+
+
+# --- FR-17b T6: who set the estimate ---
+
+
+@pytest.mark.parametrize(
+    ("estimated", "ai_estimated", "source"),
+    [
+        pytest.param(60, None, EstimateSource.USER, id="no-ai-number"),
+        pytest.param(240, 240, EstimateSource.AI, id="kept-ai-number"),
+        pytest.param(300, 240, EstimateSource.USER, id="user-changed-it"),
+        pytest.param(None, None, EstimateSource.USER, id="fixed-task"),
+    ],
+)
+def test_fr17b_t6_estimate_source(estimated, ai_estimated, source):
+    assert estimate_source(estimated, ai_estimated) is source
 
 
 def test_session_is_confirmed_by_default():

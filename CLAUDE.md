@@ -98,10 +98,12 @@ domain rules → port → use case (+ fake repo tests) → SQL repository → ro
 
 **Learning (FR-17)**
 - T_est = the user's own `Task.EstimatedMinutes` (never the AI subtask sum).
+  An estimate is the AI's when `EstimatedMinutes = AiEstimatedMinutes` (FR-17b); a changed number is the user's.
 - T_act = sum of finished `FocusSession`s, rounded to minutes. Source recorded:
   `Timer` / `SelfReported` / `AutoTimeout` (weakest source wins).
-- A task is learned **once** (first `Done`). Skip when: Fixed, not done, no time,
-  session still running, unconfirmed time, ratio outside [1/5, 5].
+- A task is learned **once** (first `Done`). Skip when: Fixed, not done, estimate set by the AI,
+  no time, session still running, unconfirmed time, ratio outside [1/5, 5].
+  FR-09 also leaves AI estimates out of the ratio and its average.
 - Every update is logged in `KBiasUpdateLog` so any K can be recomputed.
 
 **Scheduling (FR-10)**
@@ -124,6 +126,7 @@ Full text in `docs/functional-requirements.md`. Status: first line of each `plan
 |---|---|---|
 | — | JWT check (shared by all endpoints) | `plans/auth-jwt.md` |
 | FR-17 | Learn K_bias when a Flexible task is done | `plans/FR-17.md` |
+| FR-17b | Do not learn K_bias from estimates set by the AI | `plans/FR-17b.md` |
 | FR-10 | Schedule proposal (planner + one-line reason per slot) | `plans/FR-10.md` |
 | — | Quota check + `AIUsageLog` (before every LLM call) | — |
 | FR-08a | AI chat, task level: split a big task into subtasks, then Apply | `plans/FR-08a.md` |

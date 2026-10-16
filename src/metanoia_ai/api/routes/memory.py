@@ -18,6 +18,7 @@ from metanoia_ai.application.use_cases.record_task_completion import (
     TaskNotFoundError,
 )
 from metanoia_ai.config import Settings, get_settings
+from metanoia_ai.domain.models import EstimateSource
 from metanoia_ai.domain.similar_tasks import MatchSource, SimilarOutcome
 
 router = APIRouter(prefix="/memory", tags=["memory"])
@@ -30,6 +31,7 @@ class SimilarItemResponse(BaseModel):
     outcome: SimilarOutcome
     estimated_minutes: int
     actual_minutes: int
+    estimate_source: EstimateSource  # "ai": the AI's number, so no ratio (FR-17b)
     ratio: float | None
     finished_at: datetime | None  # ISO 8601 in the user's time zone
     score: float
@@ -62,6 +64,7 @@ def to_response(result: SimilarTasksResult) -> SimilarResponse:
                 outcome=item.task.outcome,
                 estimated_minutes=item.task.estimated_minutes,
                 actual_minutes=item.task.actual_minutes,
+                estimate_source=item.task.estimate_source,
                 ratio=item.ratio,
                 finished_at=item.task.finished_at.astimezone(zone)
                 if item.task.finished_at

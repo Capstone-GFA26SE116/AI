@@ -15,7 +15,7 @@ from metanoia_ai.domain.actual_time import (
     summarize_actual_time,
 )
 from metanoia_ai.domain.kbias import skip_reason, update_k_bias
-from metanoia_ai.domain.models import SkipReason, TaskType
+from metanoia_ai.domain.models import EstimateSource, SkipReason, TaskType
 
 
 class TaskNotFoundError(Exception):
@@ -86,6 +86,9 @@ class RecordTaskCompletion:
             return skipped(SkipReason.FIXED_TASK)
         if not task.is_done:
             return skipped(SkipReason.TASK_NOT_DONE)
+        if task.estimate_source is EstimateSource.AI:
+            # K measures the user's own estimates, not the AI's (FR-17b).
+            return skipped(SkipReason.AI_ESTIMATE)
 
         actual = summarize_actual_time(task.sessions)
         if isinstance(actual, SkipReason):

@@ -8,6 +8,7 @@ from uuid import UUID
 from metanoia_ai.domain.models import (
     ActualTimeSource,
     ConfidenceTier,
+    EstimateSource,
     FocusSessionRecord,
     TaskType,
 )
@@ -23,6 +24,7 @@ class TaskForLearning:
     is_done: bool
     estimated_minutes: int | None  # None for Fixed tasks
     sessions: tuple[FocusSessionRecord, ...]
+    estimate_source: EstimateSource = EstimateSource.USER
 
 
 @dataclass(frozen=True)

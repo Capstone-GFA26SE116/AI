@@ -8,15 +8,14 @@ import json
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from decimal import Decimal
 from string import Template
 
 from pydantic import BaseModel, StrictInt, ValidationError, field_validator
 
-from metanoia_ai.application.ports.llm_client import LLMClient, LLMError
+from metanoia_ai.application.llm_chat import CheckedLLMCaller
+from metanoia_ai.application.ports.llm_client import LLMClient
 from metanoia_ai.application.reason_writer import (
     DEFAULT_RETRY_BUDGET_SECONDS,
-    TOKENS_PER_PRICE_UNIT,
     BadAnswerError,
     LLMCall,
 )
@@ -185,7 +184,8 @@ class ChatWriter:
     """One LLM call per user message, checked; retried like FR-10 (plan #10, #24).
 
     A bad answer or a failed call is retried up to `max_retries` times, but only
-    while less than `retry_budget_seconds` has passed since the first try.
+    while less than `retry_budget_seconds` has passed since the first try
+    (CheckedLLMCaller, shared with the project chat).
     """
 
     def __init__(
@@ -199,68 +199,24 @@ class ChatWriter:
         retry_budget_seconds: float = DEFAULT_RETRY_BUDGET_SECONDS,
         clock: Callable[[], float] = time.perf_counter,
     ) -> None:
-        self.llm = llm
         self.limits = limits
-        self.max_retries = max_retries
-        self.retry_budget = retry_budget_seconds
-        self.input_price = Decimal(str(input_price_per_1m))
-        self.output_price = Decimal(str(output_price_per_1m))
-        self.clock = clock
+        self.caller = CheckedLLMCaller(
+            llm,
+            max_retries=max_retries,
+            input_price_per_1m=input_price_per_1m,
+            output_price_per_1m=output_price_per_1m,
+            retry_budget_seconds=retry_budget_seconds,
+            clock=clock,
+        )
         self.template = load_template()
 
     async def write(
         self, task: BreakdownTask, history: Sequence[ChatLine], message: str
     ) -> ChatResult:
         prompt = build_prompt(self.template, task, history, message, self.limits)
-        schema = BreakdownAnswer.model_json_schema()
-        calls: list[LLMCall] = []
-        first_start: float | None = None
-        for _ in range(1 + self.max_retries):
-            started = self.clock()
-            if first_start is None:
-                first_start = started
-            elif started - first_start >= self.retry_budget:
-                break  # too slow already: give up rather than make the user wait
-            try:
-                response = await self.llm.generate_json(prompt, schema)
-            except LLMError as error:
-                calls.append(
-                    self._call(error.model, error.input_tokens, 0, started, False)
-                )
-                continue
-            try:
-                reply: ChatReply | None = check_answer(response.text, self.limits)
-            except BadAnswerError:
-                reply = None
-            calls.append(
-                self._call(
-                    response.model,
-                    response.input_tokens,
-                    response.output_tokens,
-                    started,
-                    reply is not None,
-                )
-            )
-            if reply is not None:
-                return ChatResult(reply=reply, calls=tuple(calls))
-        return ChatResult(reply=None, calls=tuple(calls))
-
-    def _call(
-        self,
-        model: str,
-        input_tokens: int,
-        output_tokens: int,
-        started: float,
-        succeeded: bool,
-    ) -> LLMCall:
-        cost = (
-            input_tokens * self.input_price + output_tokens * self.output_price
-        ) / TOKENS_PER_PRICE_UNIT
-        return LLMCall(
-            model=model,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            cost=cost,
-            latency_ms=max(0, round((self.clock() - started) * 1000)),
-            succeeded=succeeded,
+        result = await self.caller.call(
+            prompt,
+            BreakdownAnswer.model_json_schema(),
+            lambda text: check_answer(text, self.limits),
         )
+        return ChatResult(reply=result.value, calls=result.calls)

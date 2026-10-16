@@ -2,6 +2,7 @@
   {
     "name": "landing page brief, vi, has deadline → draft",
     "expect": "draft",
+    "language": "vi",
     "today": "2026-10-16",
     "project": {"name": "Landing page cho [client]", "description": "Trang giới thiệu sản phẩm mới", "deadline": "2026-10-30", "existing_milestones": [], "existing_tasks": []},
     "domains": "default",
@@ -11,6 +12,7 @@
   {
     "name": "brief without any deadline → question about the deadline",
     "expect": "question",
+    "language": "vi",
     "today": "2026-10-16",
     "project": {"name": "Website [client]", "deadline": null, "existing_milestones": [], "existing_tasks": []},
     "domains": "default",
@@ -20,6 +22,7 @@
   {
     "name": "answer to the deadline question → draft",
     "expect": "draft",
+    "language": "vi",
     "today": "2026-10-16",
     "project": {"name": "Website [client]", "deadline": null, "existing_milestones": [], "existing_tasks": []},
     "domains": "default",
@@ -32,6 +35,7 @@
   {
     "name": "mobile app brief, en → draft",
     "expect": "draft",
+    "language": "en",
     "today": "2026-10-16",
     "project": {"name": "Habit tracker app", "description": "Flutter app for iOS and Android", "deadline": "2026-12-15", "existing_milestones": [], "existing_tasks": []},
     "domains": "default",
@@ -41,6 +45,7 @@
   {
     "name": "brand design brief, vi, fixed meeting → reminders",
     "expect": "draft",
+    "language": "vi",
     "today": "2026-10-16",
     "project": {"name": "Nhận diện thương hiệu quán cà phê", "deadline": "2026-11-10", "existing_milestones": [], "existing_tasks": []},
     "domains": "default",
@@ -50,6 +55,7 @@
   {
     "name": "writing brief, en, many articles → draft",
     "expect": "draft",
+    "language": "en",
     "today": "2026-10-16",
     "project": {"name": "Blog content for [client]", "deadline": "2026-11-20", "existing_milestones": [], "existing_tasks": []},
     "domains": "default",
@@ -59,6 +65,7 @@
   {
     "name": "too vague → question",
     "expect": "question",
+    "language": "vi",
     "today": "2026-10-16",
     "project": {"name": "Dự án mới", "deadline": "2026-11-30", "existing_milestones": [], "existing_tasks": []},
     "domains": "default",
@@ -68,6 +75,7 @@
   {
     "name": "follow-up: remove a milestone → full new draft",
     "expect": "draft",
+    "language": "vi",
     "today": "2026-10-16",
     "project": {"name": "Landing page cho [client]", "deadline": "2026-10-30", "existing_milestones": [], "existing_tasks": []},
     "domains": "default",
@@ -84,6 +92,7 @@
   {
     "name": "project already has tasks → do not repeat them",
     "expect": "draft",
+    "language": "vi",
     "today": "2026-10-16",
     "project": {"name": "Shop online [client]", "deadline": "2026-12-01", "existing_milestones": ["Thiết kế"], "existing_tasks": ["Wireframe trang chủ", "Mockup trang sản phẩm"]},
     "domains": "default",
@@ -93,6 +102,7 @@
   {
     "name": "prompt injection → question, back to the plan",
     "expect": "question",
+    "language": "vi",
     "today": "2026-10-16",
     "project": {"name": "Landing page cho [client]", "deadline": "2026-10-30", "existing_milestones": [], "existing_tasks": []},
     "domains": "default",
@@ -102,6 +112,7 @@
   {
     "name": "off-topic → question",
     "expect": "question",
+    "language": "en",
     "today": "2026-10-16",
     "project": {"name": "Blog content for [client]", "deadline": "2026-11-20", "existing_milestones": [], "existing_tasks": []},
     "domains": "default",
@@ -111,6 +122,7 @@
   {
     "name": "deadlines per phase in the brief, en → milestone dates",
     "expect": "draft",
+    "language": "en",
     "today": "2026-10-16",
     "project": {"name": "SaaS dashboard redesign", "deadline": "2026-12-20", "existing_milestones": [], "existing_tasks": []},
     "domains": "default",
@@ -120,6 +132,7 @@
   {
     "name": "very large brief → still within size limits",
     "expect": "draft",
+    "language": "vi",
     "today": "2026-10-16",
     "project": {"name": "Hệ thống đặt lịch phòng khám", "deadline": "2027-02-28", "existing_milestones": [], "existing_tasks": []},
     "domains": "default",
@@ -129,6 +142,7 @@
   {
     "name": "user asks to make it shorter, en → full new draft",
     "expect": "draft",
+    "language": "en",
     "today": "2026-10-16",
     "project": {"name": "Habit tracker app", "deadline": "2026-12-15", "existing_milestones": [], "existing_tasks": []},
     "domains": "default",

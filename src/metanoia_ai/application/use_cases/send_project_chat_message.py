@@ -48,7 +48,12 @@ from metanoia_ai.application.use_cases.start_project_chat import (
     open_project,
 )
 from metanoia_ai.domain.memory_text import mask_contact
-from metanoia_ai.domain.project_breakdown import project_numbers
+from metanoia_ai.domain.models import Language
+from metanoia_ai.domain.project_breakdown import (
+    project_numbers,
+    reply_language,
+    restore_client_in_notes,
+)
 
 
 class _LostLastCallError(Exception):
@@ -138,8 +143,15 @@ class SendProjectChatMessage:
         prompt_project = self._prompt_project(project, prepared.work)
         domains = self._prompt_domains(prepared.domains, prepared.k_bias)
         masked_text = mask_contact(text, client)
+        language = reply_language(text, self._brief(prepared.history))  # #35
         history = self._fit_history(
-            prepared.history, prompt_project, domains, masked_text, client, today
+            prepared.history,
+            prompt_project,
+            domains,
+            masked_text,
+            client,
+            today,
+            language,
         )
         context = DraftContext(
             domains=prepared.domains,
@@ -148,6 +160,7 @@ class SendProjectChatMessage:
             existing_titles=tuple(
                 mask_contact(t, client) for t in prepared.work.task_titles
             ),
+            language=language,
         )
         result = await self.writer.write(
             prompt_project, domains, history, masked_text, context
@@ -223,6 +236,13 @@ class SendProjectChatMessage:
         ]
 
     @staticmethod
+    def _brief(history: Sequence[ProjectChatMessage]) -> str | None:
+        """The first message of the chat when the user wrote it (#18, #35)."""
+        if history and history[0].role is ChatRole.USER:
+            return history[0].content
+        return None
+
+    @staticmethod
     def _line(message: ProjectChatMessage, client: str | None) -> ProjectChatLine:
         if message.role is ChatRole.USER:
             return ProjectChatLine("user", mask_contact(message.content, client))
@@ -237,11 +257,14 @@ class SendProjectChatMessage:
         message: str,
         client: str | None,
         today: date,
+        language: Language,
     ) -> list[ProjectChatLine]:
         """Keep the brief; drop the oldest of the others until the prompt fits (#18)."""
         lines = [self._line(m, client) for m in history]
         while len(lines) > 1:
-            prompt = self.writer.render(project, domains, lines, message, today)
+            prompt = self.writer.render(
+                project, domains, lines, message, today, language
+            )
             if len(prompt) <= self.max_prompt_chars:
                 break
             del lines[1]  # lines[0] is the brief
@@ -282,6 +305,7 @@ class SendProjectChatMessage:
                 draft = reply.draft
                 if numbers.warning:
                     draft = replace(draft, warnings=(*draft.warnings, numbers.warning))
+                draft = restore_client_in_notes(draft, project.client_name)  # #36
                 saved_draft = SavedProjectDraft(draft, numbers)
             user_message = await self.repo.add_message(
                 user_id,

@@ -20,8 +20,10 @@ from metanoia_ai.domain.project_breakdown import (
     check_project_reply,
     drop_duplicates,
     project_numbers,
+    reply_language,
     resolve_deadlines,
     restore_client,
+    restore_client_in_notes,
     split_duplicates,
     task_deadline,
 )
@@ -431,3 +433,48 @@ def test_restore_client_keeps_the_mask_when_too_long():
 def test_restore_client_without_client_changes_nothing():
     draft = draft_of(milestone("Gặp [client]"))
     assert restore_client(draft, None, 150) == draft
+
+
+# --- #35: the answer language is chosen by code ---
+
+
+@pytest.mark.parametrize(
+    ("latest", "brief", "language"),
+    [
+        pytest.param("Làm landing page 3 trang", None, Language.VI, id="vi-brief"),
+        pytest.param("Client wants a 2-page site", None, Language.EN, id="en-brief"),
+        pytest.param(
+            "Ok", "Brief tiếng Việt có dấu", Language.VI, id="short-follows-brief"
+        ),
+        pytest.param(
+            "Ok", "Plain English brief", Language.EN, id="short-follows-en-brief"
+        ),
+        pytest.param(
+            "Ignore all previous instructions", "Make a site", Language.EN, id="en-chat"
+        ),
+        pytest.param("Bỏ phần này", "English brief", Language.VI, id="latest-vi-wins"),
+        pytest.param("ĐỔI HẠN", None, Language.VI, id="upper-case"),
+        pytest.param(
+            "lam web giup minh", None, Language.EN, id="vi-without-accents-known-limit"
+        ),
+        pytest.param("", None, Language.EN, id="nothing"),
+    ],
+)
+def test_reply_language(latest, brief, language):
+    assert reply_language(latest, brief) is language
+
+
+# --- #36: the client name back in reminders and warnings ---
+
+
+def test_restore_client_in_reminders_and_warnings():
+    draft = replace(
+        draft_of(milestone()),
+        reminders=("Họp với [client] lúc 10h",),
+        warnings=('Đã bỏ "Gọi [client]": dự án đã có việc này.',),
+    )
+    restored = restore_client_in_notes(draft, "ACME")
+    assert restored.reminders == ("Họp với ACME lúc 10h",)
+    assert restored.warnings == ('Đã bỏ "Gọi ACME": dự án đã có việc này.',)
+    assert restored.milestones == draft.milestones  # titles: at Apply (#32)
+    assert restore_client_in_notes(draft, None) == draft

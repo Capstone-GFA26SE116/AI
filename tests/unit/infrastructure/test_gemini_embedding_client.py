@@ -1,10 +1,11 @@
 """GeminiEmbeddingClient data conversion only. No network: the SDK client is a stand-in."""
 
 import asyncio
+import logging
 from types import SimpleNamespace
 
 import pytest
-from google.genai import types
+from google.genai import errors, types
 from pydantic import SecretStr
 
 from metanoia_ai.application.ports.embedding_client import (
@@ -121,6 +122,24 @@ def test_sdk_error_becomes_embedding_error_without_details():
     assert "TimeoutError" in str(error.value)
     assert "fake-gemini-key" not in str(error.value)
     assert error.value.model == "gemini-embedding-2"
+
+
+def test_google_error_is_logged_with_code_and_status_only(caplog):
+    body = {
+        "error": {
+            "code": 403,
+            "message": "Permission denied for fake-gemini-key",
+            "status": "PERMISSION_DENIED",
+        }
+    }
+    sdk = StandInSDK(errors.ClientError(403, body))
+    with caplog.at_level(logging.WARNING), pytest.raises(EmbeddingError) as error:
+        asyncio.run(make_client(sdk).embed(TEXT))
+    assert "ClientError 403 PERMISSION_DENIED" in caplog.text
+    assert "gemini-embedding-2" in caplog.text
+    assert "ClientError 403 PERMISSION_DENIED" in str(error.value)
+    assert "fake-gemini-key" not in caplog.text
+    assert TEXT not in caplog.text
 
 
 def test_timeout_under_10_seconds_is_rejected():

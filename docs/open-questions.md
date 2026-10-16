@@ -1,6 +1,6 @@
 # Câu hỏi mở & việc chờ Backend/team
 
-Cập nhật: 2026-10-15. Đây là danh sách DUY NHẤT. Trong plan chỉ đánh dấu ⚠️ cạnh quyết định liên quan.
+Cập nhật: 2026-10-16. Đây là danh sách DUY NHẤT. Trong plan chỉ đánh dấu ⚠️ cạnh quyết định liên quan.
 Chốt xong → ghi kết quả vào `docs/` hoặc plan, rồi chuyển dòng xuống mục "Đã chốt".
 Số `#` = số trong tab Problems của Google Doc (nếu có).
 
@@ -35,6 +35,8 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 | Chuyển tiếp 3 endpoint chat cho Frontend: `POST /chat/tasks/{id}/messages`, `GET /chat/tasks/{id}`, `POST /chat/tasks/{id}/apply` | FR-08a | 409 có `detail.code`: `task_not_splittable` (+ `reason`), `no_active_plan`, `not_latest_draft`, `has_subtasks`; 502 = AI không trả lời được (không trừ lượt) |
 | Quota chat dùng chung `AiCallsUsed` với xếp lịch (1 tin = 1 lượt). Cần đếm riêng từng loại → đếm `AIUsageLog.Feature` | FR-08a #8c | Không đổi schema |
 | (Frontend) Tự hiện nút "Chia nhỏ với AI" khi task `Flexible` có `EstimatedMinutes > 120`; không gọi AI | FR-08a #3 | Không tốn lượt |
+| Xác nhận nghĩa cột `Task.AiEstimatedMinutes` = số phút AI đoán; AI service sẽ ghi cột này (FR-08b-1 Apply), Backend không dùng vào việc khác | FR-17b #2 | 2026-10-16: chưa task nào có giá trị. Ước lượng là "của AI" khi `EstimatedMinutes = AiEstimatedMinutes`; user sửa số → tự thành "của user", Backend **không cần** làm gì thêm (#3) |
+| `/learning/task-completed` có thêm `reason = "ai_estimate"`; `/memory/similar` mỗi item có thêm `estimate_source` (`user` / `ai`), `ratio = null` khi `ai` | FR-17b | Chỉ thêm, không đổi trường cũ |
 | (Frontend) FR-08a không streaming: hiện "AI đang soạn…", câu trả lời < 10 s. Lệch NFR-07 (chữ đầu < 3 s) — streaming để FR-08b | FR-08a #1 | Ghi chú NFR-07 trong Google Doc |
 
 ## Chờ quyết định (team / giảng viên)

@@ -13,10 +13,10 @@ Trạng thái: Đã duyệt · Branch: `feature/fr17b-estimate-source` · Cập 
 - **Phải làm trước FR-08b-1** (FR-08b-1 ghi `AiEstimatedMinutes`).
 - **Ai gọi, khi nào:** không có endpoint mới. Đổi hành vi `POST /learning/task-completed` (FR-17) và `FindSimilarTasks` (FR-09).
 - **Tiêu chí xong:**
-  - [ ] AC1 — Task `Done` có ước lượng `AI` → không đổi K, không ghi `KBiasUpdateLog`, trả `skipped` với `reason = "ai_estimate"`.
-  - [ ] AC2 — Task có ước lượng `User` → học như cũ (mọi test FR-17 cũ pass nguyên vẹn).
-  - [ ] AC3 — Memory FR-19 vẫn được lưu cho task `AI` (vẫn có ích cho tìm task tương tự).
-  - [ ] AC4 — FR-09: task `AI` vẫn xuất hiện trong kết quả, nhưng `ratio = null` và không tính vào `average_ratio`.
+  - [x] AC1 — Task `Done` có ước lượng `AI` → không đổi K, không ghi `KBiasUpdateLog`, trả `skipped` với `reason = "ai_estimate"`.
+  - [x] AC2 — Task có ước lượng `User` → học như cũ (mọi test FR-17 cũ pass nguyên vẹn).
+  - [x] AC3 — Memory FR-19 vẫn được lưu cho task `AI` (vẫn có ích cho tìm task tương tự).
+  - [x] AC4 — FR-09: task `AI` vẫn xuất hiện trong kết quả, nhưng `ratio = null` và không tính vào `average_ratio`.
 - **Ngoài phạm vi:** đo độ chính xác ước lượng của AI so với T_act (làm sau, cho báo cáo) · FR-10 (vẫn dùng T_est × K như mọi task).
 
 ## 1. Bên ngoài — nói chuyện với ai
@@ -72,7 +72,7 @@ Test cũ (FR-08a, FR-09, FR-10, FR-17, FR-19) phải pass nguyên vẹn. Memory 
 - [x] **1.** Domain: `EstimateSource`, `estimate_source`, `SkipReason.AI_ESTIMATE`, FR-09 `ratio` / `summarize_similar` — test T4, T6.
 - [x] **2.** FR-17: use case + repository đọc cột — test T1–T3.
 - [x] **3.** FR-09: repository + API thêm `estimate_source` — test T5.
-- [ ] **4.** Cập nhật `CLAUDE.md` §5 (Learning: thêm "skip khi ước lượng do AI đặt"), `docs/open-questions.md` (⚠️ #2, #3). Wrap-up: `uv run pytest -q`, `uv run ruff check .`, `uv run ruff format --check .`, tick AC, hỏi trước khi push / mở PR.
+- [x] **4.** Cập nhật `CLAUDE.md` §5 (Learning: thêm "skip khi ước lượng do AI đặt"), `docs/open-questions.md` (⚠️ #2, #3). Wrap-up: `uv run pytest -q`, `uv run ruff check .`, `uv run ruff format --check .`, tick AC, hỏi trước khi push / mở PR.
 
 ## 5. Nhật ký thay đổi
 | Ngày | Thay đổi | Lý do (bug / quyết định mới) |

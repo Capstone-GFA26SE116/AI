@@ -8,6 +8,7 @@ from enum import StrEnum
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
+from metanoia_ai.domain.memory_text import CLIENT_MASK
 from metanoia_ai.domain.models import Language
 from metanoia_ai.domain.schedule_duration import scaled_minutes
 from metanoia_ai.domain.task_breakdown import BadDraftError, ReplyKind, clean_title
@@ -217,6 +218,38 @@ def resolve_deadlines(
             )
         milestones.append(replace(milestone, deadline=day))
     return replace(draft, milestones=tuple(milestones), warnings=tuple(warnings))
+
+
+def restore_client(
+    draft: ProjectDraft, client_name: str | None, max_milestone_title_chars: int
+) -> ProjectDraft:
+    """Put the client's name back where the AI wrote "[client]" (#32).
+
+    The prompt hides the name, so the AI writes the mask; the user should see the
+    real name in their tasks. A title that would get too long keeps the mask.
+    [email] / [phone] cannot be restored and stay as they are.
+    """
+    if not client_name:
+        return draft
+
+    def restored(title: str, max_chars: int) -> str:
+        full = title.replace(CLIENT_MASK, client_name)
+        return full if len(full) <= max_chars else title
+
+    return replace(
+        draft,
+        milestones=tuple(
+            replace(
+                m,
+                title=restored(m.title, max_milestone_title_chars),
+                tasks=tuple(
+                    replace(t, title=restored(t.title, MAX_TASK_TITLE_CHARS))
+                    for t in m.tasks
+                ),
+            )
+            for m in draft.milestones
+        ),
+    )
 
 
 def task_deadline(day: date, zone: ZoneInfo) -> datetime:

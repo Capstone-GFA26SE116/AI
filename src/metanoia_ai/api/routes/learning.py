@@ -1,4 +1,8 @@
-"""FR-17 + FR-19 endpoint. Called by the Backend after it saves a task as Done or Skipped."""
+"""Learning endpoints, called by the Backend.
+
+FR-17 + FR-19: after it saves a task as Done or Skipped.
+FR-18: after each timer Stop (without waiting for the answer).
+"""
 
 import logging
 from dataclasses import asdict
@@ -12,8 +16,13 @@ from metanoia_ai.api.auth import get_current_user_id
 from metanoia_ai.api.deps import (
     EmbedMemory,
     get_memory_embedder,
+    get_recompute_productive_hours,
     get_record_task_completion,
     get_save_task_memory,
+)
+from metanoia_ai.application.use_cases.recompute_productive_hours import (
+    RecomputeProductiveHours,
+    UserNotFoundError,
 )
 from metanoia_ai.application.use_cases.record_task_completion import (
     RecordTaskCompletion,
@@ -79,3 +88,25 @@ async def task_completed(
     if memory.status is MemoryStatus.QUEUED and memory.memory_id is not None:
         background_tasks.add_task(embed_memory, user_id, memory.memory_id)
     return LearningResponse(**asdict(result), memory=memory.status)
+
+
+class RecomputeResponse(BaseModel):
+    hours_updated: int  # 24, or 0 when nothing was written
+    sessions_used: int
+
+
+@router.post("/productive-hours/recompute")
+async def recompute_productive_hours(
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+    use_case: Annotated[
+        RecomputeProductiveHours, Depends(get_recompute_productive_hours)
+    ],
+) -> RecomputeResponse:
+    """FR-18: recompute the 24 hours from scratch. Safe to call more than once."""
+    try:
+        result = await use_case.execute(user_id)
+    except UserNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        ) from error
+    return RecomputeResponse(**asdict(result))

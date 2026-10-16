@@ -252,6 +252,41 @@ def restore_client(
     )
 
 
+def restore_client_in_notes(
+    draft: ProjectDraft, client_name: str | None
+) -> ProjectDraft:
+    """Put the client's name back in reminders and warnings (#36).
+
+    They are shown to the user as is and never sent back to the LLM.
+    """
+    if not client_name:
+        return draft
+    return replace(
+        draft,
+        reminders=tuple(r.replace(CLIENT_MASK, client_name) for r in draft.reminders),
+        warnings=tuple(w.replace(CLIENT_MASK, client_name) for w in draft.warnings),
+    )
+
+
+# Letters only Vietnamese uses (checked on lower-case text). "Ok" says nothing.
+VIETNAMESE_LETTERS = frozenset(
+    "ăâđêôơưàáạảãằắặẳẵầấậẩẫèéẹẻẽềếệểễìíịỉĩòóọỏõồốộổỗờớợởỡùúụủũừứựửữỳýỵỷỹ"
+)
+
+
+def reply_language(latest_message: str, brief: str | None) -> Language:
+    """The language the AI must answer in (#35): chosen by code, not by the LLM.
+
+    Vietnamese letters in the latest message → vi; none → look at the brief (the
+    first message); none there either → en. Vietnamese typed without accents
+    comes out as en: a known limit.
+    """
+    for text in (latest_message, brief or ""):
+        if any(letter in VIETNAMESE_LETTERS for letter in text.lower()):
+            return Language.VI
+    return Language.EN
+
+
 def task_deadline(day: date, zone: ZoneInfo) -> datetime:
     """Task.Deadline for a milestone due on `day`: 23:59 that day, user's time (#16)."""
     return datetime.combine(day, END_OF_DAY, tzinfo=zone)

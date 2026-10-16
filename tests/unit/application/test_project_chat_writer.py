@@ -3,6 +3,7 @@
 import asyncio
 import json
 import re
+from dataclasses import replace
 from datetime import date
 from uuid import UUID
 
@@ -28,6 +29,7 @@ from metanoia_ai.domain.project_breakdown import (
     DraftMilestone,
     DraftTask,
     ProjectLimits,
+    reply_language,
 )
 from metanoia_ai.domain.task_breakdown import ReplyKind
 from metanoia_ai.prompts import load_samples
@@ -44,9 +46,18 @@ DOMAINS = [
 PROJECT = PromptProject("Landing page cho [client]", None, date(2026, 10, 30))
 
 
-def fill(project=PROJECT, history=(), message="Lên kế hoạch giúp mình") -> str:
+def fill(
+    project=PROJECT, history=(), message="Lên kế hoạch giúp mình", language=Language.VI
+) -> str:
     return build_prompt(
-        load_template(), project, DOMAINS, list(history), message, LIMITS, TODAY
+        load_template(),
+        project,
+        DOMAINS,
+        list(history),
+        message,
+        LIMITS,
+        TODAY,
+        language,
     )
 
 
@@ -56,7 +67,7 @@ def fill(project=PROJECT, history=(), message="Lên kế hoạch giúp mình") -
 def test_schema_has_every_field():
     schema = ProjectAnswer.model_json_schema()
     assert set(schema["required"]) == {"kind", "reply", "milestones", "reminders"}
-    assert "language" in schema["properties"]
+    assert "language" not in schema["properties"]  # code picks it (#35)
     milestone = schema["$defs"]["ProjectMilestoneItem"]
     assert set(milestone["required"]) == {"title", "deadline", "tasks"}
 
@@ -102,9 +113,20 @@ def test_valid_answer_parses():
     assert answer.milestones[0].tasks[0].estimated_minutes == 120
 
 
-def test_unknown_language_becomes_vietnamese():
+def test_a_language_field_from_the_llm_is_ignored():
     answer = ProjectAnswer.model_validate_json(json.dumps(VALID | {"language": "fr"}))
-    assert answer.language is Language.VI
+    assert not hasattr(answer, "language")
+
+
+@pytest.mark.parametrize(
+    ("language", "name", "address"),
+    [(Language.VI, "Vietnamese", '"mình"'), (Language.EN, "English", '"I" and "you"')],
+)
+def test_prompt_sets_the_answer_language(language, name, address):
+    prompt = fill(language=language)
+    assert f"{name} only." in prompt
+    assert f"Reminder: write everything in {name}." in prompt
+    assert address in prompt
 
 
 def with_task(**changes) -> str:
@@ -238,6 +260,7 @@ def sample_prompt(sample: dict) -> str:
         sample["message"],
         LIMITS,
         date.fromisoformat(sample["today"]),
+        Language(sample["language"]),
     )
 
 
@@ -249,6 +272,9 @@ def test_samples_are_valid_and_fill_the_prompt():
         assert sample["domains"] == "default"
         prompt = sample_prompt(sample)
         assert json.dumps(sample["message"], ensure_ascii=False) in prompt
+        # The language each sample expects is the one code would pick (#35).
+        brief = sample["history"][0]["text"] if sample["history"] else None
+        assert reply_language(sample["message"], brief).value == sample["language"]
 
 
 def test_samples_cover_the_plan():
@@ -405,8 +431,9 @@ def test_no_deadline_anywhere_is_rejected_with_ask_the_user():
         check_answer(answer(), context, LIMITS)
 
 
-def test_warnings_follow_the_answer_language():
-    reply = check_answer(answer(language="en"), CONTEXT, LIMITS)
+def test_warnings_follow_the_language_code_picked():
+    context = replace(CONTEXT, language=Language.EN)
+    reply = check_answer(answer(language="vi"), context, LIMITS)  # LLM's field ignored
     assert reply.language is Language.EN
     assert reply.draft.warnings == ('Removed "viết api": the project already has it.',)
 

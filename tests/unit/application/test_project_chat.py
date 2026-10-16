@@ -495,3 +495,36 @@ def test_list_chats_newest_first_and_owner_only():
     assert [c.conversation_id for c in chats] == [second.conversation_id, world.chat_id]
     with pytest.raises(ProjectNotFoundError):
         run(ListProjectChats(world.repo).execute(OTHER, world.project.project_id))
+
+
+# --- #35, #36 ---
+
+
+def test_vietnamese_brief_asks_for_vietnamese():
+    world = World()
+    llm = FakeLLMClient(QUESTION)
+    world.send(llm, message="Làm landing page 3 trang cho khách")
+    assert "Vietnamese only." in llm.prompts[0]
+
+
+def test_english_chat_stays_english_on_a_short_message():
+    world = World()
+    world.send(FakeLLMClient(QUESTION), message="Client wants a two page site")
+    llm = FakeLLMClient(QUESTION)
+    world.send(llm, message="Ok")
+    assert "English only." in llm.prompts[0]
+
+
+def test_english_chat_warnings_are_english():
+    world = World()
+    world.repo.add_old_task(world.project.project_id, "Wireframe")
+    turn = world.send(FakeLLMClient(draft_answer()), message="Plan this site please")
+    assert turn.ai_message.draft.draft.warnings == (
+        'Removed "Wireframe": the project already has it.',
+    )
+
+
+def test_reminders_show_the_client_name():
+    world = World()
+    turn = world.send(FakeLLMClient(draft_answer(reminders=["Họp chốt với [client]"])))
+    assert turn.ai_message.draft.draft.reminders == ("Họp chốt với ACME",)

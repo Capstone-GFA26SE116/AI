@@ -14,7 +14,7 @@ from string import Template
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, StrictInt, ValidationError, field_validator
+from pydantic import BaseModel, StrictInt, ValidationError
 
 from metanoia_ai.application.llm_chat import CheckedLLMCaller
 from metanoia_ai.application.ports.llm_client import LLMClient
@@ -34,7 +34,12 @@ from metanoia_ai.domain.project_breakdown import (
 from metanoia_ai.domain.task_breakdown import BadDraftError, ReplyKind
 from metanoia_ai.prompts import load_prompt
 
-PROMPT_VERSION = "project_breakdown_v1"
+PROMPT_VERSION = "project_breakdown_v2"  # v2: the language is set by code (#35)
+LANGUAGE_NAMES = {Language.VI: "Vietnamese", Language.EN: "English"}
+ADDRESS_RULES = {
+    Language.VI: 'Call yourself "mình" (never "tôi") and the user "bạn".',
+    Language.EN: 'Use "I" and "you". Short, clear, friendly.',
+}
 
 
 class ProjectTaskItem(BaseModel):
@@ -52,19 +57,12 @@ class ProjectMilestoneItem(BaseModel):
 
 
 class ProjectAnswer(BaseModel):
-    """The JSON shape the LLM must return."""
+    """The JSON shape the LLM must return. No language: code picks it (#35)."""
 
     kind: ReplyKind
-    language: Language = Language.VI
     reply: str
     milestones: list[ProjectMilestoneItem]
     reminders: list[str]
-
-    @field_validator("language", mode="before")
-    @classmethod
-    def default_language(cls, value: object) -> object:
-        """Missing or unknown language is not worth a retry: use Vietnamese."""
-        return value if value in set(Language) else Language.VI
 
 
 def answer_schema(domain_ids: Sequence[UUID]) -> dict[str, Any]:
@@ -156,9 +154,12 @@ def build_prompt(
     message: str,
     limits: ProjectLimits,
     today: date,
+    language: Language,
 ) -> str:
     """Fill the prompt. Every user-written text goes in as a JSON string."""
     return template.substitute(
+        language_name=LANGUAGE_NAMES[language],
+        address_rule=ADDRESS_RULES[language],
         max_milestones=limits.max_milestones,
         max_tasks_per_milestone=limits.max_tasks_per_milestone,
         max_tasks=limits.max_tasks,
@@ -189,6 +190,7 @@ class DraftContext:
     project_deadline: date | None
     today: date  # in the user's time zone
     existing_titles: tuple[str, ...]  # every task title of the project, masked
+    language: Language = Language.VI  # chosen by code (#35): prompt + warnings
 
 
 @dataclass(frozen=True)
@@ -238,12 +240,12 @@ def check_answer(
         )
         if draft is not None:
             draft = resolve_deadlines(
-                draft, context.project_deadline, context.today, answer.language
+                draft, context.project_deadline, context.today, context.language
             )
-            draft = drop_duplicates(draft, context.existing_titles, answer.language)
+            draft = drop_duplicates(draft, context.existing_titles, context.language)
     except BadDraftError as error:
         raise BadAnswerError(str(error)) from error
-    return ProjectReply(answer.kind, answer.language, reply, draft)
+    return ProjectReply(answer.kind, context.language, reply, draft)
 
 
 def retry_hint(reason: str) -> str:
@@ -286,10 +288,18 @@ class ProjectChatWriter:
         history: Sequence[ProjectChatLine],
         message: str,
         today: date,
+        language: Language,
     ) -> str:
         """The prompt as sent (the caller uses its length to cut history, #18)."""
         return build_prompt(
-            self.template, project, domains, history, message, self.limits, today
+            self.template,
+            project,
+            domains,
+            history,
+            message,
+            self.limits,
+            today,
+            language,
         )
 
     async def write(
@@ -300,7 +310,9 @@ class ProjectChatWriter:
         message: str,
         context: DraftContext,
     ) -> ProjectChatResult:
-        prompt = self.render(project, domains, history, message, context.today)
+        prompt = self.render(
+            project, domains, history, message, context.today, context.language
+        )
         result = await self.caller.call(
             prompt,
             answer_schema([d.domain_id for d in domains]),

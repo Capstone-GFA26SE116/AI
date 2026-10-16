@@ -50,7 +50,8 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 
 | Câu hỏi | Liên quan | Hiện đang dùng |
 |---|---|---|
-| Chuyển Gemini sang gói trả phí (trước khi công bố) và đo lại tốc độ chat (cả chat dự án, FR-08b-1 AC9) | FR-08a AC8, #31 | Gói Free: chat trung vị 15 s, p95 21 s, ~10% trả 502 (Gemini > 20 s). Chưa đạt AC8 (< 10 s) |
+| Chuyển Gemini sang gói trả phí (trước khi công bố) và đo lại tốc độ chat (cả chat dự án, FR-08b-1 AC9) | FR-08a AC8, #31 | Gói Free: chat trung vị 15 s, p95 21 s, ~10% trả 502 (Gemini > 20 s). Chưa đạt AC8 (< 10 s). FR-08b-1 (2026-10-16, 10 tin / lần): lần 1 trung vị 9.0 s, p95 28.6 s (2/12 lần gọi hỏng); lần 2 trung vị 12.6 s, p95 13.6 s (1/11). Mục tiêu p95 < 20 s: lúc đạt lúc không |
+| (Frontend) Chat dự án: ngôn ngữ trả lời do code chọn theo dấu tiếng Việt (tin mới nhất, rồi brief). Gõ tiếng Việt **không dấu** → AI trả lời tiếng Anh | FR-08b-1 #35 | Nếu cần: gửi kèm ngôn ngữ giao diện của user (giống `language` của `/schedule/propose`) |
 | K ban đầu lấy từ onboarding hay cố định 1.3? | #10 | 1.3 |
 | Ngưỡng outlier | #12 | 5 (ngoài [1/5, 5] thì bỏ qua) |
 | Quota đọc tài liệu theo từng gói | #13 | — |

@@ -130,7 +130,8 @@ Full text in `docs/functional-requirements.md`. Status: first line of each `plan
 | FR-10 | Schedule proposal (planner + one-line reason per slot) | `plans/FR-10.md` |
 | — | Quota check + `AIUsageLog` (before every LLM call) | — |
 | FR-08a | AI chat, task level: split a big task into subtasks, then Apply | `plans/FR-08a.md` |
-| FR-08b | AI chat, project level: brief → milestones + tasks, documents, streaming | — |
+| FR-08b-1 | AI chat, project level: text brief → milestones + Flexible tasks, then Apply | `plans/FR-08b-1.md` |
+| FR-08b-2 | Project chat reads documents (`AllowAiDocumentAccess`, uploads); streaming later or dropped | — |
 | FR-09 | Similar past tasks: hybrid search (vector + full-text) + RRF. Free/busy time and workload are already in FR-10 | `plans/FR-09.md` |
 | FR-19 | Long-term memory: embeddings in pgvector, built in the background | `plans/FR-19.md` |
 | FR-12 | Daily "Today" briefing (text only) | — |
@@ -155,7 +156,8 @@ Full text in `docs/functional-requirements.md`. Status: first line of each `plan
 
 **Output**
 - LLM returns JSON → validate with a Pydantic schema **and** business rules
-  (no overlap, before deadline, Fixed untouched). Invalid → retry up to 2 times, then a clear error.
+  (no overlap, before deadline, Fixed untouched). Invalid → retry (count from config:
+  up to 2 by default; the project chat uses 1, FR-08b-1 #24), then a clear error.
 - Every suggestion has a one-line, plain-language reason. Never show internal names
   (`K_bias`, `T_proposed`) to users.
 - LLM provider down → planner and manual features still work (return slots without reasons).
@@ -164,8 +166,9 @@ Full text in `docs/functional-requirements.md`. Status: first line of each `plan
 - Log every LLM/embedding call in `AIUsageLog`: feature, model, tokens, cost, latency.
 - Prompts live in separate versioned files; keep 10–20 sample inputs to re-run after each prompt change.
 - Background work (embeddings): retry up to 3 times; a missing embedding never blocks saving a task.
-- Targets: task chat (FR-08a) answer < 10 s, no streaming · project chat (FR-08b) first words < 3 s
-  (streaming) · schedule proposal < 10 s · similar-task search < 100 ms.
+- Targets: task chat (FR-08a) answer < 10 s, no streaming · project chat (FR-08b-1) p95 < 20 s,
+  no streaming (streaming is for FR-08b-2 or dropped) · schedule proposal < 10 s ·
+  similar-task search < 100 ms.
 
 ## 8. Database rules
 

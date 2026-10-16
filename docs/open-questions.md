@@ -35,15 +35,22 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 | Chuyển tiếp 3 endpoint chat cho Frontend: `POST /chat/tasks/{id}/messages`, `GET /chat/tasks/{id}`, `POST /chat/tasks/{id}/apply` | FR-08a | 409 có `detail.code`: `task_not_splittable` (+ `reason`), `no_active_plan`, `not_latest_draft`, `has_subtasks`; 502 = AI không trả lời được (không trừ lượt) |
 | Quota chat dùng chung `AiCallsUsed` với xếp lịch (1 tin = 1 lượt). Cần đếm riêng từng loại → đếm `AIUsageLog.Feature` | FR-08a #8c | Không đổi schema |
 | (Frontend) Tự hiện nút "Chia nhỏ với AI" khi task `Flexible` có `EstimatedMinutes > 120`; không gọi AI | FR-08a #3 | Không tốn lượt |
-| Xác nhận nghĩa cột `Task.AiEstimatedMinutes` = số phút AI đoán; AI service sẽ ghi cột này (FR-08b-1 Apply), Backend không dùng vào việc khác | FR-17b #2 | 2026-10-16: chưa task nào có giá trị. Ước lượng là "của AI" khi `EstimatedMinutes = AiEstimatedMinutes`; user sửa số → tự thành "của user", Backend **không cần** làm gì thêm (#3) |
+| Xác nhận nghĩa cột `Task.AiEstimatedMinutes` = số phút AI đoán; AI service ghi cột này (FR-08b-1 Apply), Backend không dùng vào việc khác | FR-17b #2, FR-08b-1 #11 | 2026-10-16: chưa task nào có giá trị. Ước lượng là "của AI" khi `EstimatedMinutes = AiEstimatedMinutes`; user sửa số → tự thành "của user", Backend **không cần** làm gì thêm (#3) |
 | `/learning/task-completed` có thêm `reason = "ai_estimate"`; `/memory/similar` mỗi item có thêm `estimate_source` (`user` / `ai`), `ratio = null` khi `ai` | FR-17b | Chỉ thêm, không đổi trường cũ |
 | (Frontend) FR-08a không streaming: hiện "AI đang soạn…", câu trả lời < 10 s. Lệch NFR-07 (chữ đầu < 3 s) — streaming để FR-08b | FR-08a #1 | Ghi chú NFR-07 trong Google Doc |
+| Đồng ý AI ghi `Milestone`, `Task` (chỉ tạo mới, lúc Apply chat dự án) | FR-08b-1 #13 | `Milestone`: `Name`, `OrderIndex` (= max + 1, khóa `Project`), `DueDate`; `Status` để mặc định `Planned`. `Task`: `Flexible`, `ToDo`, `MilestoneId`, `DomainId`, `Deadline` (23:59 giờ user), `EstimatedMinutes`, `AiEstimatedMinutes`. Không sửa / xóa dòng có sẵn |
+| Chuyển tiếp 5 endpoint chat dự án cho Frontend: `POST`/`GET /chat/projects/{id}/conversations`, `POST /chat/conversations/{id}/messages`, `GET /chat/conversations/{id}`, `POST /chat/conversations/{id}/apply` | FR-08b-1 | 409 có `detail.code`: `project_closed`, `already_applied`, `no_active_plan`, `not_latest_draft`, `domain_inactive`; 422 = tin rỗng / > 8.000 ký tự / sửa tay sai luật; 502 = AI không trả lời được (không trừ lượt). Chỉ `messages` tốn lượt |
+| Project "đã đóng" = `Status` ∈ {`Completed`, `Archived`} → không chat / Apply. `OnHold` vẫn được | FR-08b-1 #28 | Báo Backend để màn hình project hiện đúng |
+| Ai được thêm `Domain` mới? AI chỉ chọn trong danh sách `IsActive` | FR-08b-1 #5 | Đề xuất: Admin / Backend. Domain lộn xộn → K không hội tụ |
+| (Frontend) `reminders` của bản nháp = việc giờ cố định (họp, demo…): hiện nút "Tạo task cố định", AI không tạo | FR-08b-1 #13b | Không ghi DB |
+| (Frontend) Hiện `estimated_minutes` là "AI đoán — sửa nếu bạn nghĩ khác"; khi Apply gửi lại `key` của task để giữ số AI | FR-08b-1 #11, #21 | Task không có `key` = user tự thêm |
+| (Frontend) FR-08b-1 không streaming: hiện "AI đang lên kế hoạch…", mục tiêu p95 < 20 s. Lệch NFR-07 (chữ đầu < 3 s) | FR-08b-1 #23, AC9 | Streaming để FR-08b-2 hoặc bỏ; ghi chú NFR-07 |
 
 ## Chờ quyết định (team / giảng viên)
 
 | Câu hỏi | Liên quan | Hiện đang dùng |
 |---|---|---|
-| Chuyển Gemini sang gói trả phí (trước khi công bố) và đo lại tốc độ chat | FR-08a AC8, #31 | Gói Free: chat trung vị 15 s, p95 21 s, ~10% trả 502 (Gemini > 20 s). Chưa đạt AC8 (< 10 s) |
+| Chuyển Gemini sang gói trả phí (trước khi công bố) và đo lại tốc độ chat (cả chat dự án, FR-08b-1 AC9) | FR-08a AC8, #31 | Gói Free: chat trung vị 15 s, p95 21 s, ~10% trả 502 (Gemini > 20 s). Chưa đạt AC8 (< 10 s) |
 | K ban đầu lấy từ onboarding hay cố định 1.3? | #10 | 1.3 |
 | Ngưỡng outlier | #12 | 5 (ngoài [1/5, 5] thì bỏ qua) |
 | Quota đọc tài liệu theo từng gói | #13 | — |

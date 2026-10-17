@@ -3,7 +3,7 @@
 All times given back are in the user's time zone.
 """
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -12,13 +12,14 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from metanoia_ai.domain.free_time import (
+    SATURDAY,
     CalendarEvent,
     FixedTaskTime,
     busy_ranges,
     free_ranges,
 )
 from metanoia_ai.domain.models import FocusSessionRecord, TimeRange, WorkingHours
-from metanoia_ai.domain.planner import local_date
+from metanoia_ai.domain.planner import local_date, top_productive_hours
 from metanoia_ai.domain.schedule_duration import minutes_to_schedule, sessions_of
 from metanoia_ai.domain.schedule_text import extra_percent
 
@@ -446,3 +447,47 @@ def select_top(
         TopTask(c, task_reasons(c, by_task.get(c.task_id), now, time_zone, rule))
         for c in ranked[:count]
     ]
+
+
+# --- Productive hours left today (#13) ---
+
+
+def productive_hint(
+    scores: Mapping[int, Decimal],
+    has_answer: bool,
+    hours: WorkingHours,
+    now: datetime,
+    count: int,
+) -> list[tuple[int, int]] | None:
+    """The user's best hours still ahead today, joined into [start, end) hour ranges.
+
+    `has_answer`: onboarding answered (ProductiveBlocks) or a Learned row exists;
+    otherwise the scores are only defaults and nothing is shown. Uses the same
+    top hours as FR-10. An hour counts while it has not ended and it overlaps
+    today's working hours. None when nothing is left.
+    """
+    if not has_answer or not scores:
+        return None
+    zone = hours.time_zone
+    day = today_range(now, zone)
+    if not hours.works_on_weekend and day.start.weekday() >= SATURDAY:
+        return None
+    work_start = datetime.combine(day.start.date(), hours.day_start, tzinfo=zone)
+    work_end = datetime.combine(day.start.date(), hours.day_end, tzinfo=zone)
+
+    kept = []
+    for hour in sorted(top_productive_hours(scores, count)):
+        start = day.start.replace(hour=hour)
+        end = start + timedelta(hours=1)
+        if end > now and start < work_end and end > work_start:
+            kept.append(hour)
+    if not kept:
+        return None
+
+    ranges: list[tuple[int, int]] = []
+    for hour in kept:
+        if ranges and ranges[-1][1] == hour:
+            ranges[-1] = (ranges[-1][0], hour + 1)
+        else:
+            ranges.append((hour, hour + 1))
+    return ranges

@@ -6,18 +6,25 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from metanoia_ai.domain.briefing import (
+    BiasRule,
+    Candidate,
+    DeadlineRisk,
     FixedEntry,
     GoogleEntry,
     OpenSubtask,
+    Reason,
+    ReasonCode,
     RiskTask,
     ScheduleKind,
     SlotEntry,
     SlotStatus,
+    at_risk_tasks,
     deadline_risks,
     falls_on,
     free_minutes_before,
     needed_minutes,
     risk_free_ranges,
+    select_top,
     today_range,
     todays_schedule,
 )
@@ -289,3 +296,145 @@ def test_overdue_tasks_are_ordered_by_deadline():
 
 def test_task_needing_nothing_is_left_out():
     assert risks([task(at(17, 17), 0)]) == []
+
+
+# --- top tasks and reason codes ---
+
+RULE = BiasRule(min_k=Decimal("1.1"), min_samples=3)
+
+
+def candidate(deadline, minutes=60, *, in_progress=False, k=None, samples=0):
+    return Candidate(
+        task_id=uuid4(),
+        title="T",
+        project_name="P",
+        domain_name="Coding",
+        deadline=deadline,
+        needed_minutes=minutes,
+        in_progress=in_progress,
+        k_bias=k,
+        sample_count=samples,
+    )
+
+
+def risk_of(c, available, *, overdue=False):
+    return DeadlineRisk(c.task_id, c.deadline, c.needed_minutes, available, overdue)
+
+
+def top(candidates, risk_list=(), count=3, now=NOW):
+    return select_top(candidates, risk_list, now, SAIGON, count, RULE)
+
+
+def codes(top_task):
+    return [r.code for r in top_task.reasons]
+
+
+def test_t4_order_is_overdue_then_at_risk_then_in_progress():
+    overdue = candidate(at(16, 17))
+    at_risk = candidate(at(17, 17), 300)
+    working = candidate(at(20, 17), in_progress=True)
+    soonest = candidate(at(17, 12))  # nearest deadline, but nothing else
+    risk_list = [risk_of(overdue, 0, overdue=True), risk_of(at_risk, 100)]
+    result = top([soonest, working, at_risk, overdue], risk_list)
+    assert [t.candidate.task_id for t in result] == [
+        overdue.task_id,
+        at_risk.task_id,
+        working.task_id,
+    ]
+    assert codes(result[0])[0] is ReasonCode.OVERDUE
+    assert codes(result[1])[0] is ReasonCode.AT_RISK
+    assert codes(result[2])[0] is ReasonCode.IN_PROGRESS
+
+
+def test_without_special_tasks_nearest_deadline_wins():
+    later, sooner = candidate(at(20, 17)), candidate(at(18, 17))
+    result = top([later, sooner], count=1)
+    assert [t.candidate.task_id for t in result] == [sooner.task_id]
+
+
+def test_t5_tie_on_deadline_longer_task_first():
+    short, long = candidate(at(18, 17), 60), candidate(at(18, 17), 180)
+    result = top([short, long])
+    assert [t.candidate.task_id for t in result] == [long.task_id, short.task_id]
+
+
+def test_top_count_is_respected_and_empty_is_fine():
+    many = [candidate(at(18 + i, 17)) for i in range(5)]
+    assert len(top(many)) == 3
+    assert top([]) == []
+
+
+def test_task_needing_nothing_is_not_in_top():
+    assert top([candidate(at(18, 17), 0)]) == []
+
+
+def test_t6_default_k_without_samples_gives_no_bias_reason():
+    result = top([candidate(at(18, 17), k=Decimal("1.3"), samples=0)])
+    assert ReasonCode.BIAS not in codes(result[0])
+
+
+@pytest.mark.parametrize(
+    "k, samples",
+    [
+        pytest.param(Decimal("1.05"), 10, id="k-below-min"),
+        pytest.param(Decimal("1.4"), 2, id="too-few-samples"),
+        pytest.param(None, 0, id="no-profile"),
+    ],
+)
+def test_no_bias_reason_below_the_rule(k, samples):
+    result = top([candidate(at(18, 17), k=k, samples=samples)])
+    assert ReasonCode.BIAS not in codes(result[0])
+
+
+def test_t7_learned_k_gives_bias_reason():
+    result = top([candidate(at(18, 17), k=Decimal("1.4"), samples=5)])
+    assert result[0].reasons == (
+        Reason(ReasonCode.DEADLINE_SOON, days=1),
+        Reason(ReasonCode.BIAS, extra_percent=40, domain_name="Coding"),
+    )
+
+
+def test_bias_percent_is_rounded_half_up():
+    result = top([candidate(at(18, 17), k=Decimal("1.125"), samples=3)])
+    assert result[0].reasons[-1].extra_percent == 13
+
+
+def test_t11_free_plan_minutes_not_scaled_but_bias_still_shown():
+    # Free plan: K is not applied to the minutes (k = None in needed_minutes)...
+    minutes = needed_minutes(60, [], False, [], None, NOW)
+    assert minutes == 60
+    # ...but the user's learned K is still shown as a hint.
+    c = candidate(at(18, 17), minutes, k=Decimal("1.5"), samples=4)
+    result = top([c])
+    assert result[0].candidate.needed_minutes == 60
+    assert result[0].reasons[-1] == Reason(
+        ReasonCode.BIAS, extra_percent=50, domain_name="Coding"
+    )
+
+
+def test_at_most_two_reasons_in_priority_order():
+    c = candidate(at(17, 17), 300, in_progress=True, k=Decimal("1.5"), samples=9)
+    result = top([c], [risk_of(c, 120)])
+    assert result[0].reasons == (
+        Reason(ReasonCode.AT_RISK, needed_minutes=300, available_minutes=120),
+        Reason(ReasonCode.IN_PROGRESS, needed_minutes=300),
+    )
+
+
+def test_overdue_reason_counts_calendar_days_and_has_no_deadline_soon():
+    c = candidate(at(15, 23))  # 2 days ago on the user's clock
+    result = top([c], [risk_of(c, 0, overdue=True)])
+    assert result[0].reasons == (Reason(ReasonCode.OVERDUE, days=2),)
+
+
+def test_deadline_today_is_zero_days():
+    result = top([candidate(at(17, 23))])
+    assert result[0].reasons == (Reason(ReasonCode.DEADLINE_SOON, days=0),)
+
+
+def test_at_risk_list_sorted_by_deadline_and_limited():
+    a, b, c = candidate(at(19, 17)), candidate(at(18, 17)), candidate(at(20, 17))
+    safe = candidate(at(17, 17))
+    risk_list = [risk_of(a, 0), risk_of(b, 0), risk_of(c, 0), risk_of(safe, 60)]
+    result = at_risk_tasks(risk_list, limit=2)
+    assert [r.task_id for r in result] == [b.task_id, a.task_id]

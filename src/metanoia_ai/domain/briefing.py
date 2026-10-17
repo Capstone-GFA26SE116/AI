@@ -22,6 +22,7 @@ from metanoia_ai.domain.models import FocusSessionRecord, TimeRange, WorkingHour
 from metanoia_ai.domain.planner import local_date, top_productive_hours
 from metanoia_ai.domain.schedule_duration import minutes_to_schedule, sessions_of
 from metanoia_ai.domain.schedule_text import extra_percent
+from metanoia_ai.domain.similar_tasks import SimilarSummary
 
 
 class SlotStatus(StrEnum):
@@ -491,3 +492,33 @@ def productive_hint(
         else:
             ranges.append((hour, hour + 1))
     return ranges
+
+
+# --- Similar task warning (#11) ---
+
+
+class SimilarWarningKind(StrEnum):
+    SLOWER = "slower"  # similar tasks took longer than planned
+    SKIPPED = "skipped"  # a similar task was dropped
+
+
+@dataclass(frozen=True)
+class SimilarWarning:
+    kind: SimilarWarningKind
+    average_ratio: float | None = None  # only for SLOWER
+
+
+def similar_warning(
+    summary: SimilarSummary, min_count: int, min_ratio: float
+) -> SimilarWarning | None:
+    """Warn when enough similar tasks took much longer, or one was dropped.
+
+    Uses FR-09's average ratio (done tasks with measured time, user's estimate).
+    SLOWER wins when both apply.
+    """
+    ratio = summary.average_ratio
+    if summary.count >= min_count and ratio is not None and ratio >= min_ratio:
+        return SimilarWarning(SimilarWarningKind.SLOWER, ratio)
+    if summary.count - summary.done_count >= 1:
+        return SimilarWarning(SimilarWarningKind.SKIPPED)
+    return None

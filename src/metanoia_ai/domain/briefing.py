@@ -6,7 +6,7 @@ All times given back are in the user's time zone.
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 from enum import StrEnum
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -20,6 +20,7 @@ from metanoia_ai.domain.free_time import (
 from metanoia_ai.domain.models import FocusSessionRecord, TimeRange, WorkingHours
 from metanoia_ai.domain.planner import local_date
 from metanoia_ai.domain.schedule_duration import minutes_to_schedule, sessions_of
+from metanoia_ai.domain.schedule_text import extra_percent
 
 
 class SlotStatus(StrEnum):
@@ -369,9 +370,10 @@ def bias_reason(candidate: Candidate, rule: BiasRule) -> Reason | None:
     k = candidate.k_bias
     if k is None or k < rule.min_k or candidate.sample_count < rule.min_samples:
         return None
-    percent = int(((k - 1) * 100).to_integral_value(rounding=ROUND_HALF_UP))
     return Reason(
-        ReasonCode.BIAS, extra_percent=percent, domain_name=candidate.domain_name
+        ReasonCode.BIAS,
+        extra_percent=extra_percent(k),
+        domain_name=candidate.domain_name,
     )
 
 

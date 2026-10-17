@@ -6,7 +6,7 @@ All times given back are in the user's time zone.
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from enum import StrEnum
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -300,3 +300,147 @@ def deadline_risks(
         )
         used += task.needed_minutes
     return result
+
+
+def at_risk_tasks(risks: Iterable[DeadlineRisk], limit: int) -> list[DeadlineRisk]:
+    """Tasks at risk, nearest deadline first, at most `limit`."""
+    return sorted((r for r in risks if r.is_at_risk), key=lambda r: r.deadline)[:limit]
+
+
+# --- Top tasks and reason codes (#5-#8) ---
+
+
+class ReasonCode(StrEnum):
+    """Why a task is in the top list. Values are sent in the API (icon / colour)."""
+
+    OVERDUE = "overdue"
+    AT_RISK = "at_risk"
+    IN_PROGRESS = "in_progress"
+    DEADLINE_SOON = "deadline_soon"
+    BIAS = "bias"
+
+
+MAX_REASONS = 2
+
+
+@dataclass(frozen=True)
+class Reason:
+    """A reason code with the numbers its sentence needs (text: briefing_text.py)."""
+
+    code: ReasonCode
+    days: int = 0  # overdue: days late · deadline_soon: days left (0 = today)
+    needed_minutes: int = 0  # at_risk, in_progress
+    available_minutes: int = 0  # at_risk
+    extra_percent: int = 0  # bias
+    domain_name: str = ""  # bias
+
+
+@dataclass(frozen=True)
+class Candidate:
+    """An open Flexible task that may go in the top list (plan §2 step 3)."""
+
+    task_id: UUID
+    title: str
+    project_name: str
+    domain_name: str
+    deadline: datetime
+    needed_minutes: int  # from needed_minutes(); K not applied on the Free plan
+    in_progress: bool  # Status InProgress, or has a focus session
+    k_bias: Decimal | None  # the user's K for the domain; None: no profile yet
+    sample_count: int
+
+
+@dataclass(frozen=True)
+class TopTask:
+    candidate: Candidate
+    reasons: tuple[Reason, ...]  # 1-2, most important first
+
+
+@dataclass(frozen=True)
+class BiasRule:
+    """When the "you usually need X% more" reason is shown (#7)."""
+
+    min_k: Decimal
+    min_samples: int
+
+
+def bias_reason(candidate: Candidate, rule: BiasRule) -> Reason | None:
+    """Only for a learned K: K >= min_k and enough samples. Also on the Free plan (#8)."""
+    k = candidate.k_bias
+    if k is None or k < rule.min_k or candidate.sample_count < rule.min_samples:
+        return None
+    percent = int(((k - 1) * 100).to_integral_value(rounding=ROUND_HALF_UP))
+    return Reason(
+        ReasonCode.BIAS, extra_percent=percent, domain_name=candidate.domain_name
+    )
+
+
+def days_between(earlier: datetime, later: datetime, time_zone: ZoneInfo) -> int:
+    """Calendar days on the user's clock (today → tomorrow = 1)."""
+    return (local_date(later, time_zone) - local_date(earlier, time_zone)).days
+
+
+def task_reasons(
+    candidate: Candidate,
+    risk: DeadlineRisk | None,
+    now: datetime,
+    time_zone: ZoneInfo,
+    rule: BiasRule,
+) -> tuple[Reason, ...]:
+    """All reasons that apply, in priority order (#6), cut to MAX_REASONS."""
+    reasons: list[Reason] = []
+    overdue = candidate.deadline < now
+    if overdue:
+        days = days_between(candidate.deadline, now, time_zone)
+        reasons.append(Reason(ReasonCode.OVERDUE, days=days))
+    if risk is not None and risk.is_at_risk:
+        reasons.append(
+            Reason(
+                ReasonCode.AT_RISK,
+                needed_minutes=risk.needed_minutes,
+                available_minutes=risk.available_minutes,
+            )
+        )
+    if candidate.in_progress:
+        reasons.append(
+            Reason(ReasonCode.IN_PROGRESS, needed_minutes=candidate.needed_minutes)
+        )
+    if not overdue:
+        days = days_between(now, candidate.deadline, time_zone)
+        reasons.append(Reason(ReasonCode.DEADLINE_SOON, days=days))
+    if bias := bias_reason(candidate, rule):
+        reasons.append(bias)
+    return tuple(reasons[:MAX_REASONS])
+
+
+def select_top(
+    candidates: Iterable[Candidate],
+    risks: Iterable[DeadlineRisk],
+    now: datetime,
+    time_zone: ZoneInfo,
+    count: int,
+    rule: BiasRule,
+) -> list[TopTask]:
+    """Top tasks (#5): overdue → at risk → in progress → nearest deadline.
+
+    Inside each group: nearest deadline; tie: more minutes needed first.
+    Tasks that need 0 minutes (all subtasks closed) are left out.
+    """
+    by_task = {r.task_id: r for r in risks}
+
+    def group(c: Candidate) -> int:
+        risk = by_task.get(c.task_id)
+        if c.deadline < now:
+            return 0
+        if risk is not None and risk.is_at_risk:
+            return 1
+        return 2 if c.in_progress else 3
+
+    ranked = sorted(
+        (c for c in candidates if c.needed_minutes > 0),
+        key=lambda c: (group(c), c.deadline, -c.needed_minutes, str(c.task_id)),
+    )
+    return [
+        TopTask(c, task_reasons(c, by_task.get(c.task_id), now, time_zone, rule))
+        for c in ranked[:count]
+    ]

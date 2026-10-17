@@ -1,6 +1,6 @@
 # Câu hỏi mở & việc chờ Backend/team
 
-Cập nhật: 2026-10-16. Đây là danh sách DUY NHẤT. Trong plan chỉ đánh dấu ⚠️ cạnh quyết định liên quan.
+Cập nhật: 2026-10-17. Đây là danh sách DUY NHẤT. Trong plan chỉ đánh dấu ⚠️ cạnh quyết định liên quan.
 Chốt xong → ghi kết quả vào `docs/` hoặc plan, rồi chuyển dòng xuống mục "Đã chốt".
 Số `#` = số trong tab Problems của Google Doc (nếu có).
 
@@ -53,6 +53,9 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 | Quan hệ `User.OnboardingCompleted` (cột của Backend) với `ProductiveBlocks`? AI chỉ dùng `ProductiveBlocks` cho `onboarded` | FR-18 #19 | 2026-10-16: 1 user thật có `OnboardingCompleted = true` nhưng `ProductiveBlocks` trống → hiện `onboarded: false` tới khi trả lời lại |
 | Chỉ gói `Cao cấp` học từ timer (`PRODUCTIVE_LEARNING_PLANS`). Đổi tên gói trong `SubscriptionPlan` → báo AI sửa config | FR-18 #16 | Gói khác: điểm = điểm onboarding |
 | (Frontend) Màn onboarding / Cài đặt: chọn 1–5 khung, nhãn tiếng Việt ("Sáng 6h–11h", "Trưa 11h–14h", "Chiều 14h–18h", "Tối 18h–22h", "Khuya 22h–2h"); không hiện chữ `Score`, `Source` | FR-18 §1 | Nên ẩn `top_hours` khi `onboarded: false` (24 giờ bằng điểm → `[0, 1, 2]`) |
+| Chuyển tiếp `GET /briefing/today?language=vi\|en` cho Frontend, gửi `language` = ngôn ngữ giao diện; gọi lúc mở app hoặc khi user bấm xem lại | FR-12 | 404 = user không còn; 422 = `language` sai. Không gọi LLM, không tốn lượt; mỗi lần ≤ 3 lần embedding (ghi `AIUsageLog` `Embedding`). Không lưu / cache bản tóm tắt |
+| (Frontend) Màn "Hôm nay": chỉ hiện `text`, dùng `code` để chọn icon / màu. `top_tasks: []` → mời tạo task; `calendar_connected: false` → nhắc kết nối Google; `has_pending_proposal: true` → nhắc duyệt đề xuất; `similar_warning` / `productive_hint` = `null` → ẩn | FR-12 §1 | Giờ trả theo múi giờ user (ISO 8601 có offset). Không cần hiện `remaining_minutes` / `missing_minutes` dạng số trần |
+| (Frontend) Lần gọi đầu sau khi server AI khởi động có thể ~5 s (mở kết nối DB + Gemini); các lần sau ~2,5 s từ máy dev | FR-12 AC6 | Nên hiện khung chờ, không chặn màn hình |
 
 ## Chờ quyết định (team / giảng viên)
 
@@ -69,6 +72,9 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 | `PRODUCTIVE_PRIOR_WEIGHT` = 5: 1 giờ cần ≥ 13 phiên tốt để vượt khung onboarding 0.8 khi điểm gốc 0.3. Có muốn dữ liệu thật chiếm ưu thế nhanh hơn? | FR-18 #2, AC5 | Chỉ đổi config, không đổi code |
 | FR-10 slot không có lời giải thích khi chạy thử FR-18 (2026-10-16): Gemini không trả lời kịp? | FR-10 | Dữ liệu thử đã xóa nên chưa xem `AIUsageLog`. Có thể cùng nguyên nhân Gemini gói Free chậm ở trên |
 | Dọn dữ liệu test còn sót: 4 user `@example.invalid` (từ `scripts/try_schedule.py`) còn dòng `UserCircadianProfile` (14–16h) và 7 `FocusSession` | FR-18 bước 0 | Chưa xóa (không phải dòng FR-18 tạo). Sẽ xóa hết trước khi công bố |
+| FR-12: các điểm Claude Code tự chọn khi code (Hiếu duyệt rồi ghi vào plan §5) | FR-12 | (1) task có subtask: cộng các subtask đang mở · (2) Fixed `Skipped` không hiện · (3) slot subtask = "Task: Subtask" · (4) `deadline_soon` luôn là ứng viên, xếp cuối, không có khi quá hạn · (5) chỉ có việc `Skipped` → "Trước đây bạn từng bỏ dở việc tương tự." · (6) giờ rảnh không trừ timer đang chạy, làm tròn `SCHEDULE_ROUND_MINUTES` · (7) `asyncio.wait` thay `wait_for` (giữ kết quả đã xong) · (8) `missing_minutes` tính riêng từng task · (9) số thập phân tiếng Việt dùng dấu phẩy · (10) giờ hiệu quả đang diễn ra vẫn tính · (11) slot `Proposed` chỉ bật cờ khi chưa kết thúc · (12) task cần 0 phút không vào top |
+| FR-12: task nguy hiểm / đang làm thường đã đủ 2 lý do → câu `bias` bị cắt (đúng thứ tự #6). Có muốn `bias` luôn hiện? | FR-12 #6, #7 | Theo plan: tối đa 2 lý do |
+| Đo lại FR-12 AC6 khi đã deploy | FR-12 AC6 | 2026-10-17 từ máy dev: có embedding trung vị 2,4 s (lần đầu 5,5 s); phía server không embedding p95 8,5 ms |
 | Ngưỡng `SIMILAR_MIN_SIMILARITY` (FR-09 #4) | FR-09 | 0.5. Chạy thật 2026-10-15: task không liên quan vẫn qua ngưỡng (Gemini cho câu khác nghĩa ~0.69) → cân nhắc ~0.75 khi có thêm dữ liệu |
 
 ## Cập nhật Google Doc

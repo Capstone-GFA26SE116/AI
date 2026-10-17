@@ -134,7 +134,7 @@ Full text in `docs/functional-requirements.md`. Status: first line of each `plan
 | FR-08b-2 | Project chat reads documents (`AllowAiDocumentAccess`, uploads); streaming later or dropped | — |
 | FR-09 | Similar past tasks: hybrid search (vector + full-text) + RRF. Free/busy time and workload are already in FR-10 | `plans/FR-09.md` |
 | FR-19 | Long-term memory: embeddings in pgvector, built in the background | `plans/FR-19.md` |
-| FR-12 | Daily "Today" briefing (text only) | — |
+| FR-12 | Daily "Today" briefing (text only, no LLM) | `plans/FR-12.md` |
 | FR-18 | Productive hours: onboarding answers, then timer data | `plans/FR-18.md` |
 
 **Not this repo:** FR-11 schedule approval + writing to Google Calendar (Backend).

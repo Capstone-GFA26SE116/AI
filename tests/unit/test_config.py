@@ -59,6 +59,17 @@ PRODUCTIVE_VARS = [
     "PRODUCTIVE_HOURS_WINDOW_DAYS",
     "PRODUCTIVE_LEARNING_PLANS",
 ]
+BRIEFING_VARS = [
+    "BRIEFING_TOP_COUNT",
+    "BRIEFING_RISK_WINDOW_DAYS",
+    "BRIEFING_AT_RISK_LIMIT",
+    "BRIEFING_BIAS_MIN_K",
+    "BRIEFING_BIAS_MIN_SAMPLES",
+    "BRIEFING_SIMILAR_MIN_COUNT",
+    "BRIEFING_SIMILAR_MIN_RATIO",
+    "BRIEFING_SIMILAR_TIMEOUT_SECONDS",
+    "BRIEFING_PRODUCTIVE_TOP_HOURS",
+]
 OPTIONAL_VARS = [
     "JWT_LEEWAY_SECONDS",
     "KBIAS_ALPHA",
@@ -79,6 +90,7 @@ OPTIONAL_VARS = [
     *CHAT_VARS,
     *PROJECT_CHAT_VARS,
     *PRODUCTIVE_VARS,
+    *BRIEFING_VARS,
 ]
 EMBEDDING_VARS = {
     "GEMINI_API_KEY": "fake-gemini-key",
@@ -519,5 +531,56 @@ def test_bad_productive_values_are_rejected(env, name, value):
 def test_selected_score_must_be_higher(env, selected, unselected):
     env.setenv("ONBOARDING_SELECTED_SCORE", selected)
     env.setenv("ONBOARDING_UNSELECTED_SCORE", unselected)
+    with pytest.raises(ValidationError):
+        load()
+
+
+# --- daily briefing (FR-12) ---
+
+
+def test_briefing_defaults(env):
+    s = load()
+    assert s.briefing_top_count == 3
+    assert s.briefing_risk_window_days == 14
+    assert s.briefing_at_risk_limit == 5
+    assert s.briefing_bias_min_k == 1.1
+    assert s.briefing_bias_min_samples == 3
+    assert s.briefing_similar_min_count == 2
+    assert s.briefing_similar_min_ratio == 1.3
+    assert s.briefing_similar_timeout_seconds == 3
+    assert s.briefing_productive_top_hours == 3
+
+
+def test_briefing_values_can_be_changed(env):
+    env.setenv("BRIEFING_TOP_COUNT", "5")
+    env.setenv("BRIEFING_RISK_WINDOW_DAYS", "7")
+    env.setenv("BRIEFING_BIAS_MIN_K", "1.2")
+    env.setenv("BRIEFING_SIMILAR_TIMEOUT_SECONDS", "1.5")
+    s = load()
+    assert s.briefing_top_count == 5
+    assert s.briefing_risk_window_days == 7
+    assert s.briefing_bias_min_k == 1.2
+    assert s.briefing_similar_timeout_seconds == 1.5
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("BRIEFING_TOP_COUNT", "0"),
+        ("BRIEFING_TOP_COUNT", "11"),
+        ("BRIEFING_RISK_WINDOW_DAYS", "0"),
+        ("BRIEFING_AT_RISK_LIMIT", "0"),
+        ("BRIEFING_BIAS_MIN_K", "1"),  # "0% more time" makes no sense
+        ("BRIEFING_BIAS_MIN_K", "3.1"),  # K never goes above 3.0
+        ("BRIEFING_BIAS_MIN_SAMPLES", "0"),
+        ("BRIEFING_SIMILAR_MIN_COUNT", "0"),
+        ("BRIEFING_SIMILAR_MIN_RATIO", "1"),
+        ("BRIEFING_SIMILAR_TIMEOUT_SECONDS", "0"),
+        ("BRIEFING_PRODUCTIVE_TOP_HOURS", "0"),
+        ("BRIEFING_PRODUCTIVE_TOP_HOURS", "25"),
+    ],
+)
+def test_bad_briefing_values_are_rejected(env, name, value):
+    env.setenv(name, value)
     with pytest.raises(ValidationError):
         load()

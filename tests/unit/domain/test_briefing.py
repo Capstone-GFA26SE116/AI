@@ -1,4 +1,5 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time
+from decimal import Decimal
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -7,14 +8,26 @@ import pytest
 from metanoia_ai.domain.briefing import (
     FixedEntry,
     GoogleEntry,
+    OpenSubtask,
+    RiskTask,
     ScheduleKind,
     SlotEntry,
     SlotStatus,
+    deadline_risks,
     falls_on,
+    free_minutes_before,
+    needed_minutes,
+    risk_free_ranges,
     today_range,
     todays_schedule,
 )
-from metanoia_ai.domain.models import TimeRange
+from metanoia_ai.domain.free_time import FixedTaskTime
+from metanoia_ai.domain.models import (
+    ActualTimeSource,
+    FocusSessionRecord,
+    TimeRange,
+    WorkingHours,
+)
 
 SAIGON = ZoneInfo("Asia/Ho_Chi_Minh")
 
@@ -162,3 +175,117 @@ def test_all_day_event_of_yesterday_is_left_out():
     start = datetime(2026, 10, 15, 17, tzinfo=UTC)
     end = datetime(2026, 10, 16, 17, tzinfo=UTC)  # ends at 00:00 today
     assert schedule(events=[google(start, end, all_day=True)]).all_day == ()
+
+
+# --- minutes a task still needs ---
+
+
+def test_task_without_subtasks_is_scaled_by_k():
+    assert needed_minutes(60, [], False, [], Decimal("1.3"), NOW) == 78
+
+
+def test_free_plan_is_not_scaled():
+    assert needed_minutes(60, [], False, [], None, NOW) == 60
+
+
+def test_task_with_subtasks_sums_the_open_ones():
+    a, b = OpenSubtask(uuid4(), 30), OpenSubtask(uuid4(), 40)
+    # A session of 25' on subtask a: 30 − 25 → at least 30 left (FR-10 rule).
+    session = FocusSessionRecord(
+        at(17, 7), at(17, 7, 25), ActualTimeSource.TIMER, subtask_id=a.subtask_id
+    )
+    assert needed_minutes(999, [a, b], True, [session], None, NOW) == 30 + 40
+
+
+def test_task_with_all_subtasks_closed_needs_nothing():
+    assert needed_minutes(120, [], True, [], Decimal("1.3"), NOW) == 0
+
+
+def test_remaining_minutes_from_the_user_is_used_as_is():
+    session = FocusSessionRecord(
+        at(17, 7), at(17, 7, 30), ActualTimeSource.TIMER, remaining_minutes=45
+    )
+    assert needed_minutes(120, [], False, [session], Decimal("1.5"), NOW) == 45
+
+
+# --- deadline risk, counted together ---
+
+# Every day 09:00-17:00 (480 free minutes a day), weekends too.
+HOURS = WorkingHours(SAIGON, time(9), time(17), True, 10)
+WINDOW = 14
+
+
+def free(fixed_tasks=(), now=NOW):
+    return risk_free_ranges(HOURS, now, WINDOW, fixed_tasks, [], round_minutes=5)
+
+
+def risks(tasks, now=NOW):
+    return deadline_risks(tasks, free(now=now), now, WINDOW)
+
+
+def task(deadline, minutes):
+    return RiskTask(uuid4(), deadline, minutes)
+
+
+def test_free_minutes_before_cuts_at_the_deadline():
+    ranges = free()
+    assert free_minutes_before(ranges, at(17, 12)) == 180
+    assert free_minutes_before(ranges, at(18, 17)) == 960
+    assert free_minutes_before(ranges, at(17, 8)) == 0
+
+
+def test_one_task_that_fits_is_safe():
+    [result] = risks([task(at(17, 17), 480)])
+    assert result.available_minutes == 480
+    assert not result.is_at_risk
+    assert result.missing_minutes == 0
+
+
+def test_t2_three_tasks_same_deadline_counted_together():
+    # Each fits alone in today's 480 minutes; together they do not.
+    big, mid, small = (
+        task(at(17, 17), 400),
+        task(at(17, 17), 350),
+        task(at(17, 17), 300),
+    )
+    result = risks([small, big, mid])
+    assert [r.task_id for r in result] == [big.task_id, mid.task_id, small.task_id]
+    assert [r.is_at_risk for r in result] == [False, True, True]
+    assert [r.available_minutes for r in result] == [480, 80, 0]
+    assert [r.missing_minutes for r in result] == [0, 270, 300]
+
+
+def test_t3_deadline_after_the_window_is_safe_and_not_counted():
+    far = task(datetime(2026, 11, 6, 9, tzinfo=SAIGON), 10_000)  # 20 days later
+    near = task(at(17, 17), 400)
+    result = risks([far, near])
+    assert [r.task_id for r in result] == [near.task_id]
+    assert not result[0].is_at_risk
+
+
+def test_t9_approved_slots_are_not_busy():
+    # Free time only comes from Fixed tasks and Google events: an approved slot
+    # of the task being checked must not make its own deadline look at risk.
+    assert free_minutes_before(free(), at(17, 17)) == 480
+    meeting = FixedTaskTime(at(17, 10), at(17, 11), is_skipped=False)
+    assert free_minutes_before(free([meeting]), at(17, 17)) == 420
+
+
+def test_t10_overdue_task_takes_free_time_first():
+    overdue = task(at(16, 17), 480)
+    tomorrow = task(at(18, 17), 600)  # 960 free minutes until then: fits alone
+    result = risks([tomorrow, overdue])
+    assert [r.task_id for r in result] == [overdue.task_id, tomorrow.task_id]
+    assert result[0].is_overdue and not result[0].is_at_risk
+    assert result[1].available_minutes == 480
+    assert result[1].is_at_risk
+    assert result[1].missing_minutes == 120
+
+
+def test_overdue_tasks_are_ordered_by_deadline():
+    older, newer = task(at(15, 9), 60), task(at(16, 9), 60)
+    assert [r.task_id for r in risks([newer, older])] == [older.task_id, newer.task_id]
+
+
+def test_task_needing_nothing_is_left_out():
+    assert risks([task(at(17, 17), 0)]) == []

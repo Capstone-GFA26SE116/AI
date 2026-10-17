@@ -23,6 +23,7 @@ from metanoia_ai.domain.briefing import (
     falls_on,
     free_minutes_before,
     needed_minutes,
+    productive_hint,
     risk_free_ranges,
     select_top,
     today_range,
@@ -438,3 +439,55 @@ def test_at_risk_list_sorted_by_deadline_and_limited():
     risk_list = [risk_of(a, 0), risk_of(b, 0), risk_of(c, 0), risk_of(safe, 60)]
     result = at_risk_tasks(risk_list, limit=2)
     assert [r.task_id for r in result] == [b.task_id, a.task_id]
+
+
+# --- T12: productive hours left today ---
+
+# Onboarding "afternoon" + "evening": 14-21h score 0.8, the rest 0.3.
+SCORES = {h: Decimal("0.8") if 14 <= h <= 21 else Decimal("0.3") for h in range(24)}
+WORK_8_TO_22 = WorkingHours(SAIGON, time(8), time(22), True, 10)
+
+
+AFTERNOON_NOW = at(17, 15, 10)
+
+
+def hint(scores=SCORES, *, answered=True, hours=WORK_8_TO_22, now=AFTERNOON_NOW, n=3):
+    return productive_hint(scores, answered, hours, now, n)
+
+
+def test_t12_keeps_hours_left_today_and_joins_them():
+    # Top 3 = 14, 15, 16 (ties: earlier hour). At 15:10, 14h is over.
+    assert hint() == [(15, 17)]
+
+
+def test_t12_not_onboarded_gives_none():
+    assert hint(answered=False) is None
+
+
+def test_separate_hours_make_separate_ranges():
+    scores = {**SCORES, 9: Decimal("0.9"), 20: Decimal("0.95")}
+    # Top 3 = 20, 9, then 14. At 08:00 all are ahead.
+    assert hint(scores, now=at(17, 8)) == [(9, 10), (14, 15), (20, 21)]
+
+
+def test_current_hour_still_counts():
+    assert hint(now=at(17, 16, 59)) == [(16, 17)]
+
+
+def test_nothing_left_today_gives_none():
+    assert hint(now=at(17, 17)) is None
+
+
+def test_hours_outside_working_hours_are_dropped():
+    office = WorkingHours(SAIGON, time(8), time(15), True, 10)
+    assert hint(hours=office, now=at(17, 8)) == [(14, 15)]
+
+
+def test_weekend_off_gives_none():
+    weekdays = WorkingHours(SAIGON, time(8), time(22), False, 10)
+    assert hint(hours=weekdays, now=at(17, 8)) is None  # 17 Oct is a Saturday
+    assert hint(hours=weekdays, now=at(19, 8)) == [(14, 17)]  # Monday
+
+
+def test_no_scores_gives_none():
+    assert hint({}) is None

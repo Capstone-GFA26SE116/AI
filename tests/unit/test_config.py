@@ -79,7 +79,6 @@ OPTIONAL_VARS = [
     "SCHEDULE_MIN_CHUNK_MINUTES",
     "SCHEDULE_ROUND_MINUTES",
     "SCHEDULE_TOP_PRODUCTIVE_HOURS",
-    "QUOTA_DAILY_MAX",
     "LLM_MAX_RETRIES",
     *LLM_VARS,
     "EMBEDDING_MODEL",
@@ -132,8 +131,13 @@ def test_defaults(env):
     assert settings.schedule_min_chunk_minutes == 30
     assert settings.schedule_round_minutes == 5
     assert settings.schedule_top_productive_hours == 3
-    assert settings.quota_daily_max == 50
     assert settings.llm_max_retries == 2
+
+
+def test_t1_old_daily_limit_variable_is_ignored(env):
+    # Removed with the daily limit (BR-86); an old value must not stop the app.
+    env.setenv("QUOTA_DAILY_MAX", "50")
+    assert not hasattr(load(), "quota_daily_max")
 
 
 def test_starts_without_llm_settings(env):
@@ -205,7 +209,6 @@ def test_values_can_be_changed(env):
         ("SCHEDULE_ROUND_MINUTES", "61"),
         ("SCHEDULE_TOP_PRODUCTIVE_HOURS", "0"),
         ("SCHEDULE_TOP_PRODUCTIVE_HOURS", "25"),
-        ("QUOTA_DAILY_MAX", "0"),
         ("LLM_MAX_RETRIES", "-1"),
         ("LLM_INPUT_PRICE_PER_1M", "-0.1"),
         ("LLM_OUTPUT_PRICE_PER_1M", "-0.1"),

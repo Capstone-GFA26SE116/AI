@@ -7,6 +7,8 @@ Kinds: PDF, DOCX, plain text (.txt / .md). No OCR (#5).
 import io
 import re
 import zipfile
+from collections.abc import Sequence
+from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import PurePosixPath
 
@@ -18,6 +20,9 @@ TEXT_EXTENSIONS = {".txt", ".md"}
 # Fewer non-space characters than this in a PDF = scanned or empty (#12).
 PDF_MIN_TEXT_CHARS = 50
 DOCX_MAIN_PART = "word/document.xml"
+# A cut at a paragraph or sentence end must keep at least this share of the limit.
+MIN_BOUNDARY_SHARE = 0.5
+SENTENCE_END = re.compile(r"[.!?…](?=\s)")
 
 
 class DocumentKind(StrEnum):
@@ -92,6 +97,49 @@ def extract_text(
     if len(re.sub(r"\s", "", text)) < min_chars:
         raise DocumentError(DocumentErrorCode.NO_TEXT, name)
     return text
+
+
+@dataclass(frozen=True)
+class FittedText:
+    text: str
+    is_truncated: bool
+
+
+def fit_to_budget(texts: Sequence[str], budget: int) -> list[FittedText]:
+    """Share `budget` characters between the documents, same order back (#13).
+
+    Each gets an equal share; a short one gives what it does not use to the
+    others (shortest first, so no document takes all of it).
+    """
+    limits = [0] * len(texts)
+    left = max(budget, 0)
+    order = sorted(range(len(texts)), key=lambda i: len(texts[i]))
+    for done, i in enumerate(order):
+        share = left // (len(texts) - done)
+        limits[i] = min(len(texts[i]), share)
+        left -= limits[i]
+    return [
+        FittedText(cut_text(text, limit), len(text) > limit)
+        for text, limit in zip(texts, limits, strict=True)
+    ]
+
+
+def cut_text(text: str, limit: int) -> str:
+    """At most `limit` characters, ending at a paragraph or sentence end if one is
+    close enough, else at a space: never in the middle of a word."""
+    if len(text) <= limit:
+        return text
+    window = text[:limit]
+    if not text[limit].isspace():  # the limit falls inside a word
+        window = window[: max(window.rfind(" "), window.rfind("\n"), 0)] or window
+    floor = int(limit * MIN_BOUNDARY_SHARE)
+    paragraph = window.rfind("\n\n")
+    if paragraph >= floor:
+        return window[:paragraph].rstrip()
+    sentence_ends = [m.end() for m in SENTENCE_END.finditer(window)]
+    if sentence_ends and sentence_ends[-1] >= floor:
+        return window[: sentence_ends[-1]].rstrip()
+    return window.rstrip()
 
 
 def normalize_text(text: str) -> str:

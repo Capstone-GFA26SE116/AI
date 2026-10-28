@@ -90,6 +90,17 @@ Ký hiệu: **AI ghi** = AI service được INSERT/UPDATE · **Chỉ đọc** =
 - `Scope = 'Project'`, `TaskId` trống. Mọi truy vấn chat dự án lọc `Scope = 'Project'`.
 - `ProposalJson` của bản nháp dự án có `"version": "project_v1"` (bản nháp FR-08a: `version` = 1).
 
+### `ChatAttachment` — AI ghi (FR-08b-2) ⚠️
+Bảng mới, **AI tạo 2026-10-28** (Hiếu cho phép, đã báo Backend; migration của Backend phải khớp).
+- `Id` uuid PK · `MessageId` uuid NOT NULL FK → `ChatMessage` `ON DELETE CASCADE` ·
+  `DocumentId` uuid trống được FK → `ProjectDocument` `ON DELETE SET NULL` ·
+  `Source` varchar(10) ∈ {`Hub`, `Upload`} · `Name` varchar(255) NOT NULL · `ExtractedText` text NOT NULL ·
+  `IsTruncated` bool NOT NULL mặc định false · `CreatedAt` timestamptz mặc định now() (AI ghi `clock_timestamp()`).
+- CHECK `CK_ChatAttachment_UploadHasNoDocument`: `Source = 'Upload'` ⇒ `DocumentId IS NULL`.
+  Index `IX_ChatAttachment_MessageId`. Bật RLS như các bảng khác.
+- Chỉ gắn với tin của **user** trong chat dự án. `ExtractedText` = chữ đã cắt theo ngân sách, **chưa che**
+  (che lúc ghép prompt). Không trả về qua API.
+
 ### `Milestone` — AI ghi lúc Apply (FR-08b-1) ⚠️
 Đọc DB 2026-10-16 (chỉ đọc, FR-08b-1 bước 0). Đang có 2 dòng.
 - `Id` uuid · `ProjectId` uuid NOT NULL · `Name` **varchar(150)** NOT NULL (plan gọi là `title`) ·
@@ -131,6 +142,18 @@ Ký hiệu: **AI ghi** = AI service được INSERT/UPDATE · **Chỉ đọc** =
   `StartDate`, `Deadline` **date** trống được (`Deadline >= StartDate`) · `IsDefault` bool · `CreatedAt`.
 - `Status` ∈ {`Active`, `OnHold`, `Completed`, `Archived`}, mặc định `Active`. FR-08b-1 #28: `Completed` / `Archived` = đã đóng.
   2026-10-16: 20 project, đều `Active`.
+- `AllowAiDocumentAccess` bool NOT NULL DEFAULT false — công tắc "Cho AI đọc tài liệu" (FR-08b-2, B1).
+  **AI thêm cột 2026-10-28** (Hiếu cho phép, đã báo Backend). AI chỉ đọc; Backend bật / tắt qua `PATCH /projects/{id}` ⚠️.
+  Tắt → AI không đọc file trong kho, kể cả file đã đính kèm ở lượt trước. Upload thẳng vào chat không cần cờ.
+
+### `ProjectDocument` (FR-08b-2, chỉ đọc)
+Đọc DB 2026-10-28: 0 dòng.
+- `Id` uuid · `ProjectId` uuid NOT NULL FK → `Project` `ON DELETE CASCADE` · `Name` varchar(255) NOT NULL (tên hiển thị, có thể mất đuôi) ·
+  `SourceType` varchar(10) ∈ {`File`, `Link`} · `StoragePath` varchar(500) · `LinkUrl` varchar(2000) ·
+  `SizeBytes` bigint trống được, CHECK 0–20.971.520 (20 MB) · `Tag` ∈ {`Brief`, `Contract`, `Design`, `Other`} · `UploadedAt`.
+- CHECK `CK_ProjectDocument_Source`: `File` ⇒ có `StoragePath`, không `LinkUrl`; `Link` ⇒ ngược lại.
+- AI chỉ đọc file loại `File` (đuôi lấy từ `StoragePath`); nội dung tải qua `GET /api/documents/{id}/download` của Backend
+  với token của user. Không có `UserId` → lọc chủ qua `Project.UserId`.
 
 
 ### `FocusSession`

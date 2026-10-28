@@ -115,7 +115,6 @@ class SendTaskChatMessage:
         max_message_chars: int,
         similar_limit: int,
         warning_ratio: float,
-        quota_daily_max: int,
         now: Callable[[], datetime],
     ) -> None:
         self.repo = repo
@@ -127,9 +126,8 @@ class SendTaskChatMessage:
         self.max_message_chars = max_message_chars
         self.similar_limit = similar_limit
         self.warning_ratio = warning_ratio
-        self.quota_daily_max = quota_daily_max
         self.now = now
-        self.chat_quota = ChatQuota(quota_repo, daily_max=quota_daily_max, now=now)
+        self.chat_quota = ChatQuota(quota_repo, now=now)
 
     async def execute(self, user_id: UUID, task_id: UUID, message: str) -> ChatTurn:
         text = message.strip()

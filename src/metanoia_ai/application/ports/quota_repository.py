@@ -59,10 +59,6 @@ class QuotaRepository(Protocol):
         """The Active plan (newest StartAt if there are several), or None."""
         ...
 
-    async def count_charged_calls(self, user_id: UUID, since: datetime) -> int:
-        """AI calls that used quota (QuotaCharged = true) since the given time."""
-        ...
-
     async def try_charge(self, subscription: Subscription) -> bool:
         """Add 1 to AiCallsUsed only if still under the limit. False if not.
 

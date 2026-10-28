@@ -41,7 +41,6 @@ class Settings(BaseSettings):
     schedule_min_chunk_minutes: int = Field(default=30, gt=0)
     schedule_round_minutes: int = Field(default=5, gt=0, le=60)
     schedule_top_productive_hours: int = Field(default=3, gt=0, le=24)
-    quota_daily_max: int = Field(default=50, gt=0)
 
     # LLM. Optional at startup: only features that call the LLM need them,
     # and they get them through llm_config(), which fails if one is missing.

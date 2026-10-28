@@ -16,6 +16,8 @@ from docx import Document as open_docx
 from docx.table import Table
 from pypdf import PasswordType, PdfReader
 
+from metanoia_ai.domain.models import Language
+
 TEXT_EXTENSIONS = {".txt", ".md"}
 # Fewer non-space characters than this in a PDF = scanned or empty (#12).
 PDF_MIN_TEXT_CHARS = 50
@@ -23,6 +25,17 @@ DOCX_MAIN_PART = "word/document.xml"
 # A cut at a paragraph or sentence end must keep at least this share of the limit.
 MIN_BOUNDARY_SHARE = 0.5
 SENTENCE_END = re.compile(r"[.!?…](?=\s)")
+
+
+# Shown with the AI answer when a document was cut (#17).
+TRUNCATION_WARNINGS = {
+    Language.VI: "AI chỉ đọc phần đầu của {name}.",
+    Language.EN: "The AI only read the first part of {name}.",
+}
+
+
+def truncation_warning(name: str, language: Language) -> str:
+    return TRUNCATION_WARNINGS[language].format(name=name)
 
 
 class DocumentKind(StrEnum):

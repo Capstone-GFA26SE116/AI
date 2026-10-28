@@ -19,7 +19,9 @@ from metanoia_ai.domain.document_text import (
     extract_text,
     fit_to_budget,
     normalize_text,
+    truncation_warning,
 )
+from metanoia_ai.domain.models import Language
 
 MB = 1024 * 1024
 PNG = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01"
@@ -303,3 +305,15 @@ def test_t7_a_boundary_too_early_is_not_used():
 
 def test_t7_one_long_word_is_cut_hard():
     assert cut_text("x" * 100, 10) == "x" * 10
+
+
+# --- #17: warning when a document was cut ---
+
+
+def test_truncation_warning_in_both_languages():
+    assert truncation_warning("brief.pdf", Language.VI) == (
+        "AI chỉ đọc phần đầu của brief.pdf."
+    )
+    assert truncation_warning("brief.pdf", Language.EN) == (
+        "The AI only read the first part of brief.pdf."
+    )

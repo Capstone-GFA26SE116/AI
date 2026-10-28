@@ -9,8 +9,10 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from metanoia_ai.application.ports.project_chat_repository import (
+    AttachmentSource,
     ChatRole,
     ConversationStatus,
+    DocumentSourceType,
     ProjectChatRepository,
     SavedProjectDraft,
 )
@@ -23,11 +25,14 @@ from metanoia_ai.domain.project_breakdown import (
 )
 from metanoia_ai.infrastructure.db import project_chat_repository as sql
 from metanoia_ai.infrastructure.db.project_chat_repository import (
+    SOURCE_TO_DB,
     STATUS_FROM_DB,
     SqlProjectChatRepository,
     draft_from_json,
     draft_to_json,
+    to_attachment,
     to_conversation,
+    to_document,
     to_message,
     to_project,
 )
@@ -109,8 +114,10 @@ def test_t25_row_becomes_project():
         Status="OnHold",
         ClientName="ACME",
         TimeZone="Asia/Ho_Chi_Minh",
+        AllowAiDocumentAccess=True,
     )
     project = to_project(row)
+    assert project.allow_ai_documents is True
     assert project.time_zone == ZoneInfo("Asia/Ho_Chi_Minh")
     assert project.is_closed is False
     assert (project.client_name, project.deadline) == ("ACME", date(2026, 10, 30))
@@ -170,9 +177,12 @@ CHAT_QUERIES = [
     "ADD_MESSAGE",
     "MARK_MESSAGE_APPLIED",
     "MARK_CONVERSATION_APPLIED",
+    "ADD_ATTACHMENT",
+    "LIST_ATTACHMENTS",
 ]
 OWNED_QUERIES = [
     *CHAT_QUERIES,
+    "GET_DOCUMENT",
     "GET_PROJECT",
     "LOCK_PROJECT",
     "CREATE_CONVERSATION",
@@ -210,3 +220,53 @@ def test_new_task_is_flexible_todo_with_the_ai_number():
 def test_repository_matches_the_port():
     repo: ProjectChatRepository = SqlProjectChatRepository(session=None)  # type only
     assert repo is not None
+
+
+# --- FR-08b-2: documents and attachments ---
+
+
+@pytest.mark.parametrize(
+    ("db", "source_type"),
+    [("File", DocumentSourceType.FILE), ("Link", DocumentSourceType.LINK)],
+)
+def test_row_becomes_document(db, source_type):
+    row = SimpleNamespace(
+        Id=uuid4(),
+        ProjectId=uuid4(),
+        Name="Brief",
+        SourceType=db,
+        StoragePath="p/a/brief.pdf" if db == "File" else None,
+        SizeBytes=None,  # the column allows NULL
+    )
+    document = to_document(row)
+    assert document.source_type is source_type
+    assert document.size_bytes is None
+
+
+def test_attachment_sources_match_the_db_check():
+    # DB CHECK: Source IN ('Hub', 'Upload').
+    assert set(SOURCE_TO_DB.values()) == {"Hub", "Upload"}
+
+
+@pytest.mark.parametrize("source", list(AttachmentSource))
+def test_row_becomes_attachment(source):
+    row = SimpleNamespace(
+        Id=uuid4(),
+        MessageId=uuid4(),
+        Source=SOURCE_TO_DB[source],
+        DocumentId=None,
+        Name="brief.pdf",
+        ExtractedText="Text",
+        IsTruncated=True,
+        CreatedAt=NOW,
+    )
+    attachment = to_attachment(row)
+    assert (attachment.source, attachment.is_truncated) == (source, True)
+
+
+def test_attachments_only_go_with_user_messages():
+    assert "m.\"Sender\" = 'User'" in sql.ADD_ATTACHMENT.text
+
+
+def test_project_query_reads_the_document_switch():
+    assert '"AllowAiDocumentAccess"' in sql.GET_PROJECT.text

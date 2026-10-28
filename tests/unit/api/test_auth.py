@@ -24,6 +24,7 @@ def make_settings(secret: str = SECRET) -> Settings:
         jwt_issuer="METANOIA",
         jwt_audience="METANOIA.Client",
         jwt_leeway_seconds=300,
+        backend_base_url="https://backend.example.test",
     )
 
 

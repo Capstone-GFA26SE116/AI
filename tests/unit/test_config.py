@@ -8,6 +8,7 @@ REQUIRED_VARS = {
     "JWT_SECRET": "test-secret-at-least-32-bytes-long!!",
     "JWT_ISSUER": "METANOIA",
     "JWT_AUDIENCE": "METANOIA.Client",
+    "BACKEND_BASE_URL": "https://backend.example.test",
 }
 LLM_VARS = {
     "LLM_MODEL": "fake-flash-lite",
@@ -70,6 +71,13 @@ BRIEFING_VARS = [
     "BRIEFING_SIMILAR_TIMEOUT_SECONDS",
     "BRIEFING_PRODUCTIVE_TOP_HOURS",
 ]
+DOCUMENT_VARS = [
+    "BACKEND_DOWNLOAD_TIMEOUT_SECONDS",
+    "CHAT_DOCUMENT_MAX_FILES",
+    "CHAT_DOCUMENT_MAX_FILE_BYTES",
+    "CHAT_DOCUMENT_MAX_CHARS",
+    "CHAT_DOCUMENT_MAX_PDF_PAGES",
+]
 OPTIONAL_VARS = [
     "JWT_LEEWAY_SECONDS",
     "KBIAS_ALPHA",
@@ -90,6 +98,7 @@ OPTIONAL_VARS = [
     *PROJECT_CHAT_VARS,
     *PRODUCTIVE_VARS,
     *BRIEFING_VARS,
+    *DOCUMENT_VARS,
 ]
 EMBEDDING_VARS = {
     "GEMINI_API_KEY": "fake-gemini-key",
@@ -584,6 +593,50 @@ def test_briefing_values_can_be_changed(env):
     ],
 )
 def test_bad_briefing_values_are_rejected(env, name, value):
+    env.setenv(name, value)
+    with pytest.raises(ValidationError):
+        load()
+
+
+# --- project chat documents (FR-08b-2) ---
+
+
+def test_document_defaults(env):
+    s = load()
+    assert s.backend_base_url == "https://backend.example.test"
+    assert s.backend_download_timeout_seconds == 15
+    assert s.chat_document_max_files == 3
+    assert s.chat_document_max_file_bytes == 20 * 1024 * 1024
+    assert s.chat_document_max_chars == 80_000
+    assert s.chat_document_max_pdf_pages == 100
+
+
+def test_document_values_can_be_changed(env):
+    env.setenv("CHAT_DOCUMENT_MAX_FILES", "2")
+    env.setenv("CHAT_DOCUMENT_MAX_CHARS", "200000")
+    env.setenv("BACKEND_DOWNLOAD_TIMEOUT_SECONDS", "7.5")
+    s = load()
+    assert s.chat_document_max_files == 2
+    assert s.chat_document_max_chars == 200_000
+    assert s.backend_download_timeout_seconds == 7.5
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("BACKEND_BASE_URL", "backend.example.test"),  # no http(s)://
+        ("BACKEND_DOWNLOAD_TIMEOUT_SECONDS", "0"),
+        ("BACKEND_DOWNLOAD_TIMEOUT_SECONDS", "-1"),
+        ("CHAT_DOCUMENT_MAX_FILES", "0"),
+        ("CHAT_DOCUMENT_MAX_FILES", "11"),
+        ("CHAT_DOCUMENT_MAX_FILE_BYTES", "0"),
+        ("CHAT_DOCUMENT_MAX_FILE_BYTES", "20971521"),  # over 20 MB
+        ("CHAT_DOCUMENT_MAX_CHARS", "-1"),
+        ("CHAT_DOCUMENT_MAX_CHARS", "200001"),  # #16
+        ("CHAT_DOCUMENT_MAX_PDF_PAGES", "0"),
+    ],
+)
+def test_bad_document_values_are_rejected(env, name, value):
     env.setenv(name, value)
     with pytest.raises(ValidationError):
         load()

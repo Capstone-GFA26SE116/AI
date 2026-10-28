@@ -6,9 +6,13 @@ dependencies = [
     "asyncpg>=0.32.0",
     "fastapi>=0.142.2",
     "google-genai>=2.30.0",
+    "httpx>=0.28.1",
     "pydantic>=2.13.5",
     "pydantic-settings>=2.15.0",
     "pyjwt>=2.15.1",
+    "pypdf>=6.21.3",
+    "python-docx>=1.2.0",
+    "python-multipart>=0.0.32",
     "sqlalchemy[asyncio]>=2.1.4",
     "tzdata>=2026.5",
     "uvicorn[standard]>=0.54.0",
@@ -20,7 +24,6 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
-    "httpx>=0.28.1",
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
     "ruff>=0.16.10",

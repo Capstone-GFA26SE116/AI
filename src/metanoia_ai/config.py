@@ -108,6 +108,19 @@ class Settings(BaseSettings):
     chat_project_retry_budget_seconds: float = Field(default=40, gt=0)
     chat_project_max_retries: int = Field(default=1, ge=0, le=2)  # #29
 
+    # Project chat documents (FR-08b-2). Files come from the Backend's download
+    # endpoint, called with the user's own token (B2).
+    backend_base_url: str = Field(pattern=r"^https?://\S+$")
+    backend_download_timeout_seconds: float = Field(default=15, gt=0)
+    chat_document_max_files: int = Field(default=3, ge=1, le=10)  # hub + upload
+    # NFR-26; ProjectDocument.SizeBytes has the same 20 MB check in the DB.
+    chat_document_max_file_bytes: int = Field(
+        default=20 * 1024 * 1024, gt=0, le=20 * 1024 * 1024
+    )
+    # ≈ 20,000 tokens at 4 characters per token (CLAUDE.md §7, #4, #16).
+    chat_document_max_chars: int = Field(default=80_000, gt=0, le=200_000)
+    chat_document_max_pdf_pages: int = Field(default=100, ge=1)  # #12
+
     # Productive hours (FR-18). Scores fit UserCircadianProfile.Score: [0, 1].
     onboarding_selected_score: float = Field(default=0.8, ge=0, le=1)
     onboarding_unselected_score: float = Field(default=0.3, ge=0, le=1)

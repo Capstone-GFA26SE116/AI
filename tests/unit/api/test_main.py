@@ -19,7 +19,13 @@ def client():
 def clean_settings(monkeypatch, tmp_path):
     """Run in an empty folder (no real .env) with a fresh settings cache."""
     monkeypatch.chdir(tmp_path)
-    for name in ["DATABASE_URL", "JWT_SECRET", "JWT_ISSUER", "JWT_AUDIENCE"]:
+    for name in [
+        "DATABASE_URL",
+        "JWT_SECRET",
+        "JWT_ISSUER",
+        "JWT_AUDIENCE",
+        "BACKEND_BASE_URL",
+    ]:
         monkeypatch.delenv(name, raising=False)
     get_settings.cache_clear()
     yield monkeypatch
@@ -47,6 +53,7 @@ def test_startup_succeeds_with_settings(clean_settings):
     clean_settings.setenv("JWT_SECRET", "x" * 64)
     clean_settings.setenv("JWT_ISSUER", "METANOIA")
     clean_settings.setenv("JWT_AUDIENCE", "METANOIA.Client")
+    clean_settings.setenv("BACKEND_BASE_URL", "https://backend.example.test")
     with TestClient(app) as started:
         assert started.get("/health").status_code == 200
 

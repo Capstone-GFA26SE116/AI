@@ -8,12 +8,16 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from metanoia_ai.application.ports.project_chat_repository import (
+    AttachmentSource,
     ChatProject,
     ChatRole,
     ConversationStatus,
+    DocumentSourceType,
+    NewAttachment,
     NewMilestone,
     NewTask,
     ProjectChatRepository,
+    ProjectDocument,
 )
 from tests.unit.application.fakes import FakeProjectChatRepository
 
@@ -156,3 +160,92 @@ def test_one_applied_draft_per_chat():
     assert applied.status is ConversationStatus.APPLIED
     with pytest.raises(ValueError):
         run(repo.mark_applied(USER, chat.conversation_id, message.message_id))
+
+
+# --- FR-08b-2: library documents and chat attachments ---
+
+
+def document(project_id, source_type=DocumentSourceType.FILE) -> ProjectDocument:
+    path = "projects/a/brief.pdf" if source_type is DocumentSourceType.FILE else None
+    return ProjectDocument(uuid4(), project_id, "brief.pdf", source_type, path, 1000)
+
+
+def attachment(source=AttachmentSource.UPLOAD, document_id=None) -> NewAttachment:
+    return NewAttachment(source, document_id, "brief.pdf", "Brief text", False)
+
+
+def chat_with_user_message(repo, p):
+    chat = run(repo.create_conversation(USER, p.project_id, "Brief"))
+    message = run(repo.add_message(USER, chat.conversation_id, ChatRole.USER, "Hi"))
+    return chat, message
+
+
+def test_document_access_is_off_by_default_and_can_be_switched():
+    repo, p = setup()
+    assert p.allow_ai_documents is False
+    repo.set_document_access(p.project_id, True)
+    assert run(repo.get_project(USER, p.project_id)).allow_ai_documents is True
+
+
+def test_documents_of_other_users_are_not_found():
+    repo, p = setup()
+    doc = document(p.project_id)
+    repo.add_document(doc)
+    assert run(repo.get_document(USER, doc.document_id)) == doc
+    assert run(repo.get_document(OTHER, doc.document_id)) is None
+    assert run(repo.get_document(USER, uuid4())) is None
+
+
+def test_attachments_are_listed_oldest_first_for_the_owner_only():
+    repo, p = setup()
+    chat, message = chat_with_user_message(repo, p)
+    first = run(repo.add_attachment(USER, message.message_id, attachment()))
+    second = run(repo.add_attachment(USER, message.message_id, attachment()))
+    assert run(repo.list_attachments(USER, chat.conversation_id)) == [first, second]
+    assert run(repo.list_attachments(OTHER, chat.conversation_id)) == []
+    assert first.message_id == message.message_id
+
+
+def test_an_upload_cannot_point_to_a_library_document():
+    repo, p = setup()
+    doc = document(p.project_id)
+    repo.add_document(doc)
+    _, message = chat_with_user_message(repo, p)
+    bad = attachment(AttachmentSource.UPLOAD, doc.document_id)
+    with pytest.raises(ValueError, match="UploadHasNoDocument"):
+        run(repo.add_attachment(USER, message.message_id, bad))
+
+
+def test_attachments_go_with_user_messages_only():
+    repo, p = setup()
+    chat = run(repo.create_conversation(USER, p.project_id, "Brief"))
+    reply = run(repo.add_message(USER, chat.conversation_id, ChatRole.ASSISTANT, "Ok"))
+    with pytest.raises(AssertionError):
+        run(repo.add_attachment(USER, reply.message_id, attachment()))
+
+
+def test_deleting_a_library_document_keeps_the_attachment_without_its_id():
+    repo, p = setup()
+    doc = document(p.project_id)
+    repo.add_document(doc)
+    chat, message = chat_with_user_message(repo, p)
+    hub = attachment(AttachmentSource.HUB, doc.document_id)
+    run(repo.add_attachment(USER, message.message_id, hub))
+    repo.delete_document(doc.document_id)
+    [kept] = run(repo.list_attachments(USER, chat.conversation_id))
+    assert kept.document_id is None
+    assert kept.extracted_text == "Brief text"
+
+
+def test_attachments_roll_back_with_the_transaction():
+    repo, p = setup()
+    chat, message = chat_with_user_message(repo, p)
+
+    async def fail_after_saving():
+        async with repo.transaction():
+            await repo.add_attachment(USER, message.message_id, attachment())
+            raise RuntimeError("LLM answer could not be saved")
+
+    with pytest.raises(RuntimeError):
+        run(fail_after_saving())
+    assert run(repo.list_attachments(USER, chat.conversation_id)) == []

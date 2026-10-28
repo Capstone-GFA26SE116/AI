@@ -8,7 +8,7 @@ from metanoia_ai.domain.models import SkipReason, TaskType
 
 K_MIN = 0.5
 K_MAX = 3.0
-INITIAL_K_BIAS = 1.3  # Open: may be seeded from onboarding (Problems #10).
+INITIAL_K_BIAS = 1.3  # Fixed for every new user (Moløkken & Jørgensen, 2003); learned per user after that.
 DEFAULT_ALPHA = 0.2
 # Open: threshold not agreed yet (Problems #12). Proposed value: > 5x or < 1/5.
 DEFAULT_OUTLIER_RATIO = 5.0

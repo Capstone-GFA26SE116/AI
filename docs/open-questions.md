@@ -58,6 +58,13 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 | Chuyển tiếp `GET /briefing/today?language=vi\|en` cho Frontend, gửi `language` = ngôn ngữ giao diện; gọi lúc mở app hoặc khi user bấm xem lại | FR-12 | 404 = user không còn; 422 = `language` sai. Không gọi LLM, không tốn lượt; mỗi lần ≤ 3 lần embedding (ghi `AIUsageLog` `Embedding`). Không lưu / cache bản tóm tắt |
 | (Frontend) Màn "Hôm nay": chỉ hiện `text`, dùng `code` để chọn icon / màu. `top_tasks: []` → mời tạo task; `calendar_connected: false` → nhắc kết nối Google; `has_pending_proposal: true` → nhắc duyệt đề xuất; `similar_warning` / `productive_hint` = `null` → ẩn | FR-12 §1 | Giờ trả theo múi giờ user (ISO 8601 có offset). Không cần hiện `remaining_minutes` / `missing_minutes` dạng số trần |
 | (Frontend) Lần gọi đầu sau khi server AI khởi động có thể ~5 s (mở kết nối DB + Gemini); các lần sau ~2,5 s từ máy dev | FR-12 AC6 | Nên hiện khung chờ, không chặn màn hình |
+| ⚠️ (B1) Cập nhật entity / migration cho cột `Project.AllowAiDocumentAccess` bool NOT NULL DEFAULT false (AI đã tạo trên DB 2026-10-28) và thêm `allowAiDocumentAccess` vào `PATCH /projects/{id}` | FR-08b-2 B1 | Mặc định tắt. AI chỉ đọc cờ |
+| ⚠️ Cập nhật entity / migration cho bảng `ChatAttachment` (AI đã tạo trên DB 2026-10-28, xem `docs/database.md`) | FR-08b-2 | Migration của Backend phải khớp tên cột, FK, CHECK, index |
+| ⚠️ Chuyển tiếp `document_ids` trong `POST /chat/conversations/{id}/messages` và endpoint mới multipart `POST /chat/conversations/{id}/messages/files` (`message`, `document_ids` lặp lại, `files`) — giữ nguyên header `Authorization`, giới hạn body ≥ 61 MB | FR-08b-2 | 404 `Document not found`; 409 `document_access_off`; 422 `{"code": "unsupported_type" \| "no_text" \| "unreadable" \| "too_large", "file": …}`; 502 `document_fetch_failed`. Response: mỗi tin có `attachments` (không có chữ trích) |
+| ⚠️ (B2) Sau này chuyển file sang private storage + signed URL (NFR-02). AI không bị ảnh hưởng vì chỉ gọi `GET /api/documents/{id}/download` | FR-08b-2 B2 | Endpoint download phải giữ: 200 + bytes, 404 / 403 khi không phải chủ |
+| ⚠️ (Frontend) Công tắc "Cho AI đọc tài liệu" ở trang dự án (mặc định tắt) | FR-08b-2 | |
+| ⚠️ (Frontend) Chat dự án: nút chọn file từ kho (ẩn / khóa khi công tắc tắt, kèm câu giải thích) + nút upload; tối đa 3; chỉ PDF, DOCX, TXT, MD | FR-08b-2 | PDF scan (ảnh) báo `no_text`: gợi ý dán nội dung |
+| ⚠️ (Frontend) Hiện `attachments` dưới mỗi tin, đánh dấu file bị cắt (`is_truncated`); khi chờ hiện "AI đang đọc tài liệu…" (không streaming, lệch NFR-07) | FR-08b-2 #8 | Mục tiêu p95 < 30 s (AC9) |
 
 ## Chờ quyết định (team / giảng viên)
 

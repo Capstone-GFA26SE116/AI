@@ -131,7 +131,7 @@ Full text in `docs/functional-requirements.md`. Status: first line of each `plan
 | — | Quota check + `AIUsageLog` (before every LLM call) | — |
 | FR-08a | AI chat, task level: split a big task into subtasks, then Apply | `plans/FR-08a.md` |
 | FR-08b-1 | AI chat, project level: text brief → milestones + Flexible tasks, then Apply | `plans/FR-08b-1.md` |
-| FR-08b-2 | Project chat reads documents (`AllowAiDocumentAccess`, uploads); streaming later or dropped | — |
+| FR-08b-2 | Project chat reads documents: library files (only with `AllowAiDocumentAccess`) and uploads, ≤ 3 per message; no streaming | `plans/FR-08b-2.md` |
 | FR-09 | Similar past tasks: hybrid search (vector + full-text) + RRF. Free/busy time and workload are already in FR-10 | `plans/FR-09.md` |
 | FR-19 | Long-term memory: embeddings in pgvector, built in the background | `plans/FR-19.md` |
 | FR-12 | Daily "Today" briefing (text only, no LLM) | `plans/FR-12.md` |
@@ -149,8 +149,11 @@ Full text in `docs/functional-requirements.md`. Status: first line of each `plan
 - No LLM call → no quota (FR-17, overrun re-plan, pure planner work).
 
 **Input**
-- Documents go to the LLM **only when the user attaches them in chat** (from the project's
-  library, FR-08). Extract text first, cap at **20,000 tokens**.
+- Documents go to the LLM **only when the user attaches them in the project chat**, ≤ 3 per
+  message (FR-08b-2). Library files only while the project's `AllowAiDocumentAccess` is on
+  (also for later messages); files uploaded in the chat always. Extract text first (PDF, DOCX,
+  TXT, MD; no OCR), cap all document text at **80,000 characters ≈ 20,000 tokens**, mask it
+  with `mask_contact` and frame it as data (`<document>`). Never log document text.
 - Never send email, full name, OAuth tokens or client contact details (see §9).
 - Similar task results (FR-09) return titles as the user wrote them. Mask them with
   `mask_contact` before they go into any LLM prompt.
@@ -168,8 +171,8 @@ Full text in `docs/functional-requirements.md`. Status: first line of each `plan
 - Prompts live in separate versioned files; keep 10–20 sample inputs to re-run after each prompt change.
 - Background work (embeddings): retry up to 3 times; a missing embedding never blocks saving a task.
 - Targets: task chat (FR-08a) answer < 10 s, no streaming · project chat (FR-08b-1) p95 < 20 s,
-  no streaming (streaming is for FR-08b-2 or dropped) · schedule proposal < 10 s ·
-  similar-task search < 100 ms.
+  with documents (FR-08b-2) p95 < 30 s, no streaming (dropped; NFR-07 gap noted) ·
+  schedule proposal < 10 s · similar-task search < 100 ms.
 
 ## 8. Database rules
 

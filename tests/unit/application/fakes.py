@@ -10,6 +10,7 @@ from typing import Any
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
+from metanoia_ai.application.ports.briefing_repository import BriefingData
 from metanoia_ai.application.ports.chat_repository import (
     ChatMessage,
     ChatRole,
@@ -941,3 +942,30 @@ class FakeProductiveHoursRepository:
                 assert value == value.quantize(SCORE_STEP), "numeric(4,3)"
         self.saves += 1
         self.hours.setdefault(user_id, {}).update({h.hour: h for h in hours})
+
+
+# --- Daily briefing (FR-12) ---
+
+
+class FakeBriefingRepository:
+    """One prepared BriefingData per user. Records the windows it was asked for."""
+
+    def __init__(self) -> None:
+        self.data: dict[UUID, BriefingData] = {}
+        self.reads: list[tuple[UUID, datetime, datetime, datetime]] = []
+
+    def add_user(self, user_id: UUID, data: BriefingData) -> None:
+        self.data[user_id] = data
+
+    async def get_briefing_data(
+        self,
+        user_id: UUID,
+        day_start: datetime,
+        day_end: datetime,
+        window_end: datetime,
+    ) -> BriefingData | None:
+        for moment in (day_start, day_end, window_end):
+            assert moment.tzinfo is not None, "datetimes must be timezone-aware"
+        assert day_start < day_end <= window_end
+        self.reads.append((user_id, day_start, day_end, window_end))
+        return self.data.get(user_id)

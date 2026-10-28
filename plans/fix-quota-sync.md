@@ -98,7 +98,7 @@ Test cũ về "daily limit" (khoảng 14 chỗ trong 9 file, xem bước 0) → 
 *(Mỗi bước = 1 việc nhỏ + test của nó. Claude Code DỪNG sau mỗi bước.)*
 - [x] **0.** Liệt kê mọi chỗ còn nhắc giới hạn ngày: `grep -rn -i "quota_daily_max\|QUOTA_DAILY\|daily_max\|count_charged_calls\|daily limit\|50 per day\|50/ngày\|50 lượt" src tests docs plans CLAUDE.md .env.example`.
   Báo Hiếu danh sách file + test nào sẽ xóa, test nào sẽ sửa. Không code.
-- [ ] **1.** Bỏ giới hạn ngày trong `ChatQuota` + 2 use case chat + `deps.py` (phần chat) — file: `llm_chat.py`, `send_task_chat_message.py`, `send_project_chat_message.py`, `api/deps.py` — test: T2, T3, sửa `test_llm_chat.py`, `test_send_task_chat_message.py`, `test_project_chat.py`, `test_chat.py`.
+- [x] **1.** Bỏ giới hạn ngày trong `ChatQuota` + 2 use case chat + `deps.py` (phần chat) — file: `llm_chat.py`, `send_task_chat_message.py`, `send_project_chat_message.py`, `api/deps.py` — test: T2, T3, sửa `test_llm_chat.py`, `test_send_task_chat_message.py`, `test_project_chat.py`, `test_chat.py`.
 - [ ] **2.** Bỏ giới hạn ngày trong FR-10 — file: `propose_schedule.py` (`_check_quota`, `DAY`, docstring), `api/deps.py` (phần schedule) — test: T4, T5, T6, sửa `test_propose_schedule.py`, `test_fake_schedule.py`, `test_schedule.py`.
 - [ ] **3.** Xóa `count_charged_calls` khỏi port, SQL repo, fake — file: `ports/quota_repository.py`, `infrastructure/db/quota_repository.py`, `tests/unit/application/fakes.py`.
 - [ ] **4.** Xóa setting — file: `config.py`, `.env.example` — test: T1, sửa `test_config.py`.

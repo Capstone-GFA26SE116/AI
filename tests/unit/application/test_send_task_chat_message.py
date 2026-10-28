@@ -156,7 +156,6 @@ class Setup:
             max_message_chars=2000,
             similar_limit=5,
             warning_ratio=0.3,
-            quota_daily_max=50,
             now=lambda: NOW,
         )
 
@@ -330,17 +329,16 @@ def test_t13_plan_limit_reached():
     assert s.llm.prompts == []
 
 
-def test_t13_daily_limit_reached():
+def test_many_calls_today_still_allowed_while_the_plan_has_calls_left():
     s = Setup(DRAFT)
-    for _ in range(50):
+    for _ in range(60):
         asyncio.run(s.quota.log_usage(charged_entry(s)))
-    with pytest.raises(QuotaExceededError):
-        s.send()
-    assert s.llm.prompts == []
+    s.send()
+    assert len(s.llm.prompts) == 1
 
 
 def charged_entry(s: Setup) -> UsageLogEntry:
-    """A charged call made earlier today (any feature counts for the 50/day)."""
+    """A charged call made earlier today (no daily limit, only the plan's)."""
     return UsageLogEntry(
         s.subscription.subscription_id,
         AIFeature.SCHEDULE,

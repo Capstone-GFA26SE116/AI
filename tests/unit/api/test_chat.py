@@ -69,7 +69,6 @@ class World:
             max_message_chars=2000,
             similar_limit=5,
             warning_ratio=0.3,
-            quota_daily_max=50,
             now=lambda: NOW,
         )
 

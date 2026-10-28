@@ -25,7 +25,15 @@ from metanoia_ai.application.use_cases.apply_task_breakdown import (
 from metanoia_ai.application.use_cases.embed_pending_memories import (
     EmbedPendingMemories,
 )
-from metanoia_ai.application.use_cases.find_similar_tasks import FindSimilarTasks
+from metanoia_ai.application.use_cases.find_similar_tasks import (
+    FindSimilarTasks,
+    SimilarTasksResult,
+)
+from metanoia_ai.application.use_cases.get_daily_briefing import (
+    BriefingSettings,
+    GetDailyBriefing,
+    SimilarFinder,
+)
 from metanoia_ai.application.use_cases.get_productive_hours import GetProductiveHours
 from metanoia_ai.application.use_cases.get_project_chat import GetProjectChat
 from metanoia_ai.application.use_cases.get_task_chat import GetTaskChat
@@ -49,8 +57,10 @@ from metanoia_ai.application.use_cases.start_project_chat import (
     StartProjectChat,
 )
 from metanoia_ai.config import MissingLlmSettingError, Settings, get_settings
+from metanoia_ai.domain.briefing import BiasRule
 from metanoia_ai.domain.project_breakdown import ProjectLimits
 from metanoia_ai.domain.task_breakdown import DraftLimits
+from metanoia_ai.infrastructure.db.briefing_repository import SqlBriefingRepository
 from metanoia_ai.infrastructure.db.chat_repository import SqlChatRepository
 from metanoia_ai.infrastructure.db.learning_repository import SqlLearningRepository
 from metanoia_ai.infrastructure.db.memory_repository import SqlMemoryRepository
@@ -214,19 +224,30 @@ def get_memory_embedder(
     return partial(embed_memory, request.app.state, settings)
 
 
+def optional_embedding_client(
+    app_state: Any, settings: Settings
+) -> EmbeddingClient | None:
+    """The embedding client, or None without embedding settings (FR-09 plan #6)."""
+    try:
+        return get_embedding_client(app_state, settings)
+    except MissingLlmSettingError as error:
+        logger.warning("Missing %s: similar task search uses text only", error)
+        return None
+
+
 def get_find_similar_tasks(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> FindSimilarTasks:
     """FR-09 use case. Without embedding settings it searches text only (plan #6)."""
-    try:
-        client: EmbeddingClient | None = get_embedding_client(
-            request.app.state, settings
-        )
-    except MissingLlmSettingError as error:
-        logger.warning("Missing %s: similar task search uses text only", error)
-        client = None
+    client = optional_embedding_client(request.app.state, settings)
+    return build_find_similar_tasks(session, settings, client)
+
+
+def build_find_similar_tasks(
+    session: AsyncSession, settings: Settings, client: EmbeddingClient | None
+) -> FindSimilarTasks:
     return FindSimilarTasks(
         SqlSimilarTaskRepository(session),
         SqlQuotaRepository(session),  # same session, its own short transaction
@@ -451,4 +472,60 @@ def get_get_productive_hours(
     return GetProductiveHours(
         SqlProductiveHoursRepository(session),
         top_count=settings.schedule_top_productive_hours,
+    )
+
+
+# --- daily briefing (FR-12) ---
+
+
+def get_similar_finder(
+    request: Request, settings: Annotated[Settings, Depends(get_settings)]
+) -> SimilarFinder:
+    """FR-09 search for one task, on its own DB session.
+
+    One AsyncSession cannot run two queries at once, so each parallel search
+    gets a session of its own (plan #12). Closed even when the search is cancelled.
+    """
+    app_state = request.app.state
+    client = optional_embedding_client(app_state, settings)
+
+    async def find(user_id: UUID, task_id: UUID) -> SimilarTasksResult:
+        async with app_state.session_factory() as session:
+            use_case = build_find_similar_tasks(session, settings, client)
+            return await use_case.execute(
+                user_id, task_id, settings.similar_default_limit
+            )
+
+    return find
+
+
+def briefing_settings(settings: Settings) -> BriefingSettings:
+    return BriefingSettings(
+        initial_k=Decimal(str(settings.kbias_initial)),
+        top_count=settings.briefing_top_count,
+        risk_window_days=settings.briefing_risk_window_days,
+        at_risk_limit=settings.briefing_at_risk_limit,
+        bias_rule=BiasRule(
+            min_k=Decimal(str(settings.briefing_bias_min_k)),
+            min_samples=settings.briefing_bias_min_samples,
+        ),
+        similar_min_count=settings.briefing_similar_min_count,
+        similar_min_ratio=settings.briefing_similar_min_ratio,
+        similar_timeout_seconds=settings.briefing_similar_timeout_seconds,
+        productive_top_hours=settings.briefing_productive_top_hours,
+        round_minutes=settings.schedule_round_minutes,
+    )
+
+
+def get_get_daily_briefing(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    find_similar: Annotated[SimilarFinder, Depends(get_similar_finder)],
+) -> GetDailyBriefing:
+    """FR-12: no LLM, no quota. Reads on the request's session (read-only)."""
+    return GetDailyBriefing(
+        SqlBriefingRepository(session),
+        find_similar,
+        briefing_settings(settings),
+        now=lambda: datetime.now(UTC),
     )

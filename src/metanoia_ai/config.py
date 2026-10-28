@@ -121,6 +121,21 @@ class Settings(BaseSettings):
     # In .env: comma-separated, e.g. "Cao cấp,Doanh nghiệp".
     productive_learning_plans: Annotated[tuple[str, ...], NoDecode] = ("Cao cấp",)
 
+    # Daily "Today" briefing (FR-12). No LLM; only FR-09 embeddings.
+    briefing_top_count: int = Field(default=3, ge=1, le=10)
+    # Deadlines further away count as safe (#3).
+    briefing_risk_window_days: int = Field(default=14, gt=0)
+    briefing_at_risk_limit: int = Field(default=5, ge=1)
+    # "You usually need X% more time" only for a learned K (#7). K must be > 1.
+    briefing_bias_min_k: float = Field(default=1.1, gt=1, le=K_MAX)
+    briefing_bias_min_samples: int = Field(default=3, ge=1)
+    # Similar task warning (#11): enough results and a high average ratio.
+    briefing_similar_min_count: int = Field(default=2, ge=1)
+    briefing_similar_min_ratio: float = Field(default=1.3, gt=1)
+    # Total wait for all similar task searches together (#12).
+    briefing_similar_timeout_seconds: float = Field(default=3, gt=0)
+    briefing_productive_top_hours: int = Field(default=3, ge=1, le=24)
+
     @field_validator("productive_learning_plans", mode="before")
     @classmethod
     def split_plan_names(cls, value: object) -> object:

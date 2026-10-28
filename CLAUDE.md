@@ -143,7 +143,8 @@ Full text in `docs/functional-requirements.md`. Status: first line of each `plan
 ## 7. Rules for LLM use
 
 **Quota** (check BEFORE every LLM call)
-- Counted per type: schedule runs, chat messages, document reads. Max 50 AI calls per user per day.
+- One limit per plan per billing period (AiCallLimit / AiCallsUsed, BR-86). No daily limit.
+- A subscription past its EndAt is not active, even if Status is still Active.
 - Out of quota → block AI features only; manual features keep working.
 - No LLM call → no quota (FR-17, overrun re-plan, pure planner work).
 

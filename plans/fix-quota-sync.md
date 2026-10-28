@@ -102,7 +102,7 @@ Test cũ về "daily limit" (khoảng 14 chỗ trong 9 file, xem bước 0) → 
 - [x] **2.** Bỏ giới hạn ngày trong FR-10 — file: `propose_schedule.py` (`_check_quota`, `DAY`, docstring), `api/deps.py` (phần schedule) — test: T4, T5, T6, sửa `test_propose_schedule.py`, `test_fake_schedule.py`, `test_schedule.py`.
 - [x] **3.** Xóa `count_charged_calls` khỏi port, SQL repo, fake — file: `ports/quota_repository.py`, `infrastructure/db/quota_repository.py`, `tests/unit/application/fakes.py`.
 - [x] **4.** Xóa setting — file: `config.py`, `.env.example` — test: T1, sửa `test_config.py`.
-- [ ] **5.** Thêm điều kiện `EndAt` vào `GET_SUBSCRIPTION` — file: `infrastructure/db/quota_repository.py` — test: T7 (chạy câu SELECT trên Supabase với 1 user test, ghi kết quả vào mục 5).
+- [x] **5.** Thêm điều kiện `EndAt` vào `GET_SUBSCRIPTION` — file: `infrastructure/db/quota_repository.py` — test: T7 (chạy câu SELECT trên Supabase với 1 user test, ghi kết quả vào mục 5).
 - [ ] **6.** Sửa comment K — file: `domain/kbias.py` dòng 11 → `INITIAL_K_BIAS = 1.3  # Fixed for every new user (Moløkken & Jørgensen, 2003); learned per user after that.`
 - [ ] **7.** Chạy T8 (pytest + ruff) và `grep` của bước 0 lần nữa → phải rỗng (trừ dòng trong plan này).
 - [ ] **8.** Docs:
@@ -120,3 +120,4 @@ Test cũ về "daily limit" (khoảng 14 chỗ trong 9 file, xem bước 0) → 
 | Ngày | Thay đổi | Lý do (bug / quyết định mới) |
 |---|---|---|
 | 2026-10-28 | Tạo plan | Đồng bộ code với BR-86 và SRS v5.2 sau khi merge FR-12. |
+| 2026-10-28 | T7 (bước 5): chạy `GET_SUBSCRIPTION` thật, transaction READ ONLY, không ghi gì. Gói `60c9384b…` (EndAt 2026-12-13): `now` = EndAt + 1 phút → không có dòng · `now` = EndAt → không có dòng · `now` = EndAt − 1 phút → 1 dòng. Gói `4ecf7a55…` (EndAt trống): `now` = StartAt + 10 năm → 1 dòng. | AC4 đạt. Kiểm bằng cách đổi `:now` trên gói có sẵn (Hiếu đồng ý), không tạo dữ liệu test. |

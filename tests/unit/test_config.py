@@ -135,7 +135,7 @@ def test_defaults(env):
 
 
 def test_t1_old_daily_limit_variable_is_ignored(env):
-    # Removed with the daily limit (BR-86); an old value must not stop the app.
+    # Setting removed (BR-86); an old value left on Azure must not stop the app.
     env.setenv("QUOTA_DAILY_MAX", "50")
     assert not hasattr(load(), "quota_daily_max")
 

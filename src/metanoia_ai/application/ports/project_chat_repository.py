@@ -1,4 +1,5 @@
-"""What the project chat (FR-08b-1) needs from storage. The database code implements it."""
+"""What the project chat (FR-08b-1, FR-08b-2) needs from storage. The database code
+implements it."""
 
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
@@ -35,6 +36,9 @@ class ChatProject:
     status: str  # as in the DB: Active, OnHold, Completed, Archived
     client_name: str | None  # for masking only
     time_zone: ZoneInfo  # the user's
+    # Project.AllowAiDocumentAccess: may the AI read files from the project's
+    # library (FR-08b-2, B1)? Uploads in the chat do not need it.
+    allow_ai_documents: bool = False
 
     @property
     def is_closed(self) -> bool:
@@ -95,6 +99,55 @@ class NewTask:
     ai_estimated_minutes: int | None  # the AI's number; None for user-added (#11)
 
 
+class DocumentSourceType(StrEnum):
+    """ProjectDocument.SourceType (DB: File / Link). Only files can be read."""
+
+    FILE = "file"
+    LINK = "link"
+
+
+@dataclass(frozen=True)
+class ProjectDocument:
+    """A document in the project's library (ProjectDocument row)."""
+
+    document_id: UUID
+    project_id: UUID
+    name: str  # shown to the user; may have lost its extension (#11)
+    source_type: DocumentSourceType
+    storage_path: str | None  # files only; gives the extension
+    size_bytes: int | None
+
+
+class AttachmentSource(StrEnum):
+    """ChatAttachment.Source (DB: Hub / Upload). Values are sent in the API."""
+
+    HUB = "hub"  # picked from the project's library
+    UPLOAD = "upload"  # uploaded straight into the chat
+
+
+@dataclass(frozen=True)
+class NewAttachment:
+    """Text read from one attached file, cut to the budget but not masked (#2)."""
+
+    source: AttachmentSource
+    document_id: UUID | None  # hub only
+    name: str
+    extracted_text: str
+    is_truncated: bool
+
+
+@dataclass(frozen=True)
+class ChatAttachment:
+    attachment_id: UUID
+    message_id: UUID  # the user message it came with
+    source: AttachmentSource
+    document_id: UUID | None  # None for uploads, or once the hub file is deleted
+    name: str
+    extracted_text: str
+    is_truncated: bool
+    created_at: datetime
+
+
 class ProjectChatRepository(Protocol):
     """Storage for project chats. Every call is limited to the given user."""
 
@@ -152,6 +205,24 @@ class ProjectChatRepository(Protocol):
         content: str,
         draft: SavedProjectDraft | None = None,
     ) -> ProjectChatMessage: ...
+
+    async def get_document(
+        self, user_id: UUID, document_id: UUID
+    ) -> ProjectDocument | None:
+        """A library document of one of this user's projects, or None (AC2)."""
+        ...
+
+    async def add_attachment(
+        self, user_id: UUID, message_id: UUID, attachment: NewAttachment
+    ) -> ChatAttachment:
+        """Save one ChatAttachment for a user message of this user's chat."""
+        ...
+
+    async def list_attachments(
+        self, user_id: UUID, conversation_id: UUID
+    ) -> list[ChatAttachment]:
+        """Every attachment of the chat, oldest first."""
+        ...
 
     async def active_domains(self) -> dict[UUID, str]:
         """Domains with IsActive, id → name. Domain is shared by every user."""

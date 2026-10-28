@@ -46,6 +46,7 @@ from metanoia_ai.application.use_cases.record_task_completion import (
 )
 from metanoia_ai.application.use_cases.save_task_memory import SaveTaskMemory
 from metanoia_ai.application.use_cases.send_project_chat_message import (
+    DocumentLimits,
     SendProjectChatMessage,
 )
 from metanoia_ai.application.use_cases.send_task_chat_message import (
@@ -60,6 +61,7 @@ from metanoia_ai.config import MissingLlmSettingError, Settings, get_settings
 from metanoia_ai.domain.briefing import BiasRule
 from metanoia_ai.domain.project_breakdown import ProjectLimits
 from metanoia_ai.domain.task_breakdown import DraftLimits
+from metanoia_ai.infrastructure.backend.document_client import BackendDocumentClient
 from metanoia_ai.infrastructure.db.briefing_repository import SqlBriefingRepository
 from metanoia_ai.infrastructure.db.chat_repository import SqlChatRepository
 from metanoia_ai.infrastructure.db.learning_repository import SqlLearningRepository
@@ -390,7 +392,8 @@ def get_send_project_chat_message(
     settings: Annotated[Settings, Depends(get_settings)],
     llm_client: Annotated[LLMClient, Depends(get_project_chat_llm_client)],
 ) -> SendProjectChatMessage:
-    """FR-08b-1: one chat message → Gemini. Shares the request's session."""
+    """FR-08b-1: one chat message → Gemini. Shares the request's session.
+    FR-08b-2: library files come from the Backend with the user's token."""
     llm = settings.llm_config()
     return SendProjectChatMessage(
         SqlProjectChatRepository(session),
@@ -410,6 +413,22 @@ def get_send_project_chat_message(
         existing_titles_limit=settings.chat_project_existing_titles_limit,
         daily_work_hours=settings.chat_daily_work_hours,
         now=lambda: datetime.now(UTC),
+        document_source=BackendDocumentClient(
+            settings.backend_base_url,
+            timeout_seconds=settings.backend_download_timeout_seconds,
+            max_bytes=settings.chat_document_max_file_bytes,
+        ),
+        document_limits=document_limits(settings),
+    )
+
+
+def document_limits(settings: Settings) -> DocumentLimits:
+    """FR-08b-2 config for attached documents."""
+    return DocumentLimits(
+        max_files=settings.chat_document_max_files,
+        max_file_bytes=settings.chat_document_max_file_bytes,
+        max_chars=settings.chat_document_max_chars,
+        max_pdf_pages=settings.chat_document_max_pdf_pages,
     )
 
 

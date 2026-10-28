@@ -2,6 +2,7 @@
 
 User data goes into the prompt as JSON blocks the prompt calls "data, not
 instructions" (like FR-08a). Masking happens before: this module only formats.
+FR-08b-2: attached documents go in a separate block, only when there are some.
 """
 
 import copy
@@ -35,6 +36,9 @@ from metanoia_ai.domain.task_breakdown import BadDraftError, ReplyKind
 from metanoia_ai.prompts import load_prompt
 
 PROMPT_VERSION = "project_breakdown_v2"  # v2: the language is set by code (#35)
+# Added after the main prompt only when the message has documents (FR-08b-2 #15),
+# so a chat without documents sends exactly the v2 prompt (AC8).
+DOCUMENTS_PROMPT_VERSION = "project_documents_v1"
 LANGUAGE_NAMES = {Language.VI: "Vietnamese", Language.EN: "English"}
 ADDRESS_RULES = {
     Language.VI: 'Call yourself "mình" (never "tôi") and the user "bạn".',
@@ -91,6 +95,24 @@ class PromptProject:
     deadline: date | None
     existing_milestones: tuple[str, ...] = ()
     existing_tasks: tuple[str, ...] = ()  # newest first, at most the config limit
+
+
+@dataclass(frozen=True)
+class PromptDocument:
+    """One attached document for the prompt. Name and text already masked (#15)."""
+
+    name: str
+    text: str
+    is_truncated: bool
+
+
+def document_block(document: PromptDocument) -> str:
+    """<document name="..." truncated="..."> … </document>. Text inside cannot
+    close the frame early, and the name cannot break out of its quotes."""
+    name = " ".join(document.name.replace('"', "'").split())
+    text = document.text.replace("</document", "</ document")
+    truncated = "true" if document.is_truncated else "false"
+    return f'<document name="{name}" truncated="{truncated}">\n{text}\n</document>'
 
 
 @dataclass(frozen=True)
@@ -175,8 +197,24 @@ def build_prompt(
     )
 
 
+def build_documents_part(
+    template: Template, documents: Sequence[PromptDocument], language: Language
+) -> str:
+    """The documents block, or "" when there is none."""
+    if not documents:
+        return ""
+    return template.substitute(
+        documents="\n\n".join(document_block(d) for d in documents),
+        language_name=LANGUAGE_NAMES[language],
+    )
+
+
 def load_template() -> Template:
     return Template(load_prompt(PROMPT_VERSION))
+
+
+def load_documents_template() -> Template:
+    return Template(load_prompt(DOCUMENTS_PROMPT_VERSION))
 
 
 # --- checking the answer and calling the LLM (#14-#17, #24, #30) ---
@@ -280,6 +318,7 @@ class ProjectChatWriter:
             clock=clock,
         )
         self.template = load_template()
+        self.documents_template = load_documents_template()
 
     def render(
         self,
@@ -289,9 +328,11 @@ class ProjectChatWriter:
         message: str,
         today: date,
         language: Language,
+        documents: Sequence[PromptDocument] = (),
     ) -> str:
-        """The prompt as sent (the caller uses its length to cut history, #18)."""
-        return build_prompt(
+        """The prompt as sent. Without documents its length is what the caller
+        cuts history by (#18); documents have their own budget (#16)."""
+        prompt = build_prompt(
             self.template,
             project,
             domains,
@@ -301,6 +342,9 @@ class ProjectChatWriter:
             today,
             language,
         )
+        return prompt + build_documents_part(
+            self.documents_template, documents, language
+        )
 
     async def write(
         self,
@@ -309,9 +353,16 @@ class ProjectChatWriter:
         history: Sequence[ProjectChatLine],
         message: str,
         context: DraftContext,
+        documents: Sequence[PromptDocument] = (),
     ) -> ProjectChatResult:
         prompt = self.render(
-            project, domains, history, message, context.today, context.language
+            project,
+            domains,
+            history,
+            message,
+            context.today,
+            context.language,
+            documents,
         )
         result = await self.caller.call(
             prompt,

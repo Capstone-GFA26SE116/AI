@@ -26,7 +26,6 @@ from metanoia_ai.application.reason_writer import (
     LLMCall,
 )
 from metanoia_ai.application.use_cases.propose_schedule import (
-    DAY,
     NoSubscriptionError,
     QuotaExceededError,
 )
@@ -137,25 +136,19 @@ class ChatQuota:
         self,
         repo: QuotaRepository,
         *,
-        daily_max: int,
         now: Callable[[], datetime],
     ) -> None:
         self.repo = repo
-        self.daily_max = daily_max
         self.now = now
 
     async def check(self, user_id: UUID) -> Subscription:
         """The active plan with calls left. No plan → NoSubscriptionError;
-        plan or daily limit reached → QuotaExceededError. Nothing is charged."""
-        now = self.now()
-        subscription = await self.repo.get_subscription(user_id, now)
+        plan limit reached → QuotaExceededError. Nothing is charged."""
+        subscription = await self.repo.get_subscription(user_id, self.now())
         if subscription is None:
             raise NoSubscriptionError(str(user_id))
         if not subscription.has_calls_left:
             raise QuotaExceededError("plan limit reached")
-        used_today = await self.repo.count_charged_calls(user_id, now - DAY)
-        if used_today >= self.daily_max:
-            raise QuotaExceededError("daily limit reached")
         return subscription
 
     async def log(

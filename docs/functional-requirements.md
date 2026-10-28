@@ -1,8 +1,8 @@
 Functional Requirements
 A. Tài khoản & Gói dịch vụ
 FR-01 Đăng nhập & Onboarding: Đăng nhập bằng Google, kết nối Google Calendar. Onboarding hỏi: giờ làm việc trong ngày, loại việc hay làm, khung giờ làm hiệu quả nhất, mức độ hay làm lố giờ, tạo thử 1 việc.
-FR-02 Gói & Thanh toán: 3 gói Miễn phí / Tiêu chuẩn / Cao cấp. Tài khoản mới tự vào gói Miễn phí. Thanh toán qua PayOS / VNPay, trả từng kỳ, không tự gia hạn, có hóa đơn. Hết kỳ không gia hạn thì về gói Miễn phí.
-Quota AI đếm riêng từng loại: lượt xếp lịch, tin chat, lướt tài liệu. Tối đa 50 lượt AI mỗi ngày để chống spam. Hết quota thì khóa chức năng AI, các chức năng thủ công vẫn dùng bình thường.
+FR-02 Gói & Thanh toán: 3 gói Miễn phí / Tiêu chuẩn / Cao cấp. Tài khoản mới tự vào gói Miễn phí. Thanh toán qua PayOS, trả từng kỳ, không tự gia hạn, có hóa đơn. Hết kỳ không gia hạn thì về gói Miễn phí.
+Mỗi gói có một hạn mức lượt AI trong một kỳ; hết kỳ thì đặt lại. Hết quota thì khóa chức năng AI, các chức năng thủ công vẫn dùng bình thường.
 B. Quản lý dự án
 FR-03 Khách hàng, Dự án & Milestone:
 Danh sách khách hàng (tên, liên hệ, ghi chú).

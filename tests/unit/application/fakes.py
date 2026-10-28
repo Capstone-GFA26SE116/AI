@@ -164,13 +164,6 @@ class FakeQuotaRepository:
         _, newest = max(rows, key=lambda row: row[0])
         return replace(newest, ai_calls_used=self.calls_used[newest.subscription_id])
 
-    async def count_charged_calls(self, user_id: UUID, since: datetime) -> int:
-        return sum(
-            1
-            for owner, at, entry in self.logs
-            if owner == user_id and at >= since and entry.quota_charged
-        )
-
     async def try_charge(self, subscription: Subscription) -> bool:
         if self.lose_next_charge:
             self.lose_next_charge = False

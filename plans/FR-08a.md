@@ -91,7 +91,7 @@ Mọi endpoint cần `Authorization: Bearer <JWT>`. Chỉ `messages` tốn lư�
 | 7 | Gói Free | Vẫn chat được; con số đã chỉnh chỉ là gợi ý (`adjusted_is_hint`) | Luật "Free: K_bias chỉ để gợi ý". |
 | 8 | Ai ghi DB | AI ghi `ChatConversation`, `ChatMessage`, `SubTask`, `AIUsageLog`, `AiCallsUsed` ⚠️ | Bản nháp nằm ở `ChatMessage.ProposalJson`; để AI ghi thì chỉ 1 nơi hiểu định dạng JSON. |
 | 8b | Apply khi task đã có subtask | Chặn (409). Thay / nối thêm để sau | Không đụng subtask đã có `FocusSession` (FK `RESTRICT`). |
-| 8c | Quota chat | Dùng chung `AiCallsUsed`: 1 tin user gửi = 1 lượt (kể cả khi AI hỏi lại). Cần đếm riêng thì đếm `AIUsageLog` theo `Feature` ⚠️ | Không đổi schema. Giới hạn 50 lượt/ngày có sẵn. |
+| 8c | Quota chat | Dùng chung `AiCallsUsed`: 1 tin user gửi = 1 lượt (kể cả khi AI hỏi lại). Cần đếm riêng thì đếm `AIUsageLog` theo `Feature` ⚠️ | Không đổi schema. |
 | 8d | Model | Gemini, như FR-10. Chưa chuyển model theo gói | Hiếu chốt. |
 
 ## 2. Bên trong — logic
@@ -121,7 +121,7 @@ Thứ tự trong `subtasks` = `OrderIndex` (từ 1). Con số so sánh do code t
 ### Luồng gửi tin
 
 1. Đọc task (lọc user). Không có → 404. Chặn sớm (#12) → 409 / 422.
-2. Kiểm quota (không trừ): không có gói `Active` → 409; hết lượt kỳ hoặc 50 lượt/ngày → 429.
+2. Kiểm quota (không trừ): không có gói `Active` → 409; hết lượt kỳ → 429.
 3. Lấy cuộc chat của task (chưa có thì chưa tạo) + 20 tin gần nhất + bản nháp mới nhất.
 4. Lấy K_bias của domain (chưa có → `KBIAS_INITIAL`) và tổng hợp FR-09 (`text_only` vẫn dùng).
 5. Ghép prompt (#15), gọi Gemini, kiểm (#9), thử lại nếu sai (#10). Ngoài transaction.
@@ -190,7 +190,7 @@ Thứ tự trong `subtasks` = `OrderIndex` (từ 1). Con số so sánh do code t
 | T10 | application | LLM trả sai 1 lần rồi đúng | 2 lần gọi, 2 dòng log (1 `succeeded = false`), trừ 1 lượt | AC4 |
 | T11 | application | LLM sai cả 3 lần / `LLMError` | Lỗi "AI không trả lời được", không lưu tin, không trừ, 3 dòng log | AC4 |
 | T12 | application | Task `Fixed` · `Done` · `Skipped` · đã có subtask | Lỗi 409 tương ứng, không gọi LLM | AC2 |
-| T13 | application | Không có gói `Active` · hết lượt kỳ · đủ 50 lượt/ngày | Lỗi tương ứng, không gọi LLM | AC3 |
+| T13 | application | Không có gói `Active` · hết lượt kỳ | Lỗi tương ứng, không gọi LLM | AC3 |
 | T14 | application | `try_charge` thất bại sau khi LLM trả lời | Không lưu tin, log `quota_charged = false`, lỗi hết lượt | AC3 |
 | T15 | application | Prompt: title có email + tên client, task tương tự có tên client | Prompt không chứa email / tên client; có `[email]`, `[client]` | AC6 |
 | T16 | application | Có 25 tin cũ | Prompt chỉ có 20 tin gần nhất | — |
@@ -250,3 +250,4 @@ Test cũ (FR-09, FR-10, FR-17, FR-19) phải pass nguyên vẹn.
 | 2026-10-15 | Bước 3: thêm #30, thêm `language` vào JSON Gemini trả về | Hiếu chọn A. Claude Code ghi (Hiếu cho phép) |
 | 2026-10-15 | Bước 12: thêm #31, ghi chú AC8; thêm config `CHAT_LLM_TIMEOUT_SECONDS` | Chạy thật: 502 do Gemini > 10 s. Hiếu chọn đo thêm (A), rồi tăng timeout chat lên 20 s (A). Claude Code ghi (Hiếu cho phép) |
 | 2026-10-15 | Bước 12: đo lại sau #31 — 502 giảm 4 → 2/20 nhưng p95 21,4 s; AC8 để chưa tick | Hiếu chọn A: giữ 20 s, đo lại trên gói Gemini trả phí. Claude Code ghi (Hiếu cho phép) |
+| 2026-10-28 | Bỏ giới hạn lượt AI theo ngày: sửa #8c, luồng bước 2, T13 | BR-86: chỉ còn hạn mức gói theo kỳ. Xem `plans/fix-quota-sync.md` |

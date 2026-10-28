@@ -1,6 +1,6 @@
 """FR-10: the user clicks "Schedule" → propose slots for their Flexible tasks.
 
-1. Plan + quota check (plan limit, 50 per day) → out of quota: error.
+1. Plan + quota check (plan limit) → out of quota: error.
 2. Read all data once.
 3. Minutes to schedule per task / subtask.
 4. Free time in the window.
@@ -63,7 +63,6 @@ from metanoia_ai.domain.schedule_text import (
 )
 
 SCHEDULABLE = {TaskStatus.TODO, TaskStatus.IN_PROGRESS}
-DAY = timedelta(hours=24)
 
 
 class NoSubscriptionError(Exception):
@@ -71,7 +70,7 @@ class NoSubscriptionError(Exception):
 
 
 class QuotaExceededError(Exception):
-    """No AI calls left (plan limit or daily anti-spam limit)."""
+    """No AI calls left in the plan for this period (BR-86)."""
 
 
 class _LostLastCallError(Exception):
@@ -122,7 +121,6 @@ class ProposeSchedule:
         min_chunk_minutes: int,
         round_minutes: int,
         top_productive_hours: int,
-        quota_daily_max: int,
         clock: Callable[[], datetime],
     ) -> None:
         self.repo = schedule_repo
@@ -133,7 +131,6 @@ class ProposeSchedule:
         self.min_chunk_minutes = min_chunk_minutes
         self.round_minutes = round_minutes
         self.top_hours = top_productive_hours
-        self.quota_daily_max = quota_daily_max
         self.clock = clock
 
     async def execute(
@@ -198,9 +195,6 @@ class ProposeSchedule:
             raise NoSubscriptionError(str(user_id))
         if not subscription.has_calls_left:
             raise QuotaExceededError("plan limit reached")
-        used_today = await self.quota.count_charged_calls(user_id, now - DAY)
-        if used_today >= self.quota_daily_max:
-            raise QuotaExceededError("daily limit reached")
         return subscription
 
     # --- 3. Units to schedule ---

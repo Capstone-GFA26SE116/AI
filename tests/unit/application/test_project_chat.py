@@ -113,7 +113,6 @@ class World:
             max_prompt_chars=prompt_max,
             existing_titles_limit=50,
             daily_work_hours=6,
-            quota_daily_max=50,
             now=lambda: NOW,
         )
 

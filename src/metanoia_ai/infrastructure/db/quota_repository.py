@@ -20,6 +20,7 @@ FEATURE_TO_DB = {
 }
 
 # Several Active rows would be a Backend bug; take the newest (FR-10 #18).
+# Past EndAt = not active, even if the Backend has not set Expired yet.
 GET_SUBSCRIPTION = text("""
     SELECT us."Id", sp."Price", sp."AiCallLimit", us."AiCallsUsed"
     FROM "UserSubscription" us
@@ -27,17 +28,9 @@ GET_SUBSCRIPTION = text("""
     WHERE us."UserId" = :user_id
       AND us."Status" = 'Active'
       AND us."StartAt" <= :now
+      AND (us."EndAt" IS NULL OR us."EndAt" > :now)
     ORDER BY us."StartAt" DESC
     LIMIT 1
-""")
-
-COUNT_CHARGED_CALLS = text("""
-    SELECT count(*)
-    FROM "AIUsageLog" l
-    JOIN "UserSubscription" us ON us."Id" = l."UserSubscriptionId"
-    WHERE us."UserId" = :user_id
-      AND l."QuotaCharged"
-      AND l."CreatedAt" >= :since
 """)
 
 # One statement: two requests at once cannot both take the last call.
@@ -81,10 +74,6 @@ class SqlQuotaRepository:
             ai_call_limit=row.AiCallLimit,
             ai_calls_used=row.AiCallsUsed,
         )
-
-    async def count_charged_calls(self, user_id: UUID, since: datetime) -> int:
-        params = {"user_id": user_id, "since": since}
-        return (await self.session.execute(COUNT_CHARGED_CALLS, params)).scalar_one()
 
     async def try_charge(self, subscription: Subscription) -> bool:
         params = {"subscription_id": subscription.subscription_id}

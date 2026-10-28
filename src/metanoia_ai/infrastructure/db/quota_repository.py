@@ -20,6 +20,7 @@ FEATURE_TO_DB = {
 }
 
 # Several Active rows would be a Backend bug; take the newest (FR-10 #18).
+# Past EndAt = not active, even if the Backend has not set Expired yet.
 GET_SUBSCRIPTION = text("""
     SELECT us."Id", sp."Price", sp."AiCallLimit", us."AiCallsUsed"
     FROM "UserSubscription" us
@@ -27,6 +28,7 @@ GET_SUBSCRIPTION = text("""
     WHERE us."UserId" = :user_id
       AND us."Status" = 'Active'
       AND us."StartAt" <= :now
+      AND (us."EndAt" IS NULL OR us."EndAt" > :now)
     ORDER BY us."StartAt" DESC
     LIMIT 1
 """)

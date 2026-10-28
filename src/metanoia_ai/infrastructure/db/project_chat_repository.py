@@ -1,9 +1,10 @@
-"""Project chat storage (FR-08b-1) on the shared Supabase Postgres.
+"""Project chat storage (FR-08b-1, FR-08b-2) on the shared Supabase Postgres.
 
 Table and column names are quoted: Postgres treats "ProjectId" and projectid as
 different. `ChatConversation`, `ChatMessage`, `Milestone` and `Task` have no
 UserId: every query reaches the owner through Project.UserId. Every chat query
 also checks Scope = 'Project', so a task chat (FR-08a) is never found here.
+`ProjectDocument` and `ChatAttachment` (FR-08b-2) reach the owner the same way.
 """
 
 import json
@@ -18,14 +19,19 @@ from sqlalchemy import Row, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from metanoia_ai.application.ports.project_chat_repository import (
+    AttachmentSource,
+    ChatAttachment,
     ChatProject,
     ChatRole,
     ConversationStatus,
+    DocumentSourceType,
     ExistingWork,
+    NewAttachment,
     NewMilestone,
     NewTask,
     ProjectChatMessage,
     ProjectConversation,
+    ProjectDocument,
     SavedProjectDraft,
 )
 from metanoia_ai.domain.project_breakdown import (
@@ -47,10 +53,16 @@ STATUS_FROM_DB = {
     "Applied": ConversationStatus.APPLIED,
     "Closed": ConversationStatus.CLOSED,
 }
+DOCUMENT_TYPE_FROM_DB = {
+    "File": DocumentSourceType.FILE,
+    "Link": DocumentSourceType.LINK,
+}
+SOURCE_TO_DB = {AttachmentSource.HUB: "Hub", AttachmentSource.UPLOAD: "Upload"}
+SOURCE_FROM_DB = {db: source for source, db in SOURCE_TO_DB.items()}
 
 PROJECT_COLUMNS = """
     SELECT p."Id", p."Name", p."Description", p."Deadline", p."Status",
-           c."Name" AS "ClientName", u."TimeZone"
+           p."AllowAiDocumentAccess", c."Name" AS "ClientName", u."TimeZone"
     FROM "Project" p
     JOIN "User" u ON u."Id" = p."UserId"
     LEFT JOIN "Client" c ON c."Id" = p."ClientId"
@@ -110,6 +122,43 @@ ADD_MESSAGE = text("""
     WHERE cv."Id" = :conversation_id AND cv."Scope" = 'Project'
       AND p."UserId" = :user_id
     RETURNING "Id", "IsApplied", "CreatedAt"
+""")
+
+# --- FR-08b-2: library documents and chat attachments ---
+
+GET_DOCUMENT = text("""
+    SELECT d."Id", d."ProjectId", d."Name", d."SourceType", d."StoragePath",
+           d."SizeBytes"
+    FROM "ProjectDocument" d
+    JOIN "Project" p ON p."Id" = d."ProjectId"
+    WHERE d."Id" = :document_id AND p."UserId" = :user_id
+""")
+
+# Only for a user message of this user's project chat; clock_timestamp() keeps
+# the attachments of one message in the order they were added.
+ADD_ATTACHMENT = text("""
+    INSERT INTO "ChatAttachment" ("MessageId", "DocumentId", "Source", "Name",
+                                  "ExtractedText", "IsTruncated", "CreatedAt")
+    SELECT m."Id", CAST(:document_id AS uuid), :source, :name, :extracted_text,
+           :is_truncated, clock_timestamp()
+    FROM "ChatMessage" m
+    JOIN "ChatConversation" cv ON cv."Id" = m."ConversationId"
+    JOIN "Project" p ON p."Id" = cv."ProjectId"
+    WHERE m."Id" = :message_id AND m."Sender" = 'User' AND cv."Scope" = 'Project'
+      AND p."UserId" = :user_id
+    RETURNING "Id", "CreatedAt"
+""")
+
+LIST_ATTACHMENTS = text("""
+    SELECT a."Id", a."MessageId", a."Source", a."DocumentId", a."Name",
+           a."ExtractedText", a."IsTruncated", a."CreatedAt"
+    FROM "ChatAttachment" a
+    JOIN "ChatMessage" m ON m."Id" = a."MessageId"
+    JOIN "ChatConversation" cv ON cv."Id" = m."ConversationId"
+    JOIN "Project" p ON p."Id" = cv."ProjectId"
+    WHERE m."ConversationId" = :conversation_id AND cv."Scope" = 'Project'
+      AND p."UserId" = :user_id
+    ORDER BY a."CreatedAt", a."Id"
 """)
 
 ACTIVE_DOMAINS = text("""
@@ -294,6 +343,31 @@ def to_project(row: Row) -> ChatProject:
         status=row.Status,
         client_name=row.ClientName,
         time_zone=ZoneInfo(row.TimeZone),
+        allow_ai_documents=row.AllowAiDocumentAccess,
+    )
+
+
+def to_document(row: Row) -> ProjectDocument:
+    return ProjectDocument(
+        document_id=row.Id,
+        project_id=row.ProjectId,
+        name=row.Name,
+        source_type=DOCUMENT_TYPE_FROM_DB[row.SourceType],
+        storage_path=row.StoragePath,
+        size_bytes=row.SizeBytes,
+    )
+
+
+def to_attachment(row: Row) -> ChatAttachment:
+    return ChatAttachment(
+        attachment_id=row.Id,
+        message_id=row.MessageId,
+        source=SOURCE_FROM_DB[row.Source],
+        document_id=row.DocumentId,
+        name=row.Name,
+        extracted_text=row.ExtractedText,
+        is_truncated=row.IsTruncated,
+        created_at=row.CreatedAt,
     )
 
 
@@ -394,6 +468,46 @@ class SqlProjectChatRepository:
         return ProjectChatMessage(
             row.Id, role, content, row.CreatedAt, draft, row.IsApplied
         )
+
+    async def get_document(
+        self, user_id: UUID, document_id: UUID
+    ) -> ProjectDocument | None:
+        params = {"document_id": document_id, "user_id": user_id}
+        row = (await self.session.execute(GET_DOCUMENT, params)).one_or_none()
+        return to_document(row) if row else None
+
+    async def add_attachment(
+        self, user_id: UUID, message_id: UUID, attachment: NewAttachment
+    ) -> ChatAttachment:
+        params = {
+            "message_id": message_id,
+            "user_id": user_id,
+            "document_id": attachment.document_id,
+            "source": SOURCE_TO_DB[attachment.source],
+            "name": attachment.name,
+            "extracted_text": attachment.extracted_text,
+            "is_truncated": attachment.is_truncated,
+        }
+        row = (await self.session.execute(ADD_ATTACHMENT, params)).one_or_none()
+        if row is None:
+            raise NotOwnedError(str(message_id))
+        return ChatAttachment(
+            attachment_id=row.Id,
+            message_id=message_id,
+            source=attachment.source,
+            document_id=attachment.document_id,
+            name=attachment.name,
+            extracted_text=attachment.extracted_text,
+            is_truncated=attachment.is_truncated,
+            created_at=row.CreatedAt,
+        )
+
+    async def list_attachments(
+        self, user_id: UUID, conversation_id: UUID
+    ) -> list[ChatAttachment]:
+        params = {"conversation_id": conversation_id, "user_id": user_id}
+        rows = await self.session.execute(LIST_ATTACHMENTS, params)
+        return [to_attachment(row) for row in rows]
 
     async def active_domains(self) -> dict[UUID, str]:
         rows = await self.session.execute(ACTIVE_DOMAINS)

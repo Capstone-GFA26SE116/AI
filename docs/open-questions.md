@@ -18,11 +18,13 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 | Cập nhật entity / migration cho `ScheduleProposal.Status` = `Superseded` và cột `Warnings` | FR-10 | 2026-10-13: AI đã thêm `Superseded` vào CHECK trên DB (Hiếu cho phép, đã báo Backend). Migration của Backend phải giữ giá trị này |
 | Thêm unique (`UserId`) WHERE `Status = 'Active'` cho `UserSubscription` | FR-10, Quota | DB chưa chặn 2 gói `Active`; AI tạm lấy dòng `StartAt` mới nhất |
 | Đơn vị tiền của `AIUsageLog.Cost` (USD hay VND)? | FR-10, Quota | AI tính từ config giá token |
-| Đổi mặc định `UserDomainProfile.KBias` thành `1.300` | FR-17 | |
+| ⚠️ Đổi mặc định `UserDomainProfile.KBias` từ `1.250` → `1.300` cho khớp tài liệu | FR-17 | Nhắc lại 2026-10-28 (fix-quota-sync) |
 | Ý định của cột `ConfidenceTier` (AI đang tính theo nguồn T_act) | FR-17 | Hỏi người thiết kế ERD |
 | Cập nhật script/ERD cho 2 cột Hiếu đã thêm: `ScheduleProposal.Warnings`, `FocusSession.RemainingMinutes`; ghi `RemainingMinutes` ở FR-16 | FR-10 | |
 | Ai đổi slot `Proposed` → đã duyệt và ghi `ScheduleChangeLog`? | FR-11 | Giả định: Backend |
 | Quota: DB chỉ có 1 bộ đếm `AiCallsUsed`, luật cần đếm riêng 3 loại | Quota, #13 | |
+| ⚠️ Gói trả phí hết `EndAt` mà không gia hạn: đổi `Status` → `Expired` và tạo gói Free mới | FR-02, Quota | AI đã tự bỏ qua gói quá `EndAt` (2026-10-28) |
+| ⚠️ Gói `Status = 'Active'` nhưng `StartAt` ở tương lai (gặp 2026-10-28, gói `60c9384b…`) — nên là `Scheduled`? | Quota | AI không bị ảnh hưởng (lọc `StartAt <= now`) |
 | Đồng ý cách hiểu buffer (khoảng nghỉ riêng, không ghi lên lịch) | FR-10 | |
 | Role: không chặn Admin theo role; quyền gọi AI dựa vào gói + quota | — | Hiếu đã quyết, chỉ báo |
 | Refresh token: token sống 60', Focus mode dài hơn → Stop bị 401 | Backend + Frontend | Đưa vào tab Problems. 2026-10-14: Backend `develop` đã có refresh token trong `AuthController` → kiểm lại rồi đóng |

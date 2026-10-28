@@ -105,7 +105,7 @@ Test cũ về "daily limit" (khoảng 14 chỗ trong 9 file, xem bước 0) → 
 - [x] **5.** Thêm điều kiện `EndAt` vào `GET_SUBSCRIPTION` — file: `infrastructure/db/quota_repository.py` — test: T7 (chạy câu SELECT trên Supabase với 1 user test, ghi kết quả vào mục 5).
 - [x] **6.** Sửa comment K — file: `domain/kbias.py` dòng 11 → `INITIAL_K_BIAS = 1.3  # Fixed for every new user (Moløkken & Jørgensen, 2003); learned per user after that.`
 - [x] **7.** Chạy T8 (pytest + ruff) và `grep` của bước 0 lần nữa → phải rỗng (trừ dòng trong plan này).
-- [ ] **8.** Docs:
+- [x] **8.** Docs:
   - `CLAUDE.md` §7 "Quota": thay 2 dòng đầu bằng
     `- One limit per plan per billing period (AiCallLimit / AiCallsUsed, BR-86). No daily limit.`
     `- A subscription past its EndAt is not active, even if Status is still Active.`

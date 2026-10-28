@@ -1,6 +1,8 @@
 """FR-08b-1 endpoints: chat about a project brief, then apply milestones + tasks.
 
 Only POST messages uses an AI call. 409 answers carry {"code": …} like FR-08a.
+FR-08b-2: a message may carry documents (JSON `document_ids`, or multipart with
+uploaded files). Document errors carry {"code": …, "file": …} where useful.
 """
 
 from datetime import date, datetime
@@ -8,7 +10,16 @@ from typing import Annotated
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    UploadFile,
+    status,
+)
 from pydantic import BaseModel
 
 from metanoia_ai.api.auth import get_current_user_id
@@ -20,7 +31,13 @@ from metanoia_ai.api.deps import (
     get_start_project_chat,
 )
 from metanoia_ai.api.routes.chat import conflict, not_found
+from metanoia_ai.application.ports.document_source import (
+    DocumentFetchError,
+    DocumentNotFoundError,
+)
 from metanoia_ai.application.ports.project_chat_repository import (
+    AttachmentSource,
+    ChatAttachment,
     ChatRole,
     ConversationStatus,
     ProjectChatMessage,
@@ -40,7 +57,11 @@ from metanoia_ai.application.use_cases.propose_schedule import (
     QuotaExceededError,
 )
 from metanoia_ai.application.use_cases.send_project_chat_message import (
+    AttachedDocuments,
+    DocumentAccessOffError,
+    ProjectChatTurn,
     SendProjectChatMessage,
+    UploadedFile,
 )
 from metanoia_ai.application.use_cases.send_task_chat_message import (
     AIUnavailableError,
@@ -54,6 +75,7 @@ from metanoia_ai.application.use_cases.start_project_chat import (
     ProjectNotFoundError,
     StartProjectChat,
 )
+from metanoia_ai.domain.document_text import DocumentError, DocumentErrorCode
 from metanoia_ai.domain.models import EstimateSource
 from metanoia_ai.domain.project_breakdown import (
     DuplicateOf,
@@ -76,9 +98,20 @@ class ConversationResponse(BaseModel):
 
 
 class SendRequest(BaseModel):
-    message: (
-        str  # 1 to CHAT_PROJECT_MESSAGE_MAX_CHARS characters, checked by the use case
-    )
+    # Up to CHAT_PROJECT_MESSAGE_MAX_CHARS, checked by the use case. May be empty
+    # only when documents are attached.
+    message: str
+    document_ids: list[UUID] = []  # FR-08b-2: library files, 0-3 (AC1, AC4)
+
+
+class AttachmentResponse(BaseModel):
+    """An attached document. The extracted text is never sent back."""
+
+    id: UUID
+    name: str
+    source: AttachmentSource
+    document_id: UUID | None
+    is_truncated: bool
 
 
 class DomainResponse(BaseModel):
@@ -130,6 +163,7 @@ class MessageResponse(BaseModel):
     content: str
     created_at: datetime  # ISO 8601 in the user's time zone
     draft: ProjectDraftResponse | None = None
+    attachments: list[AttachmentResponse] = []  # user messages only (FR-08b-2)
 
 
 class ProjectChatTurnResponse(BaseModel):
@@ -243,7 +277,21 @@ def to_draft(message: ProjectChatMessage) -> ProjectDraftResponse | None:
     )
 
 
-def to_message(message: ProjectChatMessage, zone: ZoneInfo) -> MessageResponse:
+def to_attachment(attachment: ChatAttachment) -> AttachmentResponse:
+    return AttachmentResponse(
+        id=attachment.attachment_id,
+        name=attachment.name,
+        source=attachment.source,
+        document_id=attachment.document_id,
+        is_truncated=attachment.is_truncated,
+    )
+
+
+def to_message(
+    message: ProjectChatMessage,
+    zone: ZoneInfo,
+    attachments: list[ChatAttachment] | tuple[ChatAttachment, ...] = (),
+) -> MessageResponse:
     kind = None
     if message.role is ChatRole.ASSISTANT:
         kind = ReplyKind.DRAFT if message.draft else ReplyKind.QUESTION
@@ -254,6 +302,7 @@ def to_message(message: ProjectChatMessage, zone: ZoneInfo) -> MessageResponse:
         content=message.content,
         created_at=message.created_at.astimezone(zone),
         draft=to_draft(message),
+        attachments=[to_attachment(a) for a in attachments],
     )
 
 
@@ -313,16 +362,35 @@ async def list_chats(
     return [to_conversation(c) for c in conversations]
 
 
-@router.post("/conversations/{conversation_id}/messages")
-async def send_message(
+def document_problem(code: DocumentErrorCode, file: str) -> HTTPException:
+    """422 for a file that cannot be used (AC3), with its name."""
+    return HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        detail={"code": str(code), "file": file},
+    )
+
+
+async def send(
+    use_case: SendProjectChatMessage,
+    user_id: UUID,
     conversation_id: UUID,
-    body: SendRequest,
-    user_id: Annotated[UUID, Depends(get_current_user_id)],
-    use_case: Annotated[SendProjectChatMessage, Depends(get_send_project_chat_message)],
+    message: str,
+    attached: AttachedDocuments,
 ) -> ProjectChatTurnResponse:
-    """Send one message (usually the brief). Uses 1 AI call when the AI answers."""
+    """Run the use case and turn its errors into HTTP answers (both endpoints)."""
     try:
-        turn = await use_case.execute(user_id, conversation_id, body.message)
+        turn = await use_case.execute(user_id, conversation_id, message, attached)
+    except DocumentError as error:
+        raise document_problem(error.code, error.name) from error
+    except DocumentNotFoundError as error:
+        raise not_found("Document") from error
+    except DocumentAccessOffError as error:
+        raise conflict("document_access_off") from error
+    except DocumentFetchError as error:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={"code": "document_fetch_failed"},
+        ) from error
     except InvalidMessageError as error:
         raise unprocessable(error) from error
     except (ConversationNotFoundError, ProjectNotFoundError) as error:
@@ -342,11 +410,65 @@ async def send_message(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="The AI could not answer. Please try again.",
         ) from error
+    return to_turn(turn)
+
+
+def to_turn(turn: ProjectChatTurn) -> ProjectChatTurnResponse:
     return ProjectChatTurnResponse(
         conversation_id=turn.conversation_id,
-        user_message=to_message(turn.user_message, turn.time_zone),
+        user_message=to_message(turn.user_message, turn.time_zone, turn.attachments),
         ai_message=to_message(turn.ai_message, turn.time_zone),
     )
+
+
+@router.post("/conversations/{conversation_id}/messages")
+async def send_message(
+    conversation_id: UUID,
+    body: SendRequest,
+    request: Request,
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+    use_case: Annotated[SendProjectChatMessage, Depends(get_send_project_chat_message)],
+) -> ProjectChatTurnResponse:
+    """Send one message (usually the brief), with up to 3 library documents.
+    Uses 1 AI call when the AI answers."""
+    attached = AttachedDocuments(
+        document_ids=tuple(body.document_ids),
+        auth_header=request.headers.get("Authorization", ""),  # #18: passed on only
+    )
+    return await send(use_case, user_id, conversation_id, body.message, attached)
+
+
+@router.post("/conversations/{conversation_id}/messages/files")
+async def send_message_with_files(
+    conversation_id: UUID,
+    request: Request,
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+    use_case: Annotated[SendProjectChatMessage, Depends(get_send_project_chat_message)],
+    message: Annotated[str, Form()] = "",
+    document_ids: Annotated[list[UUID], Form()] = [],  # noqa: B006 (FastAPI form)
+    files: Annotated[list[UploadFile], File()] = [],  # noqa: B006 (FastAPI form)
+) -> ProjectChatTurnResponse:
+    """Like /messages, plus files uploaded straight into the chat (FR-08b-2).
+    Uploads do not need the project's document switch (AC1)."""
+    limits = use_case.limits
+    if len(document_ids) + len(files) > limits.max_files:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"at most {limits.max_files} documents per message",
+        )
+    uploads = []
+    for upload in files:
+        name = upload.filename or "file"
+        data = await upload.read(limits.max_file_bytes + 1)  # stop just past the limit
+        if len(data) > limits.max_file_bytes:
+            raise document_problem(DocumentErrorCode.TOO_LARGE, name)
+        uploads.append(UploadedFile(name, data))
+    attached = AttachedDocuments(
+        document_ids=tuple(document_ids),
+        uploads=tuple(uploads),
+        auth_header=request.headers.get("Authorization", ""),
+    )
+    return await send(use_case, user_id, conversation_id, message, attached)
 
 
 @router.get("/conversations/{conversation_id}")
@@ -360,11 +482,17 @@ async def get_chat(
         view = await use_case.execute(user_id, conversation_id)
     except ConversationNotFoundError as error:
         raise not_found("Conversation") from error
+    by_message: dict[UUID, list[ChatAttachment]] = {}
+    for attachment in view.attachments:
+        by_message.setdefault(attachment.message_id, []).append(attachment)
     return ProjectChatResponse(
         conversation_id=view.conversation.conversation_id,
         project_id=view.conversation.project_id,
         status=view.conversation.status,
-        messages=[to_message(m, view.time_zone) for m in view.messages],
+        messages=[
+            to_message(m, view.time_zone, by_message.get(m.message_id, []))
+            for m in view.messages
+        ],
         latest_draft=to_draft(view.latest_draft) if view.latest_draft else None,
         applied=view.applied,
     )

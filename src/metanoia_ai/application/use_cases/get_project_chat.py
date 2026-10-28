@@ -1,10 +1,12 @@
-"""FR-08b-1: show one project chat with its messages and its newest draft. No LLM."""
+"""FR-08b-1: show one project chat with its messages and its newest draft. No LLM.
+FR-08b-2: with the attachments of each message (no extracted text in the API)."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from metanoia_ai.application.ports.project_chat_repository import (
+    ChatAttachment,
     ConversationStatus,
     ProjectChatMessage,
     ProjectChatRepository,
@@ -21,6 +23,7 @@ class ProjectChatView:
     messages: list[ProjectChatMessage]  # oldest first
     latest_draft: ProjectChatMessage | None  # the one Apply accepts
     time_zone: ZoneInfo  # the user's, for created_at in the answer
+    attachments: list[ChatAttachment] = field(default_factory=list)  # oldest first
 
     @property
     def applied(self) -> bool:
@@ -42,4 +45,7 @@ class GetProjectChat:
                 raise ConversationNotFoundError(str(conversation_id))
             messages = await self.repo.list_messages(user_id, conversation_id)
             latest = await self.repo.latest_draft(user_id, conversation_id)
-        return ProjectChatView(conversation, messages, latest, project.time_zone)
+            attachments = await self.repo.list_attachments(user_id, conversation_id)
+        return ProjectChatView(
+            conversation, messages, latest, project.time_zone, attachments
+        )

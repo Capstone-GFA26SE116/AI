@@ -31,15 +31,6 @@ GET_SUBSCRIPTION = text("""
     LIMIT 1
 """)
 
-COUNT_CHARGED_CALLS = text("""
-    SELECT count(*)
-    FROM "AIUsageLog" l
-    JOIN "UserSubscription" us ON us."Id" = l."UserSubscriptionId"
-    WHERE us."UserId" = :user_id
-      AND l."QuotaCharged"
-      AND l."CreatedAt" >= :since
-""")
-
 # One statement: two requests at once cannot both take the last call.
 TRY_CHARGE = text("""
     UPDATE "UserSubscription" us
@@ -81,10 +72,6 @@ class SqlQuotaRepository:
             ai_call_limit=row.AiCallLimit,
             ai_calls_used=row.AiCallsUsed,
         )
-
-    async def count_charged_calls(self, user_id: UUID, since: datetime) -> int:
-        params = {"user_id": user_id, "since": since}
-        return (await self.session.execute(COUNT_CHARGED_CALLS, params)).scalar_one()
 
     async def try_charge(self, subscription: Subscription) -> bool:
         params = {"subscription_id": subscription.subscription_id}

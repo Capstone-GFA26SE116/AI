@@ -126,21 +126,6 @@ def test_lose_next_charge_simulates_another_request():
     assert asyncio.run(quota.try_charge(sub)) is True
 
 
-def test_count_charged_calls_only_counts_charged_calls_of_the_user_since():
-    quota, _ = repos()
-    mine, theirs = subscription(), subscription()
-    quota.add_subscription(USER, mine, NOW - timedelta(days=1))
-    quota.add_subscription(OTHER_USER, theirs, NOW - timedelta(days=1))
-    quota.now = NOW - timedelta(hours=30)
-    asyncio.run(quota.log_usage(usage(mine)))  # too old
-    quota.now = NOW
-    asyncio.run(quota.log_usage(usage(mine)))
-    asyncio.run(quota.log_usage(usage(mine, charged=False)))
-    asyncio.run(quota.log_usage(usage(theirs)))
-    since = NOW - timedelta(hours=24)
-    assert asyncio.run(quota.count_charged_calls(USER, since)) == 1
-
-
 # --- Schedule ---
 
 

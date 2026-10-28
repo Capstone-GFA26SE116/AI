@@ -18,6 +18,7 @@ from metanoia_ai.application.ports.chat_repository import (
     SavedDraft,
     SavedSubtask,
 )
+from metanoia_ai.application.ports.document_source import DocumentNotFoundError
 from metanoia_ai.application.ports.embedding_client import (
     EmbeddingError,
     EmbeddingResponse,
@@ -1035,3 +1036,23 @@ class FakeBriefingRepository:
         assert day_start < day_end <= window_end
         self.reads.append((user_id, day_start, day_end, window_end))
         return self.data.get(user_id)
+
+
+# --- Project chat documents (FR-08b-2) ---
+
+
+class FakeDocumentSource:
+    """The Backend's download endpoint: file bytes by document id, or an error."""
+
+    def __init__(self) -> None:
+        self.files: dict[UUID, bytes | Exception] = {}
+        self.calls: list[tuple[UUID, str]] = []  # (document id, auth header)
+
+    async def download(self, document_id: UUID, auth_header: str) -> bytes:
+        self.calls.append((document_id, auth_header))
+        found = self.files.get(document_id)
+        if found is None:
+            raise DocumentNotFoundError(str(document_id))
+        if isinstance(found, Exception):
+            raise found
+        return found

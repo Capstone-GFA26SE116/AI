@@ -208,7 +208,6 @@ async def main() -> None:
                 max_prompt_chars=settings.chat_project_prompt_max_chars,
                 existing_titles_limit=settings.chat_project_existing_titles_limit,
                 daily_work_hours=settings.chat_daily_work_hours,
-                quota_daily_max=settings.quota_daily_max,
                 now=now,
             )
             started = time.perf_counter()

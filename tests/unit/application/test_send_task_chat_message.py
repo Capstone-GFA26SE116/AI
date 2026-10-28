@@ -338,7 +338,7 @@ def test_many_calls_today_still_allowed_while_the_plan_has_calls_left():
 
 
 def charged_entry(s: Setup) -> UsageLogEntry:
-    """A charged call made earlier today (no daily limit, only the plan's)."""
+    """A charged call made earlier today (only the plan limit counts)."""
     return UsageLogEntry(
         s.subscription.subscription_id,
         AIFeature.SCHEDULE,

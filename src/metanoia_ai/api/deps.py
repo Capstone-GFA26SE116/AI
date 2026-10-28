@@ -320,7 +320,6 @@ def get_send_task_chat_message(
         max_message_chars=settings.chat_message_max_chars,
         similar_limit=settings.similar_default_limit,
         warning_ratio=settings.breakdown_warning_ratio,
-        quota_daily_max=settings.quota_daily_max,
         now=lambda: datetime.now(UTC),
     )
 
@@ -411,7 +410,6 @@ def get_send_project_chat_message(
         max_prompt_chars=settings.chat_project_prompt_max_chars,
         existing_titles_limit=settings.chat_project_existing_titles_limit,
         daily_work_hours=settings.chat_daily_work_hours,
-        quota_daily_max=settings.quota_daily_max,
         now=lambda: datetime.now(UTC),
     )
 

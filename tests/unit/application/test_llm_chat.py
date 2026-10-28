@@ -120,13 +120,13 @@ def test_cost_of_a_call():
 # --- ChatQuota ---
 
 
-def quota(used=0, limit=50, daily_max=50, add=True):
+def quota(used=0, limit=50, add=True):
     repo = FakeQuotaRepository(now=NOW)
     user = uuid4()
     if add:
         plan = Subscription(uuid4(), price=0, ai_call_limit=limit, ai_calls_used=used)
         repo.add_subscription(user, plan, NOW - timedelta(days=1))
-    return repo, user, ChatQuota(repo, daily_max=daily_max, now=lambda: NOW)
+    return repo, user, ChatQuota(repo, now=lambda: NOW)
 
 
 def test_quota_check_returns_the_plan():
@@ -140,18 +140,18 @@ def test_no_plan():
         asyncio.run(q.check(user))
 
 
-def test_plan_limit_reached():
+def test_t3_plan_limit_reached():
     _, user, q = quota(used=50, limit=50)
-    with pytest.raises(QuotaExceededError):
+    with pytest.raises(QuotaExceededError, match="plan limit reached"):
         asyncio.run(q.check(user))
 
 
-def test_daily_limit_reached():
-    _, user, q = quota(daily_max=1)
+def test_t2_no_daily_limit_while_the_plan_has_calls_left():
+    _, user, q = quota(used=60, limit=300)
     subscription = asyncio.run(q.check(user))
-    asyncio.run(q.log(subscription, [LLMCall("m", 1, 1, 0, 5, True)], charged=True))
-    with pytest.raises(QuotaExceededError):
-        asyncio.run(q.check(user))
+    calls = [LLMCall("m", 1, 1, 0, 5, True)] * 60
+    asyncio.run(q.log(subscription, calls, charged=True))  # 60 charged today
+    assert asyncio.run(q.check(user)) == subscription
 
 
 def test_log_charges_only_the_good_call():

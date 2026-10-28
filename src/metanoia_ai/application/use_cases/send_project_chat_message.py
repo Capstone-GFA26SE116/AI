@@ -107,7 +107,6 @@ class SendProjectChatMessage:
         max_prompt_chars: int,
         existing_titles_limit: int,
         daily_work_hours: float,
-        quota_daily_max: int,
         now: Callable[[], datetime],
     ) -> None:
         self.repo = repo
@@ -120,7 +119,7 @@ class SendProjectChatMessage:
         self.existing_titles_limit = existing_titles_limit
         self.daily_work_hours = daily_work_hours
         self.now = now
-        self.quota = ChatQuota(quota_repo, daily_max=quota_daily_max, now=now)
+        self.quota = ChatQuota(quota_repo, now=now)
 
     async def execute(
         self, user_id: UUID, conversation_id: UUID, message: str

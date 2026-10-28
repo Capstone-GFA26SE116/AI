@@ -37,13 +37,17 @@ from metanoia_ai.application.ports.productive_hours_repository import (
     ProductiveProfile,
 )
 from metanoia_ai.application.ports.project_chat_repository import (
+    AttachmentSource,
+    ChatAttachment,
     ChatProject,
     ConversationStatus,
     ExistingWork,
+    NewAttachment,
     NewMilestone,
     NewTask,
     ProjectChatMessage,
     ProjectConversation,
+    ProjectDocument,
     SavedProjectDraft,
 )
 from metanoia_ai.application.ports.quota_repository import (
@@ -635,6 +639,7 @@ class FakeProjectChat:
     owner_id: UUID
     conversation: ProjectConversation
     messages: list[ProjectChatMessage] = field(default_factory=list)
+    attachments: list[ChatAttachment] = field(default_factory=list)  # FR-08b-2
 
 
 @dataclass(frozen=True)
@@ -671,6 +676,7 @@ class FakeProjectChatRepository:
         self.new_milestones: list[FakeMilestoneRow] = []
         self.new_tasks: list[FakeTaskRow] = []
         self.locked: list[UUID] = []  # project / chat ids locked
+        self.documents: dict[UUID, ProjectDocument] = {}  # FR-08b-2 library
         self.clock_ticks = 0
 
     # --- test setup ---
@@ -686,6 +692,27 @@ class FakeProjectChatRepository:
 
     def add_old_milestone(self, project_id: UUID, order_index: int, title: str) -> None:
         self.old_milestones.setdefault(project_id, []).append((order_index, title))
+
+    def add_document(self, document: ProjectDocument) -> None:
+        assert document.project_id in self.projects
+        self.documents[document.document_id] = document
+
+    def set_document_access(self, project_id: UUID, allowed: bool) -> None:
+        """The user switches "Let AI read documents" on or off (B1)."""
+        owner, project = self.projects[project_id]
+        self.projects[project_id] = (
+            owner,
+            replace(project, allow_ai_documents=allowed),
+        )
+
+    def delete_document(self, document_id: UUID) -> None:
+        """Like the DB: ChatAttachment.DocumentId ON DELETE SET NULL."""
+        del self.documents[document_id]
+        for chat in self.chats.values():
+            chat.attachments = [
+                replace(a, document_id=None) if a.document_id == document_id else a
+                for a in chat.attachments
+            ]
 
     def _tick(self) -> datetime:
         self.clock_ticks += 1
@@ -786,6 +813,52 @@ class FakeProjectChatRepository:
         message = ProjectChatMessage(uuid4(), role, content, self._tick(), draft)
         chat.messages.append(message)
         return message
+
+    async def get_document(
+        self, user_id: UUID, document_id: UUID
+    ) -> ProjectDocument | None:
+        document = self.documents.get(document_id)
+        if document is None or not self._owns_project(user_id, document.project_id):
+            return None
+        return document
+
+    async def add_attachment(
+        self, user_id: UUID, message_id: UUID, attachment: NewAttachment
+    ) -> ChatAttachment:
+        chat = next(
+            (
+                c
+                for c in self.chats.values()
+                if any(m.message_id == message_id for m in c.messages)
+            ),
+            None,
+        )
+        assert chat is not None and chat.owner_id == user_id, "another user's message"
+        message = next(m for m in chat.messages if m.message_id == message_id)
+        assert message.role is ChatRole.USER, "attachments go with user messages"
+        assert len(attachment.name) <= 255, "ChatAttachment.Name is varchar(255)"
+        if attachment.source is AttachmentSource.UPLOAD and attachment.document_id:
+            raise ValueError("CK_ChatAttachment_UploadHasNoDocument")
+        if attachment.document_id is not None:
+            assert attachment.document_id in self.documents, "FK DocumentId"
+        row = ChatAttachment(
+            uuid4(),
+            message_id,
+            attachment.source,
+            attachment.document_id,
+            attachment.name,
+            attachment.extracted_text,
+            attachment.is_truncated,
+            self._tick(),
+        )
+        chat.attachments.append(row)
+        return row
+
+    async def list_attachments(
+        self, user_id: UUID, conversation_id: UUID
+    ) -> list[ChatAttachment]:
+        chat = self._own_chat(user_id, conversation_id)
+        return list(chat.attachments) if chat else []
 
     async def active_domains(self) -> dict[UUID, str]:
         return {d: name for d, (name, active) in self.domains.items() if active}

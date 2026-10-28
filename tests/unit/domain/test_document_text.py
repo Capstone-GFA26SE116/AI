@@ -12,9 +12,12 @@ from metanoia_ai.domain.document_text import (
     DocumentError,
     DocumentErrorCode,
     DocumentKind,
+    FittedText,
+    cut_text,
     detect_kind,
     extension_of,
     extract_text,
+    fit_to_budget,
     normalize_text,
 )
 
@@ -229,3 +232,74 @@ def test_extension_of(path, extension):
 
 def test_normalize_text():
     assert normalize_text("a\r\n\r\n\r\n\r\nb  \rc\x00") == "a\n\nb\nc"
+
+
+# --- T7: one budget for all documents (#13) ---
+
+
+def words(count: int, word: str = "word") -> str:
+    return " ".join([word] * count)
+
+
+def test_t7_three_long_documents_share_the_budget_equally():
+    texts = [words(500, w) for w in ("alpha", "bravo", "delta")]  # 2,999 chars each
+    fitted = fit_to_budget(texts, 3000)
+    assert all(f.is_truncated for f in fitted)
+    assert all(900 <= len(f.text) <= 1000 for f in fitted)
+    assert [f.text.split()[0] for f in fitted] == [
+        "alpha",
+        "bravo",
+        "delta",
+    ]  # order kept
+    assert sum(len(f.text) for f in fitted) <= 3000
+
+
+def test_t7_a_short_document_gives_its_unused_share_to_the_long_one():
+    short, long = "Short brief.", words(2000)
+    fitted = fit_to_budget([long, short], 1000)
+    assert fitted[1] == FittedText(short, False)
+    assert 900 < len(fitted[0].text) <= 1000 - len(short)
+    assert fitted[0].is_truncated
+
+
+def test_t7_everything_fits():
+    texts = ["One.", "Two."]
+    assert fit_to_budget(texts, 100) == [
+        FittedText("One.", False),
+        FittedText("Two.", False),
+    ]
+
+
+def test_t7_no_documents():
+    assert fit_to_budget([], 100) == []
+
+
+def test_t7_cut_at_a_paragraph_end():
+    text = words(60) + ".\n\n" + words(60)
+    cut = cut_text(text, 400)
+    assert cut == words(60) + "."
+
+
+def test_t7_cut_at_a_sentence_end_when_no_paragraph_is_close():
+    text = "First part here. " + words(30) + ". Then a long tail " + words(50)
+    cut = cut_text(text, 200)
+    assert cut.endswith("word.")
+    assert len(cut) <= 200
+
+
+def test_t7_never_cut_inside_a_word():
+    text = words(100, "abcdefg")  # no sentence ends at all
+    cut = cut_text(text, 50)
+    assert len(cut) <= 50
+    assert all(word == "abcdefg" for word in cut.split())
+
+
+def test_t7_a_boundary_too_early_is_not_used():
+    text = "Hi. " + words(100)  # the only sentence end is at 3 of 200
+    cut = cut_text(text, 200)
+    assert len(cut) > 150
+    assert cut.endswith("word")
+
+
+def test_t7_one_long_word_is_cut_hard():
+    assert cut_text("x" * 100, 10) == "x" * 10

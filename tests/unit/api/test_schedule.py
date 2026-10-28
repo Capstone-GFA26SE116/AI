@@ -53,7 +53,6 @@ class Setup:
             min_chunk_minutes=30,
             round_minutes=5,
             top_productive_hours=3,
-            quota_daily_max=50,
             clock=lambda: NOW.astimezone(),  # any zone: results come back in the user's
         )
 

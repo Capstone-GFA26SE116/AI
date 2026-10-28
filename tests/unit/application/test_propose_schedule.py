@@ -119,7 +119,6 @@ class World:
             min_chunk_minutes=30,
             round_minutes=5,
             top_productive_hours=3,
-            quota_daily_max=50,
             clock=lambda: NOW,
         )
 
@@ -179,17 +178,10 @@ def test_missing_domain_profile_uses_initial_k():
     assert world.run(data).slots[0].proposed_minutes == 78
 
 
-@pytest.mark.parametrize(
-    ("limit", "used", "charged_today"),
-    [(5, 5, 0), (None, 0, 50)],
-    ids=["plan limit", "daily limit"],
-)
-def test_t22_out_of_quota(limit, used, charged_today):
-    world = World(limit=limit, used=used)
-    for _ in range(charged_today):
-        asyncio.run(world.quota.log_usage(_charged_row(world)))
+def test_t22_t5_out_of_plan_quota():
+    world = World(limit=5, used=5)
     world.repo.planning[USER] = planning(task())
-    with pytest.raises(QuotaExceededError):
+    with pytest.raises(QuotaExceededError, match="plan limit reached"):
         asyncio.run(world.use_case.execute(USER, None, Language.VI))
     assert world.repo.planning_calls == []  # nothing read, nothing planned
     assert world.repo.proposals == {}
@@ -210,13 +202,12 @@ def _charged_row(world: World):
     )
 
 
-def test_daily_limit_counts_only_the_last_24_hours():
-    world = World(limit=None)
-    world.quota.now = NOW - timedelta(hours=25)
-    for _ in range(50):
+def test_t4_no_daily_limit_while_the_plan_has_calls_left():
+    world = World(limit=300, used=60)
+    for _ in range(60):  # 60 charged calls today
         asyncio.run(world.quota.log_usage(_charged_row(world)))
-    world.quota.now = NOW
     assert world.run(planning(task())).proposal_id is not None
+    assert len(world.llm.prompts) == 1
 
 
 def test_llm_fails_three_times_slots_saved_without_reasons():

@@ -142,7 +142,6 @@ def get_propose_schedule(
         min_chunk_minutes=settings.schedule_min_chunk_minutes,
         round_minutes=settings.schedule_round_minutes,
         top_productive_hours=settings.schedule_top_productive_hours,
-        quota_daily_max=settings.quota_daily_max,
         clock=lambda: datetime.now(UTC),
     )
 

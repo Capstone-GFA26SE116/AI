@@ -15,13 +15,13 @@ Hiếu chốt: chỉ giữ hạn mức theo gói, theo kỳ (BR-86); bỏ giới
 - **Ai gọi, khi nào:** Không thêm endpoint. Ảnh hưởng 3 chỗ gọi LLM có kiểm quota:
   FR-08a (chat task), FR-08b-1 (chat dự án), FR-10 (đề xuất lịch).
 - **Tiêu chí xong:**
-  - [ ] AC1 — Không còn chỗ nào trong `src/`, `tests/`, `.env.example`, `CLAUDE.md`, `docs/` nhắc tới giới hạn theo ngày
+  - [x] AC1 — Không còn chỗ nào trong `src/`, `tests/`, `.env.example`, `CLAUDE.md`, `docs/` nhắc tới giới hạn theo ngày
     (`quota_daily_max`, `QUOTA_DAILY_MAX`, `daily_max`, `count_charged_calls`, `"daily limit reached"`, "50 lượt / ngày").
-  - [ ] AC2 — User còn lượt trong gói → gọi AI được, **dù hôm nay đã dùng hơn 50 lượt**.
-  - [ ] AC3 — User hết lượt trong gói → vẫn bị chặn như cũ (lỗi `QuotaExceededError`, API trả 429, không gọi LLM).
-  - [ ] AC4 — Gói có `EndAt` ≤ bây giờ → coi như không có gói đang dùng (`NoSubscriptionError` → 409: chat trả `no_active_plan`, schedule trả "No active subscription").
+  - [x] AC2 — User còn lượt trong gói → gọi AI được, **dù hôm nay đã dùng hơn 50 lượt**.
+  - [x] AC3 — User hết lượt trong gói → vẫn bị chặn như cũ (lỗi `QuotaExceededError`, API trả 429, không gọi LLM).
+  - [x] AC4 — Gói có `EndAt` ≤ bây giờ → coi như không có gói đang dùng (`NoSubscriptionError` → 409: chat trả `no_active_plan`, schedule trả "No active subscription").
     Gói có `EndAt` trống (Free) hoặc `EndAt` > bây giờ → dùng bình thường.
-  - [ ] AC5 — Toàn bộ test cũ còn lại vẫn xanh; `ruff check` và `ruff format --check` sạch.
+  - [x] AC5 — Toàn bộ test cũ còn lại vẫn xanh; `ruff check` và `ruff format --check` sạch.
 - **Ngoài phạm vi:**
   - Đổi cách khóa khi hết lượt (FR-10 vẫn chặn hẳn, đúng FR-02).
   - Luật "auto-timeout xác nhận mà không sửa giờ thì không học K" — code hiện đúng NFR-17, chưa đổi.

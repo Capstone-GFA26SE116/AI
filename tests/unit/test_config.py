@@ -566,7 +566,7 @@ def test_briefing_defaults(env):
     assert s.briefing_risk_window_days == 14
     assert s.briefing_at_risk_limit == 5
     assert s.briefing_bias_min_k == 1.1
-    assert s.briefing_bias_min_samples == 3
+    assert s.briefing_bias_min_samples == 5  # T16: same as the analytics threshold
     assert s.briefing_similar_min_count == 2
     assert s.briefing_similar_min_ratio == 1.3
     assert s.briefing_similar_timeout_seconds == 3
@@ -664,6 +664,8 @@ def test_analytics_defaults(env):
     assert s.analytics_project_insight_min_tasks == 3
     assert s.analytics_insight_limit == 3
     assert s.analytics_task_limit_max == 200
+    # FR-20 #13: the briefing and the Dashboard use the same sample threshold.
+    assert s.briefing_bias_min_samples == s.analytics_bias_min_samples
 
 
 def test_analytics_values_can_be_changed(env):

@@ -140,13 +140,28 @@ class Settings(BaseSettings):
     briefing_at_risk_limit: int = Field(default=5, ge=1)
     # "You usually need X% more time" only for a learned K (#7). K must be > 1.
     briefing_bias_min_k: float = Field(default=1.1, gt=1, le=K_MAX)
-    briefing_bias_min_samples: int = Field(default=3, ge=1)
+    # Same as ANALYTICS_BIAS_MIN_SAMPLES so both screens agree (FR-20 #13).
+    briefing_bias_min_samples: int = Field(default=5, ge=1)
     # Similar task warning (#11): enough results and a high average ratio.
     briefing_similar_min_count: int = Field(default=2, ge=1)
     briefing_similar_min_ratio: float = Field(default=1.3, gt=1)
     # Total wait for all similar task searches together (#12).
     briefing_similar_timeout_seconds: float = Field(default=3, gt=0)
     briefing_productive_top_hours: int = Field(default=3, ge=1, le=24)
+
+    # Personal analytics (FR-20). No LLM, no quota.
+    # Bias sentence (#3): fewer samples → "not enough data"; from "confident" on,
+    # no "still learning" note. Thresholds from the K-SiP study.
+    analytics_bias_min_samples: int = Field(default=5, ge=1)
+    analytics_bias_confident_samples: int = Field(default=10, ge=1)
+    # |K - 1| below this → "fairly accurate" (#4).
+    analytics_bias_neutral_band: float = Field(default=0.10, ge=0, lt=1)
+    # Project insight: at least this many tasks and this % off the plan (§2 #10).
+    analytics_project_insight_min_percent: int = Field(default=20, ge=1)
+    analytics_project_insight_min_tasks: int = Field(default=3, ge=1)
+    analytics_insight_limit: int = Field(default=3, ge=1)
+    # Largest `limit` of GET /analytics/breakdown?by=task.
+    analytics_task_limit_max: int = Field(default=200, ge=1)
 
     @field_validator("productive_learning_plans", mode="before")
     @classmethod
@@ -163,6 +178,14 @@ class Settings(BaseSettings):
         if self.onboarding_selected_score <= self.onboarding_unselected_score:
             raise ValueError(
                 "ONBOARDING_SELECTED_SCORE must be > ONBOARDING_UNSELECTED_SCORE"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def check_analytics_samples(self) -> "Settings":
+        if self.analytics_bias_min_samples > self.analytics_bias_confident_samples:
+            raise ValueError(
+                "ANALYTICS_BIAS_MIN_SAMPLES > ANALYTICS_BIAS_CONFIDENT_SAMPLES"
             )
         return self
 

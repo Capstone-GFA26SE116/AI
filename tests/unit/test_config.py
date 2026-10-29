@@ -71,6 +71,15 @@ BRIEFING_VARS = [
     "BRIEFING_SIMILAR_TIMEOUT_SECONDS",
     "BRIEFING_PRODUCTIVE_TOP_HOURS",
 ]
+ANALYTICS_VARS = [
+    "ANALYTICS_BIAS_MIN_SAMPLES",
+    "ANALYTICS_BIAS_CONFIDENT_SAMPLES",
+    "ANALYTICS_BIAS_NEUTRAL_BAND",
+    "ANALYTICS_PROJECT_INSIGHT_MIN_PERCENT",
+    "ANALYTICS_PROJECT_INSIGHT_MIN_TASKS",
+    "ANALYTICS_INSIGHT_LIMIT",
+    "ANALYTICS_TASK_LIMIT_MAX",
+]
 DOCUMENT_VARS = [
     "BACKEND_DOWNLOAD_TIMEOUT_SECONDS",
     "CHAT_DOCUMENT_MAX_FILES",
@@ -98,6 +107,7 @@ OPTIONAL_VARS = [
     *PROJECT_CHAT_VARS,
     *PRODUCTIVE_VARS,
     *BRIEFING_VARS,
+    *ANALYTICS_VARS,
     *DOCUMENT_VARS,
 ]
 EMBEDDING_VARS = {
@@ -637,6 +647,48 @@ def test_document_values_can_be_changed(env):
     ],
 )
 def test_bad_document_values_are_rejected(env, name, value):
+    env.setenv(name, value)
+    with pytest.raises(ValidationError):
+        load()
+
+
+# --- personal analytics (FR-20) ---
+
+
+def test_analytics_defaults(env):
+    s = load()
+    assert s.analytics_bias_min_samples == 5
+    assert s.analytics_bias_confident_samples == 10
+    assert s.analytics_bias_neutral_band == 0.10
+    assert s.analytics_project_insight_min_percent == 20
+    assert s.analytics_project_insight_min_tasks == 3
+    assert s.analytics_insight_limit == 3
+    assert s.analytics_task_limit_max == 200
+
+
+def test_analytics_values_can_be_changed(env):
+    env.setenv("ANALYTICS_BIAS_MIN_SAMPLES", "3")
+    env.setenv("ANALYTICS_BIAS_NEUTRAL_BAND", "0.05")
+    s = load()
+    assert s.analytics_bias_min_samples == 3
+    assert s.analytics_bias_neutral_band == 0.05
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("ANALYTICS_BIAS_MIN_SAMPLES", "0"),
+        ("ANALYTICS_BIAS_MIN_SAMPLES", "11"),  # above the confident threshold
+        ("ANALYTICS_BIAS_CONFIDENT_SAMPLES", "0"),
+        ("ANALYTICS_BIAS_NEUTRAL_BAND", "-0.1"),
+        ("ANALYTICS_BIAS_NEUTRAL_BAND", "1"),
+        ("ANALYTICS_PROJECT_INSIGHT_MIN_PERCENT", "0"),
+        ("ANALYTICS_PROJECT_INSIGHT_MIN_TASKS", "0"),
+        ("ANALYTICS_INSIGHT_LIMIT", "0"),
+        ("ANALYTICS_TASK_LIMIT_MAX", "0"),
+    ],
+)
+def test_bad_analytics_values_are_rejected(env, name, value):
     env.setenv(name, value)
     with pytest.raises(ValidationError):
         load()

@@ -29,6 +29,13 @@ from metanoia_ai.application.use_cases.find_similar_tasks import (
     FindSimilarTasks,
     SimilarTasksResult,
 )
+from metanoia_ai.application.use_cases.get_analytics_breakdown import (
+    GetAnalyticsBreakdown,
+)
+from metanoia_ai.application.use_cases.get_analytics_overview import (
+    AnalyticsSettings,
+    GetAnalyticsOverview,
+)
 from metanoia_ai.application.use_cases.get_daily_briefing import (
     BriefingSettings,
     GetDailyBriefing,
@@ -62,6 +69,7 @@ from metanoia_ai.domain.briefing import BiasRule
 from metanoia_ai.domain.project_breakdown import ProjectLimits
 from metanoia_ai.domain.task_breakdown import DraftLimits
 from metanoia_ai.infrastructure.backend.document_client import BackendDocumentClient
+from metanoia_ai.infrastructure.db.analytics_repository import SqlAnalyticsRepository
 from metanoia_ai.infrastructure.db.briefing_repository import SqlBriefingRepository
 from metanoia_ai.infrastructure.db.chat_repository import SqlChatRepository
 from metanoia_ai.infrastructure.db.learning_repository import SqlLearningRepository
@@ -544,4 +552,39 @@ def get_get_daily_briefing(
         find_similar,
         briefing_settings(settings),
         now=lambda: datetime.now(UTC),
+    )
+
+
+# --- personal analytics (FR-20) ---
+
+
+def analytics_settings(settings: Settings) -> AnalyticsSettings:
+    return AnalyticsSettings(
+        bias_min_samples=settings.analytics_bias_min_samples,
+        bias_confident_samples=settings.analytics_bias_confident_samples,
+        bias_neutral_band=Decimal(str(settings.analytics_bias_neutral_band)),
+        project_insight_min_percent=settings.analytics_project_insight_min_percent,
+        project_insight_min_tasks=settings.analytics_project_insight_min_tasks,
+        insight_limit=settings.analytics_insight_limit,
+    )
+
+
+def get_get_analytics_overview(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> GetAnalyticsOverview:
+    """FR-20: no LLM, no quota, read-only."""
+    return GetAnalyticsOverview(
+        SqlAnalyticsRepository(session),
+        analytics_settings(settings),
+        now=lambda: datetime.now(UTC),
+    )
+
+
+def get_get_analytics_breakdown(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> GetAnalyticsBreakdown:
+    """FR-20: no LLM, no quota, read-only."""
+    return GetAnalyticsBreakdown(
+        SqlAnalyticsRepository(session), now=lambda: datetime.now(UTC)
     )

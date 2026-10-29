@@ -20,6 +20,7 @@ from research.kbias_sip.load import (
 )
 from research.kbias_sip.methods import Metanoia, Method, all_methods
 from research.kbias_sip.metrics import ALL, SummaryRow, summarize
+from research.kbias_sip.plots import plot_all
 from research.kbias_sip.replay import Pair, Prediction, group_pairs, replay
 
 MAIN_DOMAIN_MODE = "category"
@@ -221,6 +222,7 @@ def main() -> None:
     summaries, sensitivity_rows = run(args.data.expanduser(), args.out.expanduser())
     print(format_overview(summaries))
     print(format_sensitivity(sensitivity_rows))
+    plot_all(args.out.expanduser())
 
 
 if __name__ == "__main__":

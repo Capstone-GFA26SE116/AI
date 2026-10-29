@@ -20,6 +20,8 @@ Ký hiệu: **AI ghi** = AI service được INSERT/UPDATE · **Chỉ đọc** =
   `ObservedRatio` numeric(6,3) · `EstimatedMinutes` > 0 · `ActualMinutes` > 0 · `SampleIndex` ≥ 1.
 - `CaptureMethod` ∈ {`Timer`, `SelfReported`, `AutoTimeout`} · `ConfidenceTier` ∈ {`High`, `Medium`, `Low`}.
 - `CreatedAt` mặc định now().
+- Index (đọc 2026-10-29, FR-20 bước 0): `TaskId` (unique), (`UserDomainProfileId`, `SampleIndex`) (unique). **Không có** (`UserDomainProfileId`, `CreatedAt`);
+  lọc theo profile vẫn dùng được cột đầu của index unique. 2 dòng.
 
 ### `ScheduleProposal` — AI ghi (FR-10) ⚠️
 - Ghi khi đề xuất: `Status = 'Pending'`, `Level = 3`.
@@ -131,6 +133,8 @@ Bảng mới, **AI tạo 2026-10-28** (Hiếu cho phép, đã báo Backend; migr
 - Task `Fixed` **bắt buộc** có `FixedStart`, `FixedEnd` (timestamptz, `FixedEnd > FixedStart`).
 - `Title`, `Description` (text, trống được), `DomainId`, `CompletedAt` (timestamptz, trống được). Không có CHECK nối `CompletedAt` với `Status`.
   2026-10-15: 2 task `Done` đều có `CompletedAt`; chưa có task `Skipped` nào nên chưa biết Backend có ghi không → coi là trống được.
+  2026-10-29 (FR-20 bước 0): 5 task `Done` (Flexible) đều có `CompletedAt`; vẫn chưa có task `Skipped`. 61 task.
+- Index (đọc 2026-10-29): (`ProjectId`, `Status`) · `Deadline` WHERE `Status` ∈ {`ToDo`, `Scheduled`} · `MilestoneId`.
 - `AiEstimatedMinutes` int trống được, CHECK > 0 ⚠️ (FR-17b): số phút AI đoán. **Không có** cột `EstimateSource`.
   Ước lượng là "của AI" khi `AiEstimatedMinutes IS NOT NULL AND EstimatedMinutes = AiEstimatedMinutes`;
   user sửa số → hai số khác nhau → là "của user". Đọc DB 2026-10-16: 39 task, 0 task có giá trị, cột không có comment

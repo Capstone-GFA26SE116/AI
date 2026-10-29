@@ -20,20 +20,16 @@ from uuid import UUID
 from pydantic import BaseModel, ValidationError
 
 from metanoia_ai.application.ports.llm_client import LLMClient, LLMError
+from metanoia_ai.domain.forbidden_terms import has_internal_name
 from metanoia_ai.domain.models import Language
 from metanoia_ai.domain.schedule_text import SlotFacts
 from metanoia_ai.prompts import load_prompt
 
 PROMPT_VERSION = "schedule_reason_v2"
 MAX_REASON_LENGTH = 250  # at most 2 short sentences (plan #33)
-# Internal names the user must never see (checked without case):
-# formula names, fact names and fact values sent in the prompt.
+# Internal names the user must never see, on top of the shared ones
+# (domain/forbidden_terms.py): fact names and fact values sent in the prompt.
 FORBIDDEN_WORDS = (
-    "k_bias",
-    "kbias",
-    "t_proposed",
-    "t_est",
-    "k=",
     "earliest_free",
     "waited_for_focus_hour",
     "earlier_blocked_by",
@@ -214,7 +210,7 @@ def check_answer(text: str, slot_ids: set[UUID]) -> dict[UUID, str]:
             raise BadAnswerError("slot repeated")
         if not reason or len(reason) > MAX_REASON_LENGTH or "\n" in reason:
             raise BadAnswerError("reason empty, too long or more than one line")
-        if any(word in reason.lower() for word in FORBIDDEN_WORDS):
+        if has_internal_name(reason, FORBIDDEN_WORDS):
             raise BadAnswerError("reason shows an internal name")
         reasons[item.slot_id] = reason
     if set(reasons) != slot_ids:

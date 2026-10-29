@@ -140,7 +140,8 @@ class Settings(BaseSettings):
     briefing_at_risk_limit: int = Field(default=5, ge=1)
     # "You usually need X% more time" only for a learned K (#7). K must be > 1.
     briefing_bias_min_k: float = Field(default=1.1, gt=1, le=K_MAX)
-    briefing_bias_min_samples: int = Field(default=3, ge=1)
+    # Same as ANALYTICS_BIAS_MIN_SAMPLES so both screens agree (FR-20 #13).
+    briefing_bias_min_samples: int = Field(default=5, ge=1)
     # Similar task warning (#11): enough results and a high average ratio.
     briefing_similar_min_count: int = Field(default=2, ge=1)
     briefing_similar_min_ratio: float = Field(default=1.3, gt=1)

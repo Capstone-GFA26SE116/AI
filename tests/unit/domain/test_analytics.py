@@ -1,5 +1,6 @@
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -8,18 +9,32 @@ from metanoia_ai.domain.analytics import (
     AnalyticsRange,
     BiasConfidence,
     BiasDirection,
+    BreakdownBy,
+    BreakdownItem,
+    CompletionStats,
     DeadlineTask,
+    DomainBias,
+    DoneTask,
+    InsightCode,
     KUpdate,
     Period,
     TaskStatus,
     bias_sort_key,
+    breakdown,
     classify_bias,
     completion_stats,
+    difference_percent,
     period_for,
+    select_insights,
     week_start,
     weekly_trend,
 )
-from metanoia_ai.domain.models import TaskType
+from metanoia_ai.domain.models import (
+    ActualTimeSource,
+    EstimateSource,
+    FocusSessionRecord,
+    TaskType,
+)
 
 VN = ZoneInfo("Asia/Ho_Chi_Minh")
 NOW = datetime(2026, 10, 29, 17, 20, tzinfo=VN)
@@ -223,3 +238,251 @@ def test_trend_skips_updates_outside_period_and_empty_weeks() -> None:
 def test_week_start_is_monday() -> None:
     assert week_start(datetime(2026, 10, 25, 12, tzinfo=VN), VN) == date(2026, 10, 19)
     assert week_start(datetime(2026, 10, 26, 0, tzinfo=VN), VN) == date(2026, 10, 26)
+
+
+# --- breakdown (T6, T7, T8) ---
+
+PROJECT_A = UUID(int=1)
+PROJECT_B = UUID(int=2)
+PROJECT_C = UUID(int=3)
+CLIENT_X = UUID(int=10)
+ALL_TIME = period_for(AnalyticsRange.ALL, NOW, VN)
+
+
+def session(
+    minutes: int, ended: bool = True, confirmed: bool = True
+) -> FocusSessionRecord:
+    start = NOW - timedelta(days=1)
+    return FocusSessionRecord(
+        started_at=start,
+        ended_at=start + timedelta(minutes=minutes) if ended else None,
+        source=ActualTimeSource.TIMER,
+        is_confirmed=confirmed,
+    )
+
+
+def done(
+    estimated: int | None = 60,
+    sessions: tuple[FocusSessionRecord, ...] = (),
+    project: UUID = PROJECT_A,
+    client: UUID | None = CLIENT_X,
+    ai_estimated: int | None = None,
+    completed_days_ago: float = 1,
+    title: str = "Task",
+) -> DoneTask:
+    return DoneTask(
+        task_id=uuid4(),
+        title=title,
+        project_id=project,
+        project_name=f"Project {project.int}",
+        client_id=client,
+        client_name=None if client is None else "Client X",
+        domain_name="Writing",
+        estimated_minutes=estimated,
+        ai_estimated_minutes=ai_estimated,
+        completed_at=NOW - timedelta(days=completed_days_ago),
+        sessions=sessions,
+    )
+
+
+def test_difference_percent() -> None:
+    assert difference_percent(600, 750) == 25
+    assert difference_percent(60, 45) == -25
+    assert difference_percent(3, 4) == 33
+    with pytest.raises(ValueError):
+        difference_percent(0, 10)
+
+
+def test_project_totals() -> None:
+    tasks = [done(60, (session(90),)), done(120, (session(60), session(30)))]
+
+    result = breakdown(tasks, BreakdownBy.PROJECT, ALL_TIME)
+
+    assert result.items == [
+        BreakdownItem(
+            id=PROJECT_A,
+            name="Project 1",
+            task_count=2,
+            missing_actual_count=0,
+            estimated_minutes=180,
+            actual_minutes=180,
+            difference_percent=0,
+        )
+    ]
+
+
+# T6
+def test_unusable_actual_time_is_counted_as_missing() -> None:
+    tasks = [
+        done(60, (session(90),)),
+        done(60, (session(30), session(10, ended=False))),  # still running
+        done(60, (session(30, confirmed=False),)),  # not confirmed
+        done(60, ()),  # no session
+    ]
+
+    item = breakdown(tasks, BreakdownBy.PROJECT, ALL_TIME).items[0]
+
+    assert (item.task_count, item.missing_actual_count) == (1, 3)
+    assert (item.estimated_minutes, item.actual_minutes) == (60, 90)
+
+
+def test_group_with_only_missing_time_is_left_out() -> None:
+    tasks = [done(60, (), project=PROJECT_B), done(60, (session(60),))]
+
+    items = breakdown(tasks, BreakdownBy.PROJECT, ALL_TIME).items
+
+    assert [i.id for i in items] == [PROJECT_A]
+
+
+# T7
+def test_task_rows_show_estimate_source() -> None:
+    tasks = [
+        done(
+            90, (session(90),), ai_estimated=90, title="AI number", completed_days_ago=2
+        ),
+        done(
+            80,
+            (session(90),),
+            ai_estimated=90,
+            title="User changed",
+            completed_days_ago=1,
+        ),
+        done(60, (session(60),), title="User only", completed_days_ago=3),
+    ]
+
+    items = breakdown(tasks, BreakdownBy.TASK, ALL_TIME).items
+
+    assert [(i.name, i.estimate_source) for i in items] == [
+        ("User changed", EstimateSource.USER),
+        ("AI number", EstimateSource.AI),
+        ("User only", EstimateSource.USER),
+    ]
+    assert items[0].project_name == "Project 1"
+    assert items[0].domain_name == "Writing"
+    assert items[0].completed_at == NOW - timedelta(days=1)
+
+
+# T8
+def test_client_groups_projects_without_client_together() -> None:
+    tasks = [
+        done(60, (session(60),), project=PROJECT_A, client=CLIENT_X),
+        done(60, (session(90),), project=PROJECT_B, client=None),
+        done(60, (session(30),), project=PROJECT_C, client=None),
+    ]
+
+    items = breakdown(tasks, BreakdownBy.CLIENT, ALL_TIME).items
+
+    no_client = next(i for i in items if i.id is None)
+    assert no_client.name is None
+    assert (
+        no_client.task_count,
+        no_client.estimated_minutes,
+        no_client.actual_minutes,
+    ) == (
+        2,
+        120,
+        120,
+    )
+    assert {i.id for i in items} == {CLIENT_X, None}
+
+
+def test_breakdown_sorting_limit_range_and_bad_data() -> None:
+    tasks = [
+        done(100, (session(110),), project=PROJECT_A),  # +10
+        done(100, (session(50),), project=PROJECT_B),  # -50
+        done(
+            100, (session(130),), project=PROJECT_C, completed_days_ago=40
+        ),  # +30, old
+        done(None, (session(30),)),  # bad data
+    ]
+    last_30 = period_for(AnalyticsRange.LAST_30_DAYS, NOW, VN)
+
+    result = breakdown(tasks, BreakdownBy.PROJECT, last_30)
+
+    assert [i.difference_percent for i in result.items] == [-50, 10]
+    assert result.missing_estimate == 1
+    by_task = breakdown(tasks, BreakdownBy.TASK, ALL_TIME, limit=2).items
+    assert [i.completed_at for i in by_task] == [NOW - timedelta(days=1)] * 2
+
+
+# --- insights (T10) ---
+
+
+def domain(name: str, k: str, samples: int = 12) -> DomainBias:
+    return DomainBias(uuid4(), name, classify_bias(Decimal(k), samples))
+
+
+def project_item(percent: int, tasks: int = 4, name: str = "P") -> BreakdownItem:
+    return BreakdownItem(uuid4(), name, tasks, 0, 100, 100 + percent, percent)
+
+
+def completion(total: int, done_count: int) -> CompletionStats:
+    rate = Decimal(done_count) / total if total else None
+    return CompletionStats(
+        total, done_count, 0, total - done_count, done_count, rate, None
+    )
+
+
+GOOD = completion(10, 9)
+
+
+# T10
+def test_insights_full_order_and_limit() -> None:
+    domains = [
+        domain("Writing", "1.31"),
+        domain("Design", "0.60"),
+        domain("Coding", "1.50", samples=6),  # learning still counts
+    ]
+    projects = [project_item(25, name="Landing"), project_item(-40, name="Big")]
+
+    insights = select_insights(domains, projects, completion(10, 4))
+
+    assert [i.code for i in insights] == [
+        InsightCode.DOMAIN_SLOWER,
+        InsightCode.DOMAIN_FASTER,
+        InsightCode.PROJECT_UNDER,
+    ]
+    assert [i.domain.domain_name for i in insights[:2]] == ["Coding", "Design"]
+    assert insights[2].project.name == "Big"
+
+
+def test_insights_skip_unsure_and_accurate_domains() -> None:
+    domains = [domain("A", "1.50", samples=4), domain("B", "1.05")]
+
+    insights = select_insights(domains, [project_item(30)], completion(10, 5))
+
+    assert [i.code for i in insights] == [
+        InsightCode.PROJECT_OVER,
+        InsightCode.LOW_COMPLETION,
+    ]
+
+
+def test_project_insight_needs_enough_tasks_and_gap() -> None:
+    projects = [project_item(50, tasks=2), project_item(19, tasks=10)]
+
+    assert select_insights([], projects, GOOD)[0].code is InsightCode.NOT_ENOUGH_DATA
+
+
+def test_low_completion_needs_five_tasks() -> None:
+    assert (
+        select_insights([], [], completion(4, 0))[0].code is InsightCode.NOT_ENOUGH_DATA
+    )
+    assert (
+        select_insights([], [], completion(5, 2))[0].code is InsightCode.LOW_COMPLETION
+    )
+    assert (
+        select_insights([], [], completion(5, 3))[0].code is InsightCode.NOT_ENOUGH_DATA
+    )
+
+
+def test_insight_thresholds_from_arguments() -> None:
+    insights = select_insights(
+        [],
+        [project_item(10, tasks=1)],
+        GOOD,
+        limit=1,
+        project_min_percent=10,
+        project_min_tasks=1,
+    )
+
+    assert [i.code for i in insights] == [InsightCode.PROJECT_OVER]

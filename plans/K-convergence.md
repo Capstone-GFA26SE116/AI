@@ -190,7 +190,7 @@ Mọi chỉ số đều báo theo **nhóm vị trí n**: 1, 2, 3, 4–5, 6–10,
 ## 4. Các bước code
 *(Mỗi bước = 1 việc nhỏ + test của nó. Claude Code DỪNG sau mỗi bước.)*
 - [x] **1.** Đọc bài arXiv 1901.01621, xác nhận nghĩa của `FINISHED` / `COMPLETED` / `CHRONICLE` / `RELEASED`, ghi kết quả vào §5. Chưa code. Nếu khác #2 → dừng hỏi Hiếu.
-- [ ] **2.** `uv add --dev pandas matplotlib`; thêm `"."` vào `pythonpath`; tạo `research/kbias_sip/README.md` (cách tải, cách chạy, ghi nguồn, giấy phép); thêm `research/kbias_sip/results/*.csv` vào `.gitignore`.
+- [x] **2.** `uv add --dev pandas matplotlib`; thêm `"."` vào `pythonpath`; tạo `research/kbias_sip/README.md` (cách tải, cách chạy, ghi nguồn, giấy phép); thêm `research/kbias_sip/results/*.csv` vào `.gitignore`.
 - [ ] **3.** `load.py` + T1–T3. Chạy trên dữ liệu thật, so phễu với §1.3 (AC1).
 - [ ] **4.** `methods.py` + `replay.py` + T4–T8.
 - [ ] **5.** `metrics.py` + T9–T11.

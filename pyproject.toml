@@ -24,11 +24,13 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "matplotlib>=3.11.2",
+    "pandas>=3.1.0",
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
     "ruff>=0.16.10",
 ]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 testpaths = ["tests"]

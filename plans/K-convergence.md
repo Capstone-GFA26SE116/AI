@@ -1,6 +1,6 @@
 # K-SiP — Kiểm chứng việc học K_bias trên dataset SiP
 
-Trạng thái: Nháp · Branch: `research/k-convergence-sip` · Cập nhật: 2026-10-29
+Trạng thái: Xong · Branch: `research/k-convergence-sip` · Cập nhật: 2026-10-29
 
 <!-- Không phải FR mới: đây là bài kiểm chứng offline cho FR-17. Không đụng DB, không LLM, không quota. -->
 
@@ -12,13 +12,13 @@ Trạng thái: Nháp · Branch: `research/k-convergence-sip` · Cập nhật: 20
   - **Q2 – Có ích không:** So với tin nguyên ước lượng (Level 1) và các cách đơn giản khác, K giúp đoán **tổng giờ của một nhóm task** sát hơn bao nhiêu?
 - **Ai chạy, khi nào:** Hiếu chạy tay bằng một lệnh, lấy kết quả (CSV + biểu đồ + `results.md`) đưa vào báo cáo và slide.
 - **Tiêu chí xong:**
-  - [ ] AC1: Bước lọc dữ liệu in ra đúng "phễu" ở §1.3 (12.299 dòng → 7.176 task sạch → 24 cặp có ≥ 10 task theo `Category`). Lệch số → dừng, báo Hiếu.
-  - [ ] AC2: Replay gọi `update_k_bias`, `skip_reason`, `proposed_minutes` của `domain/kbias.py`. Không chép lại công thức K.
-  - [ ] AC3: Không nhìn trước tương lai: dự đoán task thứ n chỉ dùng K học từ task 1…n−1 (test T5).
-  - [ ] AC4: Chạy đủ mọi phương pháp ở §2.3 và mọi chỉ số ở §2.4. Báo **tất cả**, không bỏ cái nào xấu.
-  - [ ] AC5: Ra `results/` gồm các CSV ở §2.6, 3 biểu đồ PNG, và `results.md` viết **bằng tiếng Anh** (luật của giảng viên hướng dẫn: mọi tài liệu nộp phải bằng tiếng Anh).
-  - [ ] AC6: Chạy lại 2 lần ra cùng con số (không có ngẫu nhiên).
-  - [ ] AC7: `uv run pytest -q` và `uv run ruff check .` sạch.
+  - [x] AC1: Bước lọc dữ liệu in ra đúng "phễu" ở §1.3 (12.299 dòng → 7.176 task sạch → 24 cặp có ≥ 10 task theo `Category`). Lệch số → dừng, báo Hiếu.
+  - [x] AC2: Replay gọi `update_k_bias`, `skip_reason`, `proposed_minutes` của `domain/kbias.py`. Không chép lại công thức K.
+  - [x] AC3: Không nhìn trước tương lai: dự đoán task thứ n chỉ dùng K học từ task 1…n−1 (test T5).
+  - [x] AC4: Chạy đủ mọi phương pháp ở §2.3 và mọi chỉ số ở §2.4. Báo **tất cả**, không bỏ cái nào xấu.
+  - [x] AC5: Ra `results/` gồm các CSV ở §2.6, 3 biểu đồ PNG, và `results.md` viết **bằng tiếng Anh** (luật của giảng viên hướng dẫn: mọi tài liệu nộp phải bằng tiếng Anh).
+  - [x] AC6: Chạy lại 2 lần ra cùng con số (không có ngẫu nhiên).
+  - [x] AC7: `uv run pytest -q` và `uv run ruff check .` sạch.
 - **Ngoài phạm vi:** Đổi công thức K của production; chạy trên dữ liệu user thật trong Supabase; thử nghiệm 2 tuần với người dùng thật (đã bỏ); buffer `Δt` (SiP không có khái niệm nghỉ giữa task); productive hours.
 
 ## 1. Bên ngoài — nói chuyện với ai
@@ -197,7 +197,7 @@ Mọi chỉ số đều báo theo **nhóm vị trí n**: 1, 2, 3, 4–5, 6–10,
 - [x] **6.** `run.py`: chạy bản chính (`Category`) và ghi CSV + T12. **Dừng, gửi Hiếu bảng `summary.csv` trước khi làm tiếp.**
 - [x] **7.** Độ nhạy §2.5.
 - [x] **8.** `plots.py`: 3 biểu đồ.
-- [ ] **9.** Viết `results.md` (tiếng Anh): trả lời Q1, Q2, có phần hạn chế (#4, #5, #8, #9) và ghi nguồn. Nếu X1 thắng M rõ ràng → thêm dòng vào `docs/open-questions.md`.
+- [x] **9.** Viết `results.md` (tiếng Anh): trả lời Q1, Q2, có phần hạn chế (#4, #5, #8, #9) và ghi nguồn. Nếu X1 thắng M rõ ràng → thêm dòng vào `docs/open-questions.md`.
 
 ## 5. Nhật ký thay đổi
 | Ngày | Thay đổi | Lý do (bug / quyết định mới) |

@@ -85,6 +85,7 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 | FR-12: task nguy hiểm / đang làm thường đã đủ 2 lý do → câu `bias` bị cắt (đúng thứ tự #6). Có muốn `bias` luôn hiện? | FR-12 #6, #7 | Theo plan: tối đa 2 lý do |
 | Đo lại FR-12 AC6 khi đã deploy | FR-12 AC6 | 2026-10-17 từ máy dev: có embedding trung vị 2,4 s (lần đầu 5,5 s); phía server không embedding p95 8,5 ms |
 | Ngưỡng `SIMILAR_MIN_SIMILARITY` (FR-09 #4) | FR-09 | 0.5. Chạy thật 2026-10-15: task không liên quan vẫn qua ngưỡng (Gemini cho câu khác nghĩa ~0.69) → cân nhắc ~0.75 khi có thêm dữ liệu |
+| FR-17: có đổi công thức K sang EMA trên log ratio (`ln K ← α·ln r + (1−α)·ln K`)? | FR-17, K-SiP #6 | Replay SiP (2026-10-29, `research/kbias_sip/results/results.md`): X1 tốt hơn M ở P1 (0.177 so với 0.183), P1 theo developer (0.179 so với 0.219), độ lệch (+0.07 so với +0.17). Chỉ là dữ liệu công ty, chưa đổi production. Cũng cân nhắc K0 = 1.3 (SiP ước lượng dư, K0 = 1.0 tốt hơn) |
 
 ## Cập nhật Google Doc
 

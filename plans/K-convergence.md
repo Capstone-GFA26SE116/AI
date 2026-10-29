@@ -194,7 +194,7 @@ Mọi chỉ số đều báo theo **nhóm vị trí n**: 1, 2, 3, 4–5, 6–10,
 - [x] **3.** `load.py` + T1–T3. Chạy trên dữ liệu thật, so phễu với §1.3 (AC1).
 - [x] **4.** `methods.py` + `replay.py` + T4–T8.
 - [x] **5.** `metrics.py` + T9–T11.
-- [ ] **6.** `run.py`: chạy bản chính (`Category`) và ghi CSV + T12. **Dừng, gửi Hiếu bảng `summary.csv` trước khi làm tiếp.**
+- [x] **6.** `run.py`: chạy bản chính (`Category`) và ghi CSV + T12. **Dừng, gửi Hiếu bảng `summary.csv` trước khi làm tiếp.**
 - [ ] **7.** Độ nhạy §2.5.
 - [ ] **8.** `plots.py`: 3 biểu đồ.
 - [ ] **9.** Viết `results.md` (tiếng Anh): trả lời Q1, Q2, có phần hạn chế (#4, #5, #8, #9) và ghi nguồn. Nếu X1 thắng M rõ ràng → thêm dòng vào `docs/open-questions.md`.

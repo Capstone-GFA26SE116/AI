@@ -137,7 +137,7 @@ Sai số của một dự đoán: `e = ln(dự đoán / T_act)`. Dương là đo
 | S1 — Sai số từng task | trung vị và trung bình của `|e|` | phụ |
 | S2 — Độ lệch | trung bình `e` (gần 0 là tốt) | phụ |
 | S3 — PRED(25) | tỷ lệ task có `|dự đoán/T_act − 1| ≤ 0.25` | phụ, chỉ số quen thuộc trong ngành |
-| **C1 — Hội tụ của K** | Mỗi cặp có mục tiêu `G` = trung bình nhân ratio của mọi task học được của cặp đó (nhìn cả quá khứ lẫn tương lai, **chỉ dùng để mô tả, không dùng để dự đoán**). Khoảng cách `d_n = |ln K_n − ln G|`. Báo trung vị `d_n` theo n, và **n nhỏ nhất mà từ đó trung vị d_n luôn ≤ 0.10** (≈ lệch 10%) | Trả lời Q1 |
+| **C1 — Hội tụ của K** | Mỗi cặp có mục tiêu `G` = trung bình nhân ratio của mọi task học được của cặp đó (nhìn cả quá khứ lẫn tương lai, **chỉ dùng để mô tả, không dùng để dự đoán**). Khoảng cách `d_n = |ln K_n − ln G|`. Báo trung vị `d_n` theo nhóm n (kèm số cặp còn lại), **không có con số "n hội tụ"** (§5, bước 5). Chỉ đọc cho phương pháp có học (B2, B3, M, X1); B0/B1 chỉ để tham chiếu | Trả lời Q1 |
 | C1-lý thuyết | `0.2 × 0.8ⁿ`: tốc độ học lý tưởng khi ratio không đổi (ví dụ ratio luôn 1.5 thì sau 5 task K lệch < 5%) | So lý thuyết với thực tế |
 
 Mọi chỉ số đều báo theo **nhóm vị trí n**: 1, 2, 3, 4–5, 6–10, 11–20, 21–50, 51–100, > 100. Chỉ tính các cặp có ≥ 10 task. Báo thêm trung vị theo từng developer để developer 58 (1.312 task, ~19% dữ liệu) không lấn át kết quả.
@@ -193,7 +193,7 @@ Mọi chỉ số đều báo theo **nhóm vị trí n**: 1, 2, 3, 4–5, 6–10,
 - [x] **2.** `uv add --dev pandas matplotlib`; thêm `"."` vào `pythonpath`; tạo `research/kbias_sip/README.md` (cách tải, cách chạy, ghi nguồn, giấy phép); thêm `research/kbias_sip/results/*.csv` vào `.gitignore`.
 - [x] **3.** `load.py` + T1–T3. Chạy trên dữ liệu thật, so phễu với §1.3 (AC1).
 - [x] **4.** `methods.py` + `replay.py` + T4–T8.
-- [ ] **5.** `metrics.py` + T9–T11.
+- [x] **5.** `metrics.py` + T9–T11.
 - [ ] **6.** `run.py`: chạy bản chính (`Category`) và ghi CSV + T12. **Dừng, gửi Hiếu bảng `summary.csv` trước khi làm tiếp.**
 - [ ] **7.** Độ nhạy §2.5.
 - [ ] **8.** `plots.py`: 3 biểu đồ.
@@ -204,3 +204,5 @@ Mọi chỉ số đều báo theo **nhóm vị trí n**: 1, 2, 3, 4–5, 6–10,
 |---|---|---|
 | 2026-10-29 | Tạo plan. Bước 0 (kiểm dataset + chạy thử nhanh) làm trên Claude web | Hiếu chọn theo mọi đề xuất: câu hỏi "dự đoán sát hơn không", B0–B3, độ nhạy α/K0, `Category` + `SubCategory`, thư mục `research/`, pandas + matplotlib dev |
 | 2026-10-29 | Bước 1: giữ `RELEASED`, phễu mới 7.176 task (§1.3, AC1, #2) | Bài arXiv §2.2: `RELEASED` nằm giữa `COMPLETED` và `FINISHED`. Số chạy thử ở #5–#7 tính trên bộ cũ (6.944), sẽ tính lại ở bước 6 |
+| 2026-10-29 | Bước 5: P1 chia theo nhóm 1–10, 11–20, 21–50, 51–100, > 100 (theo ranh giới khối); "≥ 10 task" = tổng task của cặp (kể cả outlier) | P1 tính theo khối 10 task nên không tách được n = 1, 2, 3. Đếm tổng task khớp AC1 (cả hai cách đều ra 24 cặp) |
+| 2026-10-29 | Bước 5: C1 bỏ "n nhỏ nhất mà trung vị d_n luôn ≤ 0.10", chỉ báo đường cong d_n theo nhóm n | Chạy thử: d_n của M giảm 0.33 → ~0.14 sau ~10 task rồi đi ngang (K dao động quanh G vì ratio nhiễu, α = 0.2), nên không bao giờ ≤ 0.10; ở n lớn chỉ còn 1–3 cặp; B0 "hội tụ" ở n = 1 vì G ≈ 1. `results.md` giải thích bằng nhiễu và đối chiếu α = 0.1 ở bước 7 |

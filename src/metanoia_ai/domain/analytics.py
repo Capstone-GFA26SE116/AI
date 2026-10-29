@@ -6,19 +6,32 @@ All dates and week borders use the user's time zone.
 """
 
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, time, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from enum import StrEnum
+from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from metanoia_ai.domain.models import TaskType
+from metanoia_ai.domain.actual_time import ActualTime, summarize_actual_time
+from metanoia_ai.domain.models import (
+    EstimateSource,
+    FocusSessionRecord,
+    TaskType,
+    estimate_source,
+)
 
 # Defaults; the application passes values from config (plan §2).
 BIAS_MIN_SAMPLES = 5  # below: not enough data (#3)
 BIAS_CONFIDENT_SAMPLES = 10  # from here: no "still learning" note (#3)
 BIAS_NEUTRAL_BAND = Decimal("0.10")  # |K - 1| below this: "fairly accurate" (#4)
 RATE_PLACES = Decimal("0.001")
+INSIGHT_LIMIT = 3
+MAX_DOMAIN_INSIGHTS = 2
+PROJECT_INSIGHT_MIN_PERCENT = 20
+PROJECT_INSIGHT_MIN_TASKS = 3
+LOW_COMPLETION_RATE = Decimal("0.6")
+LOW_COMPLETION_MIN_TOTAL = 5
 
 
 class AnalyticsRange(StrEnum):
@@ -237,3 +250,226 @@ def weekly_trend(
         WeekPoint(week_start=week, factor=items[-1].new_k, samples=len(items))
         for week, items in sorted(weeks.items())
     ]
+
+
+@dataclass(frozen=True)
+class DomainBias:
+    """The learned bias of one work domain of the user."""
+
+    domain_id: UUID
+    domain_name: str
+    view: BiasView
+
+
+# --- Planned vs actual (#9, #10, #11) ---
+
+
+class BreakdownBy(StrEnum):
+    """How planned vs actual time is grouped. Values are sent in the API."""
+
+    PROJECT = "project"
+    CLIENT = "client"
+    TASK = "task"
+
+
+@dataclass(frozen=True)
+class DoneTask:
+    """A Flexible task marked Done, with everything the breakdown needs."""
+
+    task_id: UUID
+    title: str
+    project_id: UUID
+    project_name: str
+    client_id: UUID | None  # None: the project has no client
+    client_name: str | None
+    domain_name: str
+    estimated_minutes: int | None
+    ai_estimated_minutes: int | None
+    completed_at: datetime | None
+    sessions: Sequence[FocusSessionRecord] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True)
+class BreakdownItem:
+    id: UUID | None  # None only for the "no client" group
+    name: str | None  # None only for the "no client" group (the text layer names it)
+    task_count: int  # tasks with usable actual time
+    missing_actual_count: int  # Done tasks whose actual time cannot be used
+    estimated_minutes: int
+    actual_minutes: int
+    difference_percent: (
+        int  # (actual / estimated - 1) x 100, rounded; negative = faster
+    )
+    project_name: str | None = None  # by = task only
+    domain_name: str | None = None  # by = task only
+    estimate_source: EstimateSource | None = None  # by = task only
+    completed_at: datetime | None = None  # by = task only
+
+
+def difference_percent(estimated: int, actual: int) -> int:
+    """(actual / estimated - 1) x 100, rounded half up."""
+    if estimated <= 0:
+        raise ValueError("estimated minutes must be positive")
+    value = (Decimal(actual) / Decimal(estimated) - 1) * 100
+    return int(value.quantize(Decimal(1), rounding=ROUND_HALF_UP))
+
+
+def measured_time(task: DoneTask) -> ActualTime | None:
+    """Usable actual time of a task, or None (no session, running, unconfirmed)."""
+    actual = summarize_actual_time(task.sessions)
+    return actual if isinstance(actual, ActualTime) else None
+
+
+@dataclass
+class _Group:
+    item_id: UUID | None
+    name: str | None
+    first: DoneTask
+    task_count: int = 0
+    missing: int = 0
+    estimated: int = 0
+    actual: int = 0
+
+
+def _group_key(task: DoneTask, by: BreakdownBy) -> tuple[UUID | None, str | None]:
+    if by is BreakdownBy.PROJECT:
+        return task.project_id, task.project_name
+    if by is BreakdownBy.CLIENT:
+        return task.client_id, task.client_name
+    return task.task_id, task.title
+
+
+@dataclass(frozen=True)
+class Breakdown:
+    items: list[BreakdownItem]
+    missing_estimate: int = 0  # bad data: Done Flexible task without estimate (skipped)
+
+
+def breakdown(
+    tasks: Iterable[DoneTask],
+    by: BreakdownBy,
+    period: Period,
+    limit: int | None = None,
+) -> Breakdown:
+    """Planned vs actual minutes per project, client or task, for tasks completed in the period.
+
+    AI estimates and outliers are kept: the question is "was the plan right" (#9).
+    Groups with no usable task are left out. `limit` only applies to by = task.
+    """
+    groups: dict[UUID | None, _Group] = {}
+    missing_estimate = 0
+    for task in tasks:
+        if task.completed_at is None or not period.contains(task.completed_at):
+            continue
+        if task.estimated_minutes is None:
+            missing_estimate += 1
+            continue
+        item_id, name = _group_key(task, by)
+        group = groups.setdefault(item_id, _Group(item_id, name, task))
+        actual = measured_time(task)
+        if actual is None:
+            group.missing += 1
+            continue
+        group.task_count += 1
+        group.estimated += task.estimated_minutes
+        group.actual += actual.minutes
+
+    items = [_item(g, by) for g in groups.values() if g.task_count > 0]
+    if by is BreakdownBy.TASK:
+        items.sort(key=lambda i: (i.completed_at, str(i.id)), reverse=True)
+        items = items[:limit] if limit is not None else items
+    else:
+        items.sort(key=lambda i: (-abs(i.difference_percent), i.name or "", str(i.id)))
+    return Breakdown(items=items, missing_estimate=missing_estimate)
+
+
+def _item(group: _Group, by: BreakdownBy) -> BreakdownItem:
+    item = BreakdownItem(
+        id=group.item_id,
+        name=group.name,
+        task_count=group.task_count,
+        missing_actual_count=group.missing,
+        estimated_minutes=group.estimated,
+        actual_minutes=group.actual,
+        difference_percent=difference_percent(group.estimated, group.actual),
+    )
+    if by is not BreakdownBy.TASK:
+        return item
+    task = group.first
+    return replace(
+        item,
+        project_name=task.project_name,
+        domain_name=task.domain_name,
+        estimate_source=estimate_source(
+            task.estimated_minutes, task.ai_estimated_minutes
+        ),
+        completed_at=task.completed_at,
+    )
+
+
+# --- Insights (plan §2 #10) ---
+
+
+class InsightCode(StrEnum):
+    """Kind of a Dashboard insight; the Frontend picks icon / colour from it. Sent in the API."""
+
+    DOMAIN_SLOWER = "domain_slower"
+    DOMAIN_FASTER = "domain_faster"
+    PROJECT_OVER = "project_over"
+    PROJECT_UNDER = "project_under"
+    LOW_COMPLETION = "low_completion"
+    NOT_ENOUGH_DATA = "not_enough_data"
+
+
+@dataclass(frozen=True)
+class Insight:
+    code: InsightCode
+    domain: DomainBias | None = None
+    project: BreakdownItem | None = None
+
+
+def select_insights(
+    domains: Sequence[DomainBias],
+    projects: Sequence[BreakdownItem],
+    completion: CompletionStats,
+    limit: int = INSIGHT_LIMIT,
+    project_min_percent: int = PROJECT_INSIGHT_MIN_PERCENT,
+    project_min_tasks: int = PROJECT_INSIGHT_MIN_TASKS,
+) -> list[Insight]:
+    """In order: up to 2 biased domains, 1 project far off its plan, low completion.
+
+    Nothing to say → one "not enough data" insight.
+    """
+    insights: list[Insight] = []
+    biased = [
+        d
+        for d in domains
+        if d.view.confidence is not BiasConfidence.NONE
+        and d.view.direction is not BiasDirection.ACCURATE
+    ]
+    biased.sort(key=lambda d: bias_sort_key(d.view)[1])
+    for d in biased[:MAX_DOMAIN_INSIGHTS]:
+        slower = d.view.direction is BiasDirection.SLOWER
+        code = InsightCode.DOMAIN_SLOWER if slower else InsightCode.DOMAIN_FASTER
+        insights.append(Insight(code, domain=d))
+
+    off_plan = [
+        p
+        for p in projects
+        if p.task_count >= project_min_tasks
+        and abs(p.difference_percent) >= project_min_percent
+    ]
+    if off_plan:
+        worst = max(off_plan, key=lambda p: abs(p.difference_percent))
+        over = worst.difference_percent > 0
+        code = InsightCode.PROJECT_OVER if over else InsightCode.PROJECT_UNDER
+        insights.append(Insight(code, project=worst))
+
+    if (
+        completion.total >= LOW_COMPLETION_MIN_TOTAL
+        and completion.completion_rate is not None
+        and completion.completion_rate < LOW_COMPLETION_RATE
+    ):
+        insights.append(Insight(InsightCode.LOW_COMPLETION))
+
+    return insights[:limit] or [Insight(InsightCode.NOT_ENOUGH_DATA)]

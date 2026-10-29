@@ -8,3 +8,6 @@ __pycache__/
 .ruff_cache/
 .DS_Store
 .coverage
+
+# K-SiP research: generated CSVs (SiP data is CC BY-NC-ND, never commit it)
+research/kbias_sip/results/*.csv

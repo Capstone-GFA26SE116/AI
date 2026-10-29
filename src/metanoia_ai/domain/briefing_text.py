@@ -8,19 +8,15 @@ import math
 from collections.abc import Sequence
 from decimal import ROUND_HALF_UP, Decimal
 
+from metanoia_ai.domain import forbidden_terms
 from metanoia_ai.domain.briefing import Reason, ReasonCode
+from metanoia_ai.domain.forbidden_terms import InternalNameError
 from metanoia_ai.domain.models import Language
 
 MINUTE_STEP = 5
-# Lower-case words that must never reach the user (same idea as reason_writer.py).
+# Briefing names that must never reach the user, on top of the shared ones.
 FORBIDDEN_WORDS = (
-    "k_bias",
-    "kbias",
-    "t_est",
-    "t_act",
-    "t_proposed",
     "score",
-    "k=",
     "needed_minutes",
     "available_minutes",
     "extra_percent",
@@ -31,13 +27,8 @@ FORBIDDEN_WORDS = (
 )
 
 
-class InternalNameError(ValueError):
-    """A sentence shows an internal name. A bug in the templates, never user input."""
-
-
 def has_internal_name(text: str) -> bool:
-    lowered = text.lower()
-    return any(word in lowered for word in FORBIDDEN_WORDS)
+    return forbidden_terms.has_internal_name(text, FORBIDDEN_WORDS)
 
 
 def checked(text: str) -> str:

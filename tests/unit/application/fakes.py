@@ -10,6 +10,10 @@ from typing import Any
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
+from metanoia_ai.application.ports.analytics_repository import (
+    AnalyticsDomainProfile,
+    AnalyticsUser,
+)
 from metanoia_ai.application.ports.briefing_repository import BriefingData
 from metanoia_ai.application.ports.chat_repository import (
     ChatMessage,
@@ -63,6 +67,7 @@ from metanoia_ai.application.ports.similar_task_repository import (
     QueryTask,
     VectorMatch,
 )
+from metanoia_ai.domain.analytics import DeadlineTask, DoneTask, Period
 from metanoia_ai.domain.memory_text import MemoryDraft
 from metanoia_ai.domain.productive_hours import (
     SCORE_STEP,
@@ -1056,3 +1061,56 @@ class FakeDocumentSource:
         if isinstance(found, Exception):
             raise found
         return found
+
+
+# --- Personal analytics (FR-20) ---
+
+
+@dataclass
+class FakeAnalyticsUser:
+    time_zone: ZoneInfo
+    project_ids: set[UUID] = field(default_factory=set)
+    deadline_tasks: list[DeadlineTask] = field(default_factory=list)
+    profiles: list[AnalyticsDomainProfile] = field(default_factory=list)
+    done_tasks: list[DoneTask] = field(default_factory=list)
+
+
+class FakeAnalyticsRepository:
+    """Data per user; like the SQL, every read only sees that user's rows."""
+
+    def __init__(self) -> None:
+        self.users: dict[UUID, FakeAnalyticsUser] = {}
+        self.periods: list[Period] = []
+
+    def add_user(self, user_id: UUID, user: FakeAnalyticsUser) -> None:
+        self.users[user_id] = user
+
+    async def get_user(
+        self, user_id: UUID, project_id: UUID | None = None
+    ) -> AnalyticsUser | None:
+        user = self.users.get(user_id)
+        if user is None:
+            return None
+        found = None if project_id is None else project_id in user.project_ids
+        return AnalyticsUser(user.time_zone, found)
+
+    def _user(self, user_id: UUID, period: Period) -> FakeAnalyticsUser:
+        assert period.end.tzinfo is not None, "datetimes must be timezone-aware"
+        self.periods.append(period)
+        return self.users[user_id]
+
+    async def get_deadline_tasks(
+        self, user_id: UUID, period: Period
+    ) -> list[DeadlineTask]:
+        return list(self._user(user_id, period).deadline_tasks)
+
+    async def get_domain_profiles(
+        self, user_id: UUID, period: Period
+    ) -> list[AnalyticsDomainProfile]:
+        return list(self._user(user_id, period).profiles)
+
+    async def get_done_tasks(
+        self, user_id: UUID, period: Period, project_id: UUID | None = None
+    ) -> list[DoneTask]:
+        tasks = self._user(user_id, period).done_tasks
+        return [t for t in tasks if project_id is None or t.project_id == project_id]

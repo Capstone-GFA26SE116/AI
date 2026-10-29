@@ -65,6 +65,9 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 | ⚠️ (Frontend) Công tắc "Cho AI đọc tài liệu" ở trang dự án (mặc định tắt) | FR-08b-2 | |
 | ⚠️ (Frontend) Chat dự án: nút chọn file từ kho (ẩn / khóa khi công tắc tắt, kèm câu giải thích) + nút upload; tối đa 3; chỉ PDF, DOCX, TXT, MD | FR-08b-2 | PDF scan (ảnh) báo `no_text`: gợi ý dán nội dung |
 | ⚠️ (Frontend) Hiện `attachments` dưới mỗi tin, đánh dấu file bị cắt (`is_truncated`); khi chờ hiện "AI đang đọc tài liệu…" (không streaming, lệch NFR-07) | FR-08b-2 #8 | Mục tiêu p95 < 30 s (AC9) |
+| ⚠️ Chuyển tiếp 2 endpoint Dashboard cho Frontend: `GET /analytics/overview?range=30d\|90d\|all&language=vi\|en` và `GET /analytics/breakdown?by=project\|client\|task&range=&language=&project_id=&limit=` — gửi `language` = ngôn ngữ giao diện; gọi khi mở Dashboard hoặc đổi khoảng thời gian | FR-20 | 404 = user không còn / `project_id` không phải của user; 422 = tham số sai, hoặc `project_id` / `limit` khi `by` ≠ `task`, `limit` ngoài 1–200 (mặc định 50). Không gọi LLM, không tốn lượt, không ghi DB |
+| ⚠️ (Frontend) Dashboard: chỉ hiện `text`, `code` để chọn icon / màu, số để vẽ biểu đồ. `trend` không có điểm cho tuần trống → nối đường. `estimate_source = "ai"` → gắn nhãn "AI ước lượng". `from = null` khi `range = all`. Nhóm `id = null` ở `by=client` = "Không có khách hàng". Heatmap giờ hiệu quả lấy từ `GET /profile/productive-hours` (FR-18) | FR-20 §1 | Giờ trả theo múi giờ user (ISO 8601 có offset); `week_start` là ngày |
+| FR-12: câu "Bạn thường cần thêm X% thời gian" giờ cần ≥ **5** lần học (trước là 3) để khớp Dashboard | FR-20 #13 | Chỉ báo. Hiếu sửa `.env` thật nếu đang ghi `BRIEFING_BIAS_MIN_SAMPLES=3` |
 
 ## Chờ quyết định (team / giảng viên)
 
@@ -86,6 +89,7 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 | Đo lại FR-12 AC6 khi đã deploy | FR-12 AC6 | 2026-10-17 từ máy dev: có embedding trung vị 2,4 s (lần đầu 5,5 s); phía server không embedding p95 8,5 ms |
 | Ngưỡng `SIMILAR_MIN_SIMILARITY` (FR-09 #4) | FR-09 | 0.5. Chạy thật 2026-10-15: task không liên quan vẫn qua ngưỡng (Gemini cho câu khác nghĩa ~0.69) → cân nhắc ~0.75 khi có thêm dữ liệu |
 | FR-17: có đổi công thức K sang EMA trên log ratio (`ln K ← α·ln r + (1−α)·ln K`)? | FR-17, K-SiP #6 | Replay SiP (2026-10-29, `research/kbias_sip/results/results.md`): X1 tốt hơn M ở P1 (0.177 so với 0.183), P1 theo developer (0.179 so với 0.219), độ lệch (+0.07 so với +0.17). Chỉ là dữ liệu công ty, chưa đổi production. Cũng cân nhắc K0 = 1.3 (SiP ước lượng dư, K0 = 1.0 tốt hơn) |
+| ⚠️ FR-20: Dashboard (kể cả câu độ lệch) mở cho **mọi gói**, vì không tốn LLM. Muốn khóa theo gói thì Backend chặn ở đường chuyển tiếp | FR-20 #12 | Hiếu đã quyết, chỉ báo team |
 
 ## Cập nhật Google Doc
 

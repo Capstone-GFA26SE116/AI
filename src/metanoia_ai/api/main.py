@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from metanoia_ai.api.auth import get_current_user_id
 from metanoia_ai.api.deps import embed_waiting_memories
 from metanoia_ai.api.routes import (
+    analytics,
     briefing,
     chat,
     learning,
@@ -50,6 +51,7 @@ app.include_router(chat.router)
 app.include_router(project_chat.router)
 app.include_router(profile.router)
 app.include_router(briefing.router)
+app.include_router(analytics.router)
 
 
 class HealthResponse(BaseModel):

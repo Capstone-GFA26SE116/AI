@@ -115,7 +115,20 @@ def todays_schedule(
     Proposed slots are not shown; a Proposed slot that has not ended yet only
     sets `has_pending_proposal`.
     """
-    day = today_range(now, time_zone)
+    return schedule_between(
+        slots, fixed_tasks, events, today_range(now, time_zone), now, time_zone
+    )
+
+
+def schedule_between(
+    slots: Iterable[SlotEntry],
+    fixed_tasks: Iterable[FixedEntry],
+    events: Iterable[GoogleEntry],
+    day: TimeRange,
+    now: datetime,
+    time_zone: ZoneInfo,
+) -> TodaySchedule:
+    """The real schedule inside `day` (any range; FR-22 asks for "this afternoon")."""
     items: list[ScheduleItem] = []
     pending = False
 

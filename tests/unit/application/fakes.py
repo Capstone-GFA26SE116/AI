@@ -1141,6 +1141,12 @@ class FakeAssistantRepository:
     def __init__(self) -> None:
         self.users: dict[UUID, FakeAssistantUser] = {}
         self.schedule_reads: list[tuple[datetime, datetime]] = []
+        self.transactions = 0
+
+    @asynccontextmanager
+    async def transaction(self) -> AsyncIterator[None]:
+        self.transactions += 1
+        yield
 
     def add_user(self, user_id: UUID, user: FakeAssistantUser) -> None:
         self.users[user_id] = user

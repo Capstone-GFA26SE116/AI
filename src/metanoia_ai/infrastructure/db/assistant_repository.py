@@ -5,7 +5,7 @@ so the "Today" screen and the assistant read the same rows.
 """
 
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from datetime import datetime
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -52,6 +52,12 @@ class SqlAssistantRepository:
 
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+
+    def transaction(self) -> AbstractAsyncContextManager[object]:
+        if self.session.in_transaction():
+            # A read left open by autobegin: close it so begin() can start fresh.
+            return _after_commit(self.session)
+        return self.session.begin()
 
     @asynccontextmanager
     async def _read_only(self) -> AsyncIterator[None]:
@@ -116,3 +122,10 @@ class SqlAssistantRepository:
                     for r in await execute(GET_CALENDAR_EVENTS, params)
                 ),
             )
+
+
+@asynccontextmanager
+async def _after_commit(session: AsyncSession) -> AsyncIterator[None]:
+    await session.commit()
+    async with session.begin():
+        yield

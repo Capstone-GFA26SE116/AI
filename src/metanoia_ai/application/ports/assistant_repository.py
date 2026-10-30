@@ -4,6 +4,7 @@ Names to match spoken words against (#6), and the schedule of a time range,
 read like FR-12 (plan §5, D) so both screens tell the same schedule.
 """
 
+from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
@@ -25,6 +26,10 @@ class ScheduleRows:
 
 class AssistantRepository(Protocol):
     """Every read is limited to the given user (Task through Project.UserId)."""
+
+    def transaction(self) -> AbstractAsyncContextManager[object]:
+        """A short write transaction (charge + AIUsageLog through the quota repository)."""
+        ...
 
     async def get_time_zone(self, user_id: UUID) -> ZoneInfo | None:
         """None when the user does not exist (or is deleted)."""

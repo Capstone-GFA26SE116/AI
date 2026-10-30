@@ -80,6 +80,16 @@ ANALYTICS_VARS = [
     "ANALYTICS_INSIGHT_LIMIT",
     "ANALYTICS_TASK_LIMIT_MAX",
 ]
+ASSISTANT_VARS = [
+    "ASSISTANT_LLM_TIMEOUT_SECONDS",
+    "ASSISTANT_BACKEND_TIMEOUT_SECONDS",
+    "ASSISTANT_TEXT_MAX_CHARS",
+    "ASSISTANT_HISTORY_MAX_TURNS",
+    "ASSISTANT_HISTORY_MAX_CHARS",
+    "ASSISTANT_MIN_CONFIDENCE",
+    "ASSISTANT_MATCH_MIN_SCORE",
+    "ASSISTANT_MATCH_MIN_GAP",
+]
 DOCUMENT_VARS = [
     "BACKEND_DOWNLOAD_TIMEOUT_SECONDS",
     "CHAT_DOCUMENT_MAX_FILES",
@@ -108,6 +118,7 @@ OPTIONAL_VARS = [
     *PRODUCTIVE_VARS,
     *BRIEFING_VARS,
     *ANALYTICS_VARS,
+    *ASSISTANT_VARS,
     *DOCUMENT_VARS,
 ]
 EMBEDDING_VARS = {
@@ -691,6 +702,49 @@ def test_analytics_values_can_be_changed(env):
     ],
 )
 def test_bad_analytics_values_are_rejected(env, name, value):
+    env.setenv(name, value)
+    with pytest.raises(ValidationError):
+        load()
+
+
+# --- voice assistant (FR-22) ---
+
+
+def test_assistant_defaults(env):
+    s = load()
+    assert s.assistant_llm_timeout_seconds == 6
+    assert s.assistant_backend_timeout_seconds == 5
+    assert s.assistant_text_max_chars == 500
+    assert s.assistant_history_max_turns == 6
+    assert s.assistant_history_max_chars == 2000
+    assert s.assistant_min_confidence == 0.5
+    assert s.assistant_match_min_score == 0.8
+    assert s.assistant_match_min_gap == 0.2
+
+
+def test_assistant_values_can_be_changed(env):
+    env.setenv("ASSISTANT_LLM_TIMEOUT_SECONDS", "4.5")
+    env.setenv("ASSISTANT_HISTORY_MAX_TURNS", "0")
+    s = load()
+    assert s.assistant_llm_timeout_seconds == 4.5
+    assert s.assistant_history_max_turns == 0
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("ASSISTANT_LLM_TIMEOUT_SECONDS", "0"),
+        ("ASSISTANT_BACKEND_TIMEOUT_SECONDS", "0"),
+        ("ASSISTANT_TEXT_MAX_CHARS", "0"),
+        ("ASSISTANT_HISTORY_MAX_TURNS", "-1"),
+        ("ASSISTANT_HISTORY_MAX_CHARS", "-1"),
+        ("ASSISTANT_MIN_CONFIDENCE", "1.1"),
+        ("ASSISTANT_MATCH_MIN_SCORE", "0"),
+        ("ASSISTANT_MATCH_MIN_SCORE", "1.5"),
+        ("ASSISTANT_MATCH_MIN_GAP", "1"),
+    ],
+)
+def test_bad_assistant_values_are_rejected(env, name, value):
     env.setenv(name, value)
     with pytest.raises(ValidationError):
         load()

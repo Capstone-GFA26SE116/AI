@@ -712,7 +712,7 @@ def test_bad_analytics_values_are_rejected(env, name, value):
 
 def test_assistant_defaults(env):
     s = load()
-    assert s.assistant_llm_timeout_seconds == 6
+    assert s.assistant_llm_timeout_seconds == 10
     assert s.assistant_backend_timeout_seconds == 5
     assert s.assistant_text_max_chars == 500
     assert s.assistant_history_max_turns == 6
@@ -723,17 +723,17 @@ def test_assistant_defaults(env):
 
 
 def test_assistant_values_can_be_changed(env):
-    env.setenv("ASSISTANT_LLM_TIMEOUT_SECONDS", "4.5")
+    env.setenv("ASSISTANT_LLM_TIMEOUT_SECONDS", "12.5")
     env.setenv("ASSISTANT_HISTORY_MAX_TURNS", "0")
     s = load()
-    assert s.assistant_llm_timeout_seconds == 4.5
+    assert s.assistant_llm_timeout_seconds == 12.5
     assert s.assistant_history_max_turns == 0
 
 
 @pytest.mark.parametrize(
     ("name", "value"),
     [
-        ("ASSISTANT_LLM_TIMEOUT_SECONDS", "0"),
+        ("ASSISTANT_LLM_TIMEOUT_SECONDS", "9"),  # Gemini needs >= 10 s
         ("ASSISTANT_BACKEND_TIMEOUT_SECONDS", "0"),
         ("ASSISTANT_TEXT_MAX_CHARS", "0"),
         ("ASSISTANT_HISTORY_MAX_TURNS", "-1"),

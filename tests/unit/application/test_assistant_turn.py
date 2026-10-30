@@ -169,10 +169,11 @@ def setup(
     backend: FakeBackendReader | None = None,
     calls_used: int = 3,
     limit: int | None = 30,
+    user: UUID = USER,
 ):
     repo = FakeAssistantRepository()
     repo.add_user(
-        USER,
+        user,
         FakeAssistantUser(
             time_zone=VN,
             open_tasks=[TASK_BLOG],
@@ -195,7 +196,7 @@ def setup(
     )
     quota = FakeQuotaRepository(NOW)
     quota.add_subscription(
-        USER, Subscription(SUB, 0, limit, calls_used), NOW - timedelta(days=1)
+        user, Subscription(SUB, 0, limit, calls_used), NOW - timedelta(days=1)
     )
     llm = FakeLLMClient(*answers)
     backend = backend or FakeBackendReader()

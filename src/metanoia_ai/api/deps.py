@@ -7,11 +7,13 @@ from decimal import Decimal
 from functools import partial
 from typing import Annotated, Any
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from metanoia_ai.application.chat_writer import ChatWriter
+from metanoia_ai.application.llm_chat import CheckedLLMCaller
 from metanoia_ai.application.ports.embedding_client import EmbeddingClient
 from metanoia_ai.application.ports.llm_client import LLMClient
 from metanoia_ai.application.project_chat_writer import ProjectChatWriter
@@ -22,11 +24,16 @@ from metanoia_ai.application.use_cases.apply_project_breakdown import (
 from metanoia_ai.application.use_cases.apply_task_breakdown import (
     ApplyTaskBreakdown,
 )
+from metanoia_ai.application.use_cases.assistant_turn import (
+    AssistantSettings,
+    AssistantTurn,
+)
 from metanoia_ai.application.use_cases.embed_pending_memories import (
     EmbedPendingMemories,
 )
 from metanoia_ai.application.use_cases.find_similar_tasks import (
     FindSimilarTasks,
+    SearchMode,
     SimilarTasksResult,
 )
 from metanoia_ai.application.use_cases.get_analytics_breakdown import (
@@ -65,11 +72,15 @@ from metanoia_ai.application.use_cases.start_project_chat import (
     StartProjectChat,
 )
 from metanoia_ai.config import MissingLlmSettingError, Settings, get_settings
+from metanoia_ai.domain.analytics import AnalyticsRange
 from metanoia_ai.domain.briefing import BiasRule
+from metanoia_ai.domain.models import Language
 from metanoia_ai.domain.project_breakdown import ProjectLimits
 from metanoia_ai.domain.task_breakdown import DraftLimits
 from metanoia_ai.infrastructure.backend.document_client import BackendDocumentClient
+from metanoia_ai.infrastructure.backend.reader_client import BackendReaderClient
 from metanoia_ai.infrastructure.db.analytics_repository import SqlAnalyticsRepository
+from metanoia_ai.infrastructure.db.assistant_repository import SqlAssistantRepository
 from metanoia_ai.infrastructure.db.briefing_repository import SqlBriefingRepository
 from metanoia_ai.infrastructure.db.chat_repository import SqlChatRepository
 from metanoia_ai.infrastructure.db.learning_repository import SqlLearningRepository
@@ -587,4 +598,96 @@ def get_get_analytics_breakdown(
     """FR-20: no LLM, no quota, read-only."""
     return GetAnalyticsBreakdown(
         SqlAnalyticsRepository(session), now=lambda: datetime.now(UTC)
+    )
+
+
+# --- voice assistant, phase 1 (FR-22) ---
+
+
+def get_assistant_llm_client(
+    request: Request, settings: Annotated[Settings, Depends(get_settings)]
+) -> LLMClient:
+    """Gemini for picking a tool: same model, short wait, no retry (plan §5)."""
+    client = getattr(request.app.state, "assistant_llm_client", None)
+    if client is None:
+        llm = settings.llm_config()
+        client = GeminiClient(
+            llm.api_key,
+            llm.model,
+            timeout_seconds=settings.assistant_llm_timeout_seconds,
+        )
+        request.app.state.assistant_llm_client = client
+    return client
+
+
+async def _no_similar_search(user_id: UUID, task_id: UUID) -> SimilarTasksResult:
+    """The briefing read by voice skips FR-09 (no embedding, faster; plan §5 #4)."""
+    return SimilarTasksResult(task_id, SearchMode.NONE, ZoneInfo("UTC"))
+
+
+def assistant_settings(settings: Settings) -> AssistantSettings:
+    return AssistantSettings(
+        min_confidence=settings.assistant_min_confidence,
+        match_min_score=settings.assistant_match_min_score,
+        match_min_gap=settings.assistant_match_min_gap,
+    )
+
+
+def get_assistant_turn(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    llm_client: Annotated[LLMClient, Depends(get_assistant_llm_client)],
+) -> AssistantTurn:
+    """FR-22: one LLM call + read-only sources, all on the request's session in turn."""
+    llm = settings.llm_config()
+    now = lambda: datetime.now(UTC)
+    briefing = GetDailyBriefing(
+        SqlBriefingRepository(session),
+        _no_similar_search,
+        briefing_settings(settings),
+        now,
+    )
+    overview = GetAnalyticsOverview(
+        SqlAnalyticsRepository(session), analytics_settings(settings), now
+    )
+    hours = GetProductiveHours(
+        SqlProductiveHoursRepository(session),
+        top_count=settings.schedule_top_productive_hours,
+    )
+    find_similar = build_find_similar_tasks(
+        session, settings, optional_embedding_client(request.app.state, settings)
+    )
+
+    async def habits(user_id: UUID, language: Language) -> list[str]:
+        result = await overview.execute(user_id, AnalyticsRange.LAST_30_DAYS, language)
+        return [i.text for i in result.insights]
+
+    async def top_hours(user_id: UUID) -> tuple[int, ...]:
+        return (await hours.execute(user_id)).top_hours
+
+    async def similar(user_id: UUID, task_id: UUID) -> SimilarTasksResult:
+        return await find_similar.execute(
+            user_id, task_id, settings.similar_default_limit
+        )
+
+    return AssistantTurn(
+        SqlAssistantRepository(session),
+        SqlQuotaRepository(session),
+        CheckedLLMCaller(
+            llm_client,
+            max_retries=0,
+            input_price_per_1m=llm.input_price_per_1m,
+            output_price_per_1m=llm.output_price_per_1m,
+        ),
+        BackendReaderClient(
+            settings.backend_base_url,
+            timeout_seconds=settings.assistant_backend_timeout_seconds,
+        ),
+        briefing=briefing.execute,
+        habits=habits,
+        hours=top_hours,
+        similar=similar,
+        settings=assistant_settings(settings),
+        now=now,
     )

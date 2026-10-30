@@ -13,6 +13,7 @@ from metanoia_ai.api.auth import get_current_user_id
 from metanoia_ai.api.deps import embed_waiting_memories
 from metanoia_ai.api.routes import (
     analytics,
+    assistant,
     briefing,
     chat,
     learning,
@@ -52,6 +53,7 @@ app.include_router(project_chat.router)
 app.include_router(profile.router)
 app.include_router(briefing.router)
 app.include_router(analytics.router)
+app.include_router(assistant.router)
 
 
 class HealthResponse(BaseModel):

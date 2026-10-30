@@ -164,7 +164,8 @@ class Settings(BaseSettings):
     analytics_task_limit_max: int = Field(default=200, ge=1)
 
     # Voice assistant, phase 1 (FR-22): one LLM call picks a read-only tool. No retry.
-    assistant_llm_timeout_seconds: float = Field(default=6, gt=0)
+    # Gemini rejects a deadline under 10 s (plan §5).
+    assistant_llm_timeout_seconds: float = Field(default=10, ge=10)
     # Read-only calls to the Backend (BACKEND_BASE_URL) with the user's JWT.
     assistant_backend_timeout_seconds: float = Field(default=5, gt=0)
     # What the app sends: the spoken sentence and up to N earlier turns (#10).

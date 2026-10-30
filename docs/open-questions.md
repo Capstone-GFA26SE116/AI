@@ -100,7 +100,8 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 | Ngày | Câu hỏi | Kết quả |
 |---|---|---|
 | 2026-10-07 | JWT | HS256, user ID trong `sub`, iss `METANOIA`, aud `METANOIA.Client` |
-| 2026-10-11 | Đường gọi | Frontend → Backend → AI |
+| 2026-10-11 | Đường gọi | Frontend → Backend → AI (**đổi 2026-10-30**, xem dòng dưới) |
+| 2026-10-30 | Đường gọi (FR-22) | **Frontend và Mobile được gọi thẳng AI service** với JWT của user (header `Authorization`). Backend không cần chuyển tiếp nữa. AI service gọi lại Backend (chỉ GET) bằng chính JWT đó |
 | 2026-10-12 | DB dev riêng? | Không — làm thẳng trên Supabase, xóa dữ liệu test trước khi công bố |
 | 2026-10-14 | Giảng viên duyệt Python + service riêng? (#8) | Đã duyệt: Python, service riêng |
 | 2026-10-14 | Chọn model embedding | `gemini-embedding-2`, cắt xuống 1536 chiều (khớp ERD). Dự phòng: OpenAI `text-embedding-3-small` (FR-19 #1) |

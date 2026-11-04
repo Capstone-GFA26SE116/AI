@@ -163,6 +163,21 @@ class Settings(BaseSettings):
     # Largest `limit` of GET /analytics/breakdown?by=task.
     analytics_task_limit_max: int = Field(default=200, ge=1)
 
+    # Voice assistant, phase 1 (FR-22): one LLM call picks a read-only tool. No retry.
+    # Gemini rejects a deadline under 10 s (plan §5).
+    assistant_llm_timeout_seconds: float = Field(default=10, ge=10)
+    # Read-only calls to the Backend (BACKEND_BASE_URL) with the user's JWT.
+    assistant_backend_timeout_seconds: float = Field(default=5, gt=0)
+    # What the app sends: the spoken sentence and up to N earlier turns (#10).
+    assistant_text_max_chars: int = Field(default=500, ge=1)
+    assistant_history_max_turns: int = Field(default=6, ge=0)
+    assistant_history_max_chars: int = Field(default=2000, ge=0)
+    # Below this the tool choice is not trusted → "not supported yet" (#12).
+    assistant_min_confidence: float = Field(default=0.5, ge=0, le=1)
+    # Spoken name matching (#6): best score and lead over the second best.
+    assistant_match_min_score: float = Field(default=0.8, gt=0, le=1)
+    assistant_match_min_gap: float = Field(default=0.2, ge=0, lt=1)
+
     @field_validator("productive_learning_plans", mode="before")
     @classmethod
     def split_plan_names(cls, value: object) -> object:

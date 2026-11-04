@@ -14,6 +14,13 @@ from metanoia_ai.application.ports.analytics_repository import (
     AnalyticsDomainProfile,
     AnalyticsUser,
 )
+from metanoia_ai.application.ports.assistant_repository import ScheduleRows
+from metanoia_ai.application.ports.backend_reader import (
+    BackendNotFoundError,
+    ProjectProgress,
+    ProjectSummary,
+    RunningFocus,
+)
 from metanoia_ai.application.ports.briefing_repository import BriefingData
 from metanoia_ai.application.ports.chat_repository import (
     ChatMessage,
@@ -69,6 +76,7 @@ from metanoia_ai.application.ports.similar_task_repository import (
 )
 from metanoia_ai.domain.analytics import DeadlineTask, DoneTask, Period
 from metanoia_ai.domain.memory_text import MemoryDraft
+from metanoia_ai.domain.name_matching import NamedItem
 from metanoia_ai.domain.productive_hours import (
     SCORE_STEP,
     FocusSample,
@@ -1114,3 +1122,86 @@ class FakeAnalyticsRepository:
     ) -> list[DoneTask]:
         tasks = self._user(user_id, period).done_tasks
         return [t for t in tasks if project_id is None or t.project_id == project_id]
+
+
+# --- Voice assistant (FR-22) ---
+
+
+@dataclass
+class FakeAssistantUser:
+    time_zone: ZoneInfo
+    open_tasks: list[NamedItem] = field(default_factory=list)
+    projects: list[NamedItem] = field(default_factory=list)
+    schedule: ScheduleRows = field(default_factory=lambda: ScheduleRows((), (), ()))
+
+
+class FakeAssistantRepository:
+    """Data per user; records the schedule ranges asked for."""
+
+    def __init__(self) -> None:
+        self.users: dict[UUID, FakeAssistantUser] = {}
+        self.schedule_reads: list[tuple[datetime, datetime]] = []
+        self.transactions = 0
+
+    @asynccontextmanager
+    async def transaction(self) -> AsyncIterator[None]:
+        self.transactions += 1
+        yield
+
+    def add_user(self, user_id: UUID, user: FakeAssistantUser) -> None:
+        self.users[user_id] = user
+
+    async def get_time_zone(self, user_id: UUID) -> ZoneInfo | None:
+        user = self.users.get(user_id)
+        return None if user is None else user.time_zone
+
+    async def open_tasks(self, user_id: UUID) -> list[NamedItem]:
+        return list(self.users[user_id].open_tasks)
+
+    async def projects(self, user_id: UUID) -> list[NamedItem]:
+        return list(self.users[user_id].projects)
+
+    async def schedule(
+        self, user_id: UUID, start: datetime, end: datetime
+    ) -> ScheduleRows:
+        assert start.tzinfo is not None and end.tzinfo is not None
+        self.schedule_reads.append((start, end))
+        return self.users[user_id].schedule
+
+
+class FakeBackendReader:
+    """Prepared answers per method; an Exception value is raised. Records the calls."""
+
+    def __init__(
+        self,
+        focus: RunningFocus | None | Exception = None,
+        projects: list[ProjectSummary] | Exception | None = None,
+        progress: dict[UUID, ProjectProgress] | Exception | None = None,
+    ) -> None:
+        self.focus = focus
+        self.project_list = projects if projects is not None else []
+        self.progress = progress if progress is not None else {}
+        self.calls: list[tuple[str, str]] = []  # (method, auth header)
+
+    @staticmethod
+    def _give(value):
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    async def current_focus(self, auth_header: str) -> RunningFocus | None:
+        self.calls.append(("current_focus", auth_header))
+        return self._give(self.focus)
+
+    async def projects(self, auth_header: str) -> list[ProjectSummary]:
+        self.calls.append(("projects", auth_header))
+        return self._give(self.project_list)
+
+    async def project_progress(
+        self, project_id: UUID, auth_header: str
+    ) -> ProjectProgress:
+        self.calls.append(("project_progress", auth_header))
+        progress = self._give(self.progress)
+        if project_id not in progress:
+            raise BackendNotFoundError(str(project_id))
+        return progress[project_id]

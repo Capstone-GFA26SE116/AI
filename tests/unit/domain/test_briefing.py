@@ -25,6 +25,7 @@ from metanoia_ai.domain.briefing import (
     needed_minutes,
     productive_hint,
     risk_free_ranges,
+    schedule_between,
     select_top,
     today_range,
     todays_schedule,
@@ -491,3 +492,20 @@ def test_weekend_off_gives_none():
 
 def test_no_scores_gives_none():
     assert hint({}) is None
+
+
+def test_schedule_between_uses_the_given_range():
+    morning = SlotEntry(uuid4(), "Sáng", at(17, 9), at(17, 10), SlotStatus.APPROVED)
+    afternoon = SlotEntry(uuid4(), "Chiều", at(17, 14), at(17, 15), SlotStatus.DONE)
+    meeting = FixedEntry(uuid4(), "Họp", at(17, 15), at(17, 16), False)
+
+    result = schedule_between(
+        [morning, afternoon],
+        [meeting],
+        [],
+        TimeRange(at(17, 12), at(17, 18)),
+        NOW,
+        SAIGON,
+    )
+
+    assert [i.title for i in result.items] == ["Chiều", "Họp"]

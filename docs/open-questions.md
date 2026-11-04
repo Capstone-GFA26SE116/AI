@@ -68,6 +68,9 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 | ⚠️ Chuyển tiếp 2 endpoint Dashboard cho Frontend: `GET /analytics/overview?range=30d\|90d\|all&language=vi\|en` và `GET /analytics/breakdown?by=project\|client\|task&range=&language=&project_id=&limit=` — gửi `language` = ngôn ngữ giao diện; gọi khi mở Dashboard hoặc đổi khoảng thời gian | FR-20 | 404 = user không còn / `project_id` không phải của user; 422 = tham số sai, hoặc `project_id` / `limit` khi `by` ≠ `task`, `limit` ngoài 1–200 (mặc định 50). Không gọi LLM, không tốn lượt, không ghi DB |
 | ⚠️ (Frontend) Dashboard: chỉ hiện `text`, `code` để chọn icon / màu, số để vẽ biểu đồ. `trend` không có điểm cho tuần trống → nối đường. `estimate_source = "ai"` → gắn nhãn "AI ước lượng". `from = null` khi `range = all`. Nhóm `id = null` ở `by=client` = "Không có khách hàng". Heatmap giờ hiệu quả lấy từ `GET /profile/productive-hours` (FR-18) | FR-20 §1 | Giờ trả theo múi giờ user (ISO 8601 có offset); `week_start` là ngày |
 | FR-12: câu "Bạn thường cần thêm X% thời gian" giờ cần ≥ **5** lần học (trước là 3) để khớp Dashboard | FR-20 #13 | Chỉ báo. Hiếu sửa `.env` thật nếu đang ghi `BRIEFING_BIAS_MIN_SAMPLES=3` |
+| ⚠️ Thêm `Assistant` vào CHECK `AIUsageLog.Feature` (hiện {Chat, Schedule, Briefing, Embedding}) | FR-22 | Hiện AI ghi `Feature = Chat` (plan #9) cho tới khi CHECK được sửa |
+| ⚠️ Xác nhận 4 endpoint GET (`/api/focus/current`, `/api/projects`, `/api/projects/{id}/progress`, `/api/me`) nhận JWT của user khi AI service chuyển tiếp | FR-22 | Chạy thật 2026-11-04: Backend trả 401 `The signature key was not found` với token ký bằng `JWT_SECRET` ở máy dev → kiểm `JWT_SECRET` của AI có trùng `Jwt:Key` trên Azure |
+| ⚠️ (Mobile / Frontend) Gọi `POST /assistant/turn` sau mỗi lần thả nút micro: gửi `text`, `language`, `history` (≤ 6 lượt, ≤ 2.000 ký tự), `selected_id` khi user chọn 1 lựa chọn của `clarify`. Nhân vật 3D dùng `emotion`; plan ở repo Mobile (`plans/avatar-3d-mvp.md`, `avatar-3d-complete.md`) | FR-22 | 409 `no_active_plan`; 429 hết lượt; 404 user không còn; 422 body sai; 502 AI không trả lời (không trừ lượt). Mỗi lượt tốn 1 lượt AI |
 
 ## Chờ quyết định (team / giảng viên)
 
@@ -90,6 +93,8 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 | Ngưỡng `SIMILAR_MIN_SIMILARITY` (FR-09 #4) | FR-09 | 0.5. Chạy thật 2026-10-15: task không liên quan vẫn qua ngưỡng (Gemini cho câu khác nghĩa ~0.69) → cân nhắc ~0.75 khi có thêm dữ liệu |
 | FR-17: có đổi công thức K sang EMA trên log ratio (`ln K ← α·ln r + (1−α)·ln K`)? | FR-17, K-SiP #6 | Replay SiP (2026-10-29, `research/kbias_sip/results/results.md`): X1 tốt hơn M ở P1 (0.177 so với 0.183), P1 theo developer (0.179 so với 0.219), độ lệch (+0.07 so với +0.17). Chỉ là dữ liệu công ty, chưa đổi production. Cũng cân nhắc K0 = 1.3 (SiP ước lượng dư, K0 = 1.0 tốt hơn) |
 | ⚠️ FR-20: Dashboard (kể cả câu độ lệch) mở cho **mọi gói**, vì không tốn LLM. Muốn khóa theo gói thì Backend chặn ở đường chuyển tiếp | FR-20 #12 | Hiếu đã quyết, chỉ báo team |
+| ⚠️ Thêm **FR-22** + UC "Hỏi trợ lý bằng giọng nói" vào SRS (giai đoạn 1 chỉ đọc). SRS cũ ghi voice ngoài phạm vi | FR-22 | Code đã có trên `feature/fr22-assistant` |
+| Chạy lại FR-22 bước 10 (T11, cần ≥ 18/20, p95 < 5 s) sau khi sửa khóa JWT và có Gemini trả phí | FR-22 AC1, AC8 | 2026-11-04: 16/20 (4 câu Gemini Free 429), p95 5,6 s từ máy dev; Hiếu cho bỏ qua chạy lại |
 
 ## Cập nhật Google Doc
 

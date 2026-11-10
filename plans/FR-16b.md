@@ -1,6 +1,6 @@
 # FR-16b — Task lố giờ → đề xuất dời lịch (W4-09)
 
-Trạng thái: Đã duyệt · Branch: `feature/fr16b-overrun-replan` · Cập nhật: 2026-11-10
+Trạng thái: Xong · Branch: `feature/fr16b-overrun-replan` · Cập nhật: 2026-11-10
 
 <!-- Nháp do Claude Code soạn từ code hiện có (AI + Backend develop 6b141e7), chờ Hiếu duyệt.
 Luật gốc: CLAUDE.md §5 "Task runs over its slot: never auto-move; extend if the next gap fits,
@@ -17,14 +17,14 @@ LLM. Không dời Fixed, không dời task đã bắt đầu. User duyệt mới
 - **Ai gọi, khi nào:** Mobile / Frontend gọi thẳng AI service (như FR-12, FR-22) khi user trả lời câu hỏi
   "Chưa xong, cần thêm bao lâu" (FR-16), từ thông báo `OVERRUN` / `CHECK_IN` hoặc màn Focus.
 - **Tiêu chí xong:**
-  - [ ] AC1 — Khoảng trống sau slot đủ chỗ cho X phút (+ buffer) trước việc bận kế tiếp và trước giờ kết thúc ngày làm → `kind = "extend"`, chỉ đổi giờ kết thúc slot đang lố; không đụng slot nào khác.
-  - [ ] AC2 — Không đủ chỗ → `kind = "replan"`: các slot Flexible **sau** slot đang lố trong hôm nay được xếp lại theo đúng thứ tự cũ, giữ nguyên độ dài, bắt đầu từ sau giờ kết thúc mới (+ buffer), giờ bắt đầu tròn 5'.
-  - [ ] AC3 — Không bao giờ dời: task Fixed, sự kiện Google, slot đã bắt đầu (có phiên bấm giờ, hoặc `InProgress` / `Overrun` / `Due` đã qua giờ bắt đầu), slot `Done` / `Skipped` / `Missed` / `Cancelled`.
-  - [ ] AC4 — Slot không còn chỗ hôm nay → xếp vào ngày làm việc kế tiếp (tối đa 7 ngày, như FR-10); không kịp trước deadline của task → không xếp, vào `not_placed` kèm cảnh báo.
-  - [ ] AC5 — Không gọi LLM, không kiểm / không trừ lượt, không ghi `AIUsageLog`, **không ghi DB**.
-  - [ ] AC6 — Chỉ đọc dữ liệu của user trong JWT; slot của người khác → 404.
-  - [ ] AC7 — Câu tóm tắt (vi / en) để Mobile / trợ lý 3D đọc, ≤ 60 từ, không tên nội bộ.
-  - [ ] AC8 — Tốc độ phía server: p95 < 1 s (chỉ đọc DB + code).
+  - [x] AC1 — Khoảng trống sau slot đủ chỗ cho X phút (+ buffer) trước việc bận kế tiếp và trước giờ kết thúc ngày làm → `kind = "extend"`, chỉ đổi giờ kết thúc slot đang lố; không đụng slot nào khác.
+  - [x] AC2 — Không đủ chỗ → `kind = "replan"`: các slot Flexible **sau** slot đang lố trong hôm nay được xếp lại theo đúng thứ tự cũ, giữ nguyên độ dài, bắt đầu từ sau giờ kết thúc mới (+ buffer), giờ bắt đầu tròn 5'.
+  - [x] AC3 — Không bao giờ dời: task Fixed, sự kiện Google, slot đã bắt đầu (có phiên bấm giờ, hoặc `InProgress` / `Overrun` / `Due` đã qua giờ bắt đầu), slot `Done` / `Skipped` / `Missed` / `Cancelled`.
+  - [x] AC4 — Slot không còn chỗ hôm nay → xếp vào ngày làm việc kế tiếp (tối đa 7 ngày, như FR-10); không kịp trước deadline của task → không xếp, vào `not_placed` kèm cảnh báo.
+  - [x] AC5 — Không gọi LLM, không kiểm / không trừ lượt, không ghi `AIUsageLog`, **không ghi DB**.
+  - [x] AC6 — Chỉ đọc dữ liệu của user trong JWT; slot của người khác → 404.
+  - [x] AC7 — Câu tóm tắt (vi / en) để Mobile / trợ lý 3D đọc, ≤ 60 từ, không tên nội bộ.
+  - [x] AC8 — Tốc độ phía server: p95 < 1 s (chỉ đọc DB + code).
 - **Ngoài phạm vi:** áp dụng thay đổi (Backend, xem #2) · dời slot sang người khác / dời task Fixed ·
   hỏi "cần thêm bao lâu" (Mobile / Frontend, FR-16) · trợ lý 3D tự dời bằng giọng (giai đoạn 2, W6-07) ·
   xếp lại cả tuần (dùng FR-10).
@@ -120,7 +120,7 @@ Giờ ISO 8601 theo múi giờ user (như FR-10).
 - [x] **3.** Port + `plan_overrun.py` + fake repo — T6.
 - [x] **4.** `overrun_repository.py` — T7.
 - [x] **5.** Route + deps + config — T8.
-- [ ] **6.** Chạy thật — T9.
+- [x] **6.** Chạy thật — T9.
 - [x] **7.** Docs: `CLAUDE.md` §6, `docs/open-questions.md` (#2–#4 cho Backend).
 
 ## 5. Nhật ký thay đổi
@@ -131,3 +131,4 @@ Giờ ISO 8601 theo múi giờ user (như FR-10).
 | 2026-11-10 | Bước 0: CHECK `ScheduleSlot.Status` thật có 10 giá trị (thêm `Due`, `InProgress`, `Overrun`, `Postponed`); `FocusSession.ScheduleSlotId` có. **Lệch ngoài plan:** FR-10 chỉ coi `Approved` là giờ bận, FR-12 / trợ lý chỉ đọc `Proposed` / `Approved` / `Done` → ghi `docs/open-questions.md`, chờ Hiếu | Đọc DB thật |
 | 2026-11-10 | Bước 2: câu tóm tắt đặt trong `assistant_text.py` (không tạo `overrun_text.py`) để dùng chung các hàm đọc giờ / giới hạn 60 từ | Tránh chép lại code |
 | 2026-11-10 | Bước 1–5, 7 xong: `pytest` 1787 (+40), `ruff` sạch. Bước 6 mới chạy phần chỉ đọc trên 4 slot thật: SQL đúng schema, ~285 ms / lần (máy dev → Supabase). Trường hợp `replan` với dữ liệu thật cần tạo dữ liệu thử → chờ Hiếu cho phép | CLAUDE.md §8 |
+| 2026-11-10 | Bước 6 (T9) `scripts/try_overrun.py`, dữ liệu thử rồi xoá (0 dòng còn lại): `replan` đúng — "Thiết kế" 10:15 → 13:00, "Báo cáo" 13:30 → 15:45, "Sửa lỗi" (đã bấm giờ) và họp Fixed giữ nguyên, "Gửi khách" (hạn 17:00) vào `not_placed`; DB không đổi sau 21 lần gọi; p95 517 ms (in-process, máy dev → Supabase). Phải thêm `StopReason` cho phiên đã kết thúc (CHECK của `FocusSession`) | Hiếu cho phép tạo dữ liệu thử |

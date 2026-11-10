@@ -136,13 +136,22 @@ def test_candidate_filter():
 
 def test_slots_of_today_only_shown_states():
     text = sql(GET_SLOTS)
-    assert "s.\"Status\" IN ('Proposed', 'Approved', 'Done')" in text
+    assert (
+        "s.\"Status\" IN ('Proposed', 'Approved', 'Due', 'InProgress', 'Overrun', 'Done')"
+        in text
+    )
     assert 's."EndTime" > :day_start AND s."StartTime" < :day_end' in text
     assert 't."Title" || \': \' || st."Title"' in text
 
 
 def test_slot_states_match_the_check_constraint():
     assert set(SLOT_STATUS_FROM_DB.values()) == set(SlotStatus)
+
+
+def test_running_slots_show_as_approved():
+    # The Backend moves an approved slot on while it runs; it must not vanish from "Today".
+    for status in ("Due", "InProgress", "Overrun"):
+        assert SLOT_STATUS_FROM_DB[status] is SlotStatus.APPROVED
 
 
 # --- conversions ---

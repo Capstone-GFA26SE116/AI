@@ -33,6 +33,9 @@ STATUS_FROM_DB = {
     "Skipped": TaskStatus.SKIPPED,
 }
 OPEN_SUBTASK = "ToDo"
+# Approved slots stay on the calendar while they run: the Backend moves them on to
+# Due → InProgress → Overrun (DB CHECK read 2026-11-10). All of them are busy time.
+ON_CALENDAR_SLOTS = "('Approved', 'Due', 'InProgress', 'Overrun')"
 # Google connection states that mean "events may be out of date".
 UNSYNCED_CONNECTIONS = {"Expired", "Revoked"}
 
@@ -44,19 +47,23 @@ GET_USER = text("""
 """)
 
 # Flexible tasks that are not finished. The use case decides which to schedule.
-GET_TASKS = text("""
+GET_TASKS = text(
+    """
     SELECT t."Id", t."Title", t."DomainId", t."Status", t."Deadline",
            t."EstimatedMinutes",
            EXISTS (
                SELECT 1 FROM "ScheduleSlot" s
-               WHERE s."TaskId" = t."Id" AND s."Status" = 'Approved'
+               WHERE s."TaskId" = t."Id" AND s."Status" IN """
+    + ON_CALENDAR_SLOTS
+    + """
            ) AS "HasApprovedSlot"
     FROM "Task" t
     JOIN "Project" p ON p."Id" = t."ProjectId"
     WHERE p."UserId" = :user_id
       AND t."TaskType" = 'Flexible'
       AND t."Status" NOT IN ('Done', 'Skipped')
-""")
+"""
+)
 
 GET_SUBTASKS = text("""
     SELECT st."Id", st."TaskId", st."Title", st."EstimatedMinutes",
@@ -120,16 +127,20 @@ GET_CONNECTION_STATUS = text("""
     WHERE "UserId" = :user_id
 """)
 
-GET_APPROVED_SLOTS = text("""
+GET_APPROVED_SLOTS = text(
+    """
     SELECT s."StartTime", s."EndTime"
     FROM "ScheduleSlot" s
     JOIN "Task" t ON t."Id" = s."TaskId"
     JOIN "Project" p ON p."Id" = t."ProjectId"
     WHERE p."UserId" = :user_id
-      AND s."Status" = 'Approved'
+      AND s."Status" IN """
+    + ON_CALENDAR_SLOTS
+    + """
       AND s."EndTime" > :window_start
       AND s."StartTime" < :window_end
-""")
+"""
+)
 
 # Blind-test proposals (FR-13) are never touched here.
 CANCEL_OLD_SLOTS = text("""

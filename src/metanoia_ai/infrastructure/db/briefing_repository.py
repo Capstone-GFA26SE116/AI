@@ -36,6 +36,10 @@ from metanoia_ai.infrastructure.db.schedule_repository import (
 SLOT_STATUS_FROM_DB = {
     "Proposed": SlotStatus.PROPOSED,
     "Approved": SlotStatus.APPROVED,
+    # Still on the calendar while the Backend runs the slot: shown like Approved.
+    "Due": SlotStatus.APPROVED,
+    "InProgress": SlotStatus.APPROVED,
+    "Overrun": SlotStatus.APPROVED,
     "Done": SlotStatus.DONE,
 }
 CONNECTED = "Active"
@@ -114,7 +118,7 @@ GET_SLOTS = text("""
     JOIN "Project" p ON p."Id" = t."ProjectId"
     LEFT JOIN "SubTask" st ON st."Id" = s."SubTaskId"
     WHERE p."UserId" = :user_id
-      AND s."Status" IN ('Proposed', 'Approved', 'Done')
+      AND s."Status" IN ('Proposed', 'Approved', 'Due', 'InProgress', 'Overrun', 'Done')
       AND s."EndTime" > :day_start
       AND s."StartTime" < :day_end
 """)

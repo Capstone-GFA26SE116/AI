@@ -63,7 +63,7 @@ from metanoia_ai.prompts import load_prompt
 
 logger = logging.getLogger(__name__)
 
-PROMPT_VERSION = "assistant_router_v1"
+PROMPT_VERSION = "assistant_router_v2"  # v2: "hay trễ" → estimation_habits
 NOW_FORMAT = "%Y-%m-%d %H:%M"
 ACTIVE_PROJECT = "Active"
 

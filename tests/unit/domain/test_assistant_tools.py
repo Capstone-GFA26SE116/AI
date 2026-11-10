@@ -13,10 +13,24 @@ from metanoia_ai.domain.assistant_tools import (
 from metanoia_ai.domain.spoken_period import SpokenPeriod
 
 
-def test_ten_read_tools_plus_two() -> None:
-    assert len(READ_TOOLS) == 10
+def test_fourteen_read_tools_plus_two() -> None:
+    assert len(READ_TOOLS) == 14
     assert ToolName.UNSUPPORTED not in READ_TOOLS
-    assert NAMED_TOOLS == {ToolName.SIMILAR_TASK_TIME, ToolName.PROJECT_PROGRESS}
+    assert NAMED_TOOLS == {
+        ToolName.SIMILAR_TASK_TIME,
+        ToolName.PROJECT_PROGRESS,
+        ToolName.UPCOMING_MILESTONES,
+    }
+
+
+def test_milestones_keep_an_optional_project_name() -> None:
+    named = parse_choice(
+        {"tool": "upcoming_milestones", "confidence": 0.9, "name": " spa "}
+    )
+    unnamed = parse_choice({"tool": "upcoming_milestones", "confidence": 0.9})
+
+    assert named == ToolChoice(ToolName.UPCOMING_MILESTONES, 0.9, name="spa")
+    assert unnamed == ToolChoice(ToolName.UPCOMING_MILESTONES, 0.9)
 
 
 def test_schema_lists_every_choice() -> None:

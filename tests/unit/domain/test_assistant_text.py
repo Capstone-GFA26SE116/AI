@@ -5,6 +5,7 @@ import pytest
 
 from metanoia_ai.domain.assistant_text import (
     MAX_WORDS,
+    DueMilestone,
     TimedLine,
     _say,
     ai_quota_text,
@@ -14,6 +15,8 @@ from metanoia_ai.domain.assistant_text import (
     list_projects_text,
     not_enough_data_text,
     not_found_text,
+    pending_confirmations_text,
+    pending_proposal_text,
     productive_hours_text,
     project_progress_text,
     running_timer_text,
@@ -26,7 +29,9 @@ from metanoia_ai.domain.assistant_text import (
     spoken_time,
     suggestions,
     today_briefing_text,
+    unread_notifications_text,
     unsupported_text,
+    upcoming_milestones_text,
     word_count,
 )
 from metanoia_ai.domain.assistant_tools import SmalltalkKind
@@ -187,6 +192,85 @@ def test_clarify_and_not_found() -> None:
     )
 
 
+def test_pending_confirmations() -> None:
+    assert (
+        pending_confirmations_text([("Viết blog", 95)], VI)
+        == "Có 1 phiên bấm giờ cần bạn xác nhận: Viết blog (khoảng 1,5 giờ). "
+        "Bạn xác nhận trên màn hình nhé."
+    )
+    three = [("A", 30), ("B", 0), ("C", 50)]
+    assert (
+        pending_confirmations_text(three, EN)
+        == "3 timer sessions need your confirmation: A (about 30 minutes) and "
+        "B (about 5 minutes), and 1 more session. Please confirm on the screen."
+    )
+    assert (
+        pending_confirmations_text([], VI)
+        == "Không có phiên bấm giờ nào cần bạn xác nhận."
+    )
+
+
+def test_unread_notifications() -> None:
+    assert (
+        unread_notifications_text(["Sắp hết giờ", "Đã quá giờ", "Nhắc việc"], VI)
+        == "Bạn có 3 thông báo mới: Sắp hết giờ và Đã quá giờ, và còn 1 thông báo khác."
+    )
+    assert (
+        unread_notifications_text(["Time is almost up"], EN)
+        == "You have 1 new notification: Time is almost up."
+    )
+    assert unread_notifications_text([], EN) == "You have no new notifications."
+
+
+def test_pending_proposal() -> None:
+    starts = [at(14, days=1), at(9, days=1)]
+    assert (
+        pending_proposal_text(starts, True, None, NOW, VN, VI)
+        == "Có lịch đề xuất 2 khung giờ đang chờ duyệt, bắt đầu lúc 9 giờ ngày mai. "
+        "Bạn duyệt trên màn hình nhé."
+    )
+    assert (
+        pending_proposal_text(starts[:1], False, 45, NOW, VN, EN)
+        == "A proposed schedule with 1 time slot is waiting, starting at 2 pm "
+        "tomorrow. It is still about 45 minutes short of meeting every deadline. "
+        "You can approve it on the screen."
+    )
+    assert (
+        pending_proposal_text([], False, None, NOW, VN, VI)
+        == "Có lịch đề xuất đang chờ duyệt. Lịch này chưa kịp mọi hạn chót. "
+        "Bạn duyệt trên màn hình nhé."
+    )
+    assert (
+        pending_proposal_text(None, True, None, NOW, VN, VI)
+        == "Bạn không có lịch đề xuất nào đang chờ duyệt."
+    )
+
+
+def test_upcoming_milestones() -> None:
+    items = [
+        DueMilestone("Thiết kế", at(0, days=-2)),
+        DueMilestone("Bàn giao", at(0, days=1)),
+        DueMilestone("Sửa lỗi", at(0, days=6)),
+    ]
+    assert (
+        upcoming_milestones_text(items, None, NOW, VN, VI)
+        == "Có 3 milestone chưa xong: Thiết kế (đã quá hạn) và Bàn giao (hạn ngày mai), "
+        "và còn 1 milestone khác."
+    )
+    assert (
+        upcoming_milestones_text(items[1:2], "App spa", NOW, VN, EN)
+        == "Project App spa has 1 milestone to finish: Bàn giao (due tomorrow)."
+    )
+    assert (
+        upcoming_milestones_text([], None, NOW, VN, VI)
+        == "Bạn không có milestone nào sắp tới hạn."
+    )
+    assert (
+        upcoming_milestones_text([], "App spa", NOW, VN, VI)
+        == "Dự án App spa không có milestone nào sắp tới hạn."
+    )
+
+
 def every_reply(lang: Language) -> list[str]:
     many = [TimedLine(LONG, at(9, days=d)) for d in range(10)]
     return [
@@ -218,6 +302,24 @@ def every_reply(lang: Language) -> list[str]:
         not_found_text("việc", "task", None, lang),
         source_error_text(lang),
         not_enough_data_text(lang),
+        pending_confirmations_text([(LONG, 600)] * 9, lang),
+        pending_confirmations_text([], lang),
+        unread_notifications_text([LONG] * 20, lang),
+        unread_notifications_text([], lang),
+        pending_proposal_text(
+            [at(9, days=d) for d in range(9)], False, 600, NOW, VN, lang
+        ),
+        pending_proposal_text([], False, None, NOW, VN, lang),
+        pending_proposal_text(None, True, None, NOW, VN, lang),
+        upcoming_milestones_text(
+            [DueMilestone(LONG, at(0, days=d)) for d in range(-3, 9)],
+            LONG,
+            NOW,
+            VN,
+            lang,
+        ),
+        upcoming_milestones_text([], None, NOW, VN, lang),
+        upcoming_milestones_text([], LONG, NOW, VN, lang),
     ]
 
 
@@ -226,7 +328,7 @@ def every_reply(lang: Language) -> list[str]:
 def test_every_reply_is_short_and_has_no_internal_name(lang: Language) -> None:
     replies = every_reply(lang)
 
-    assert len(replies) == 32
+    assert len(replies) == 42
     for text in replies:
         assert 0 < word_count(text) <= MAX_WORDS, text
         assert not has_internal_name(text), text

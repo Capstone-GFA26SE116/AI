@@ -14,15 +14,21 @@ import httpx
 from metanoia_ai.application.ports.backend_reader import (
     BackendNotFoundError,
     BackendReadError,
+    MilestoneSummary,
+    PendingProposal,
+    PendingSession,
     ProjectProgress,
     ProjectSummary,
     RunningFocus,
+    UnreadNotice,
 )
 
 logger = logging.getLogger(__name__)
 
 # 403: the Backend's owner check. Treated as "not found" so ids cannot be probed.
 NOT_FOUND_STATUSES = {403, 404}
+# Enough to count what is new; only the first ones are read aloud.
+UNREAD_NOTIFICATIONS_TAKE = 20
 
 
 class BackendReaderClient:
@@ -37,14 +43,18 @@ class BackendReaderClient:
         self.timeout = timeout_seconds
         self.transport = transport
 
-    async def _get(self, path: str, auth_header: str) -> Any:
+    async def _get(
+        self, path: str, auth_header: str, params: dict[str, str] | None = None
+    ) -> Any:
         """GET path → parsed JSON; None for 204. The only HTTP method used here."""
         try:
             async with httpx.AsyncClient(
                 timeout=self.timeout, transport=self.transport
             ) as client:
                 response = await client.get(
-                    f"{self.base_url}{path}", headers={"Authorization": auth_header}
+                    f"{self.base_url}{path}",
+                    params=params,
+                    headers={"Authorization": auth_header},
                 )
         except httpx.HTTPError as error:  # timeout, connection, protocol
             logger.warning("Backend GET %s failed: %s", path, type(error).__name__)
@@ -102,3 +112,61 @@ class BackendReaderClient:
             )
         except (AttributeError, KeyError, TypeError, ValueError) as error:
             raise BackendReadError("unexpected progress answer") from error
+
+    async def pending_confirmations(self, auth_header: str) -> list[PendingSession]:
+        body = await self._get("/api/focus/pending-confirmation", auth_header)
+        try:
+            return [
+                PendingSession(str(s["taskTitle"]), round(float(s["systemMinutes"])))
+                for s in body
+            ]
+        except (KeyError, TypeError, ValueError) as error:
+            raise BackendReadError("unexpected pending sessions answer") from error
+
+    async def unread_notifications(self, auth_header: str) -> list[UnreadNotice]:
+        body = await self._get(
+            "/api/notifications",
+            auth_header,
+            {"unreadOnly": "true", "take": str(UNREAD_NOTIFICATIONS_TAKE)},
+        )
+        try:
+            return [UnreadNotice(str(n["title"])) for n in body if not n["isRead"]]
+        except (KeyError, TypeError, ValueError) as error:
+            raise BackendReadError("unexpected notifications answer") from error
+
+    async def pending_proposal(self, auth_header: str) -> PendingProposal | None:
+        body = await self._get("/api/schedule/proposals/pending", auth_header)
+        if body is None:
+            return None
+        try:
+            starts = sorted(
+                datetime.fromisoformat(slot["startTime"]) for slot in body["slots"]
+            )
+            if any(start.tzinfo is None for start in starts):
+                raise ValueError("slot time without a time zone")
+            missing = body.get("missingMinutes")
+            return PendingProposal(
+                slot_starts=tuple(starts),
+                is_feasible=bool(body["isFeasible"]),
+                missing_minutes=None if missing is None else int(missing),
+            )
+        except (AttributeError, KeyError, TypeError, ValueError) as error:
+            raise BackendReadError("unexpected proposal answer") from error
+
+    async def milestones(
+        self, project_id: UUID, auth_header: str
+    ) -> list[MilestoneSummary]:
+        body = await self._get(f"/api/projects/{project_id}/milestones", auth_header)
+        try:
+            return [
+                MilestoneSummary(
+                    name=str(m["name"]),
+                    due_date=None
+                    if m.get("dueDate") is None
+                    else date.fromisoformat(m["dueDate"]),
+                    status=str(m["status"]),
+                )
+                for m in body
+            ]
+        except (AttributeError, KeyError, TypeError, ValueError) as error:
+            raise BackendReadError("unexpected milestones answer") from error

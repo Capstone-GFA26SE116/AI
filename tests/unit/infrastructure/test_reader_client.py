@@ -11,8 +11,11 @@ from metanoia_ai.application.ports.backend_reader import (
     BackendNotFoundError,
     BackendReader,
     BackendReadError,
+    MilestoneSummary,
+    PendingSession,
     ProjectProgress,
     ProjectSummary,
+    UnreadNotice,
 )
 from metanoia_ai.infrastructure.backend.reader_client import BackendReaderClient
 
@@ -50,6 +53,46 @@ PROGRESS = {
     "varianceMinutes": 0,
     "tasks": [],
 }
+PENDING = [
+    {
+        "sessionId": str(UUID(int=3)),
+        "taskId": str(UUID(int=2)),
+        "taskTitle": "Viết bài blog",
+        "scheduleSlotId": None,
+        "startedAt": "2026-10-30T02:00:00+00:00",
+        "endedAt": "2026-10-30T03:35:00+00:00",
+        "systemMinutes": 95.4,
+    }
+]
+NOTICES = [
+    {
+        "id": str(UUID(int=4)),
+        "type": "NEAR_END",
+        "title": "Sắp hết giờ",
+        "isRead": False,
+    },
+    {"id": str(UUID(int=5)), "type": "OVERRUN", "title": "Đã quá giờ", "isRead": True},
+]
+PROPOSAL = {
+    "id": str(UUID(int=6)),
+    "status": "Pending",
+    "isFeasible": False,
+    "missingMinutes": 45,
+    "explanation": "x",
+    "slots": [
+        {"id": str(UUID(int=9)), "startTime": "2026-10-31T07:00:00+07:00"},
+        {"id": str(UUID(int=10)), "startTime": "2026-10-31T02:00:00+00:00"},
+    ],
+}
+MILESTONES = [
+    {
+        "id": str(UUID(int=11)),
+        "name": "Thiết kế",
+        "dueDate": "2026-11-05",
+        "status": "InProgress",
+    },
+    {"id": str(UUID(int=12)), "name": "Bàn giao", "dueDate": None, "status": "Planned"},
+]
 
 
 def client_for(handler, seen: list[httpx.Request] | None = None) -> BackendReaderClient:
@@ -131,6 +174,68 @@ def test_project_progress() -> None:
     assert no_deadline.deadline is None
 
 
+def test_pending_confirmations() -> None:
+    seen: list[httpx.Request] = []
+
+    sessions = run(client_for(answer(200, PENDING), seen).pending_confirmations(AUTH))
+
+    assert sessions == [PendingSession("Viết bài blog", 95)]
+    assert (seen[0].method, seen[0].url.path) == (
+        "GET",
+        "/api/focus/pending-confirmation",
+    )
+    assert seen[0].headers["Authorization"] == AUTH
+
+
+def test_unread_notifications_asks_only_for_unread_ones() -> None:
+    seen: list[httpx.Request] = []
+
+    notices = run(client_for(answer(200, NOTICES), seen).unread_notifications(AUTH))
+
+    assert notices == [UnreadNotice("Sắp hết giờ")]  # a read one is skipped anyway
+    assert seen[0].method == "GET"
+    assert seen[0].url.path == "/api/notifications"
+    assert seen[0].url.params["unreadOnly"] == "true"
+    assert seen[0].url.params["take"] == "20"
+
+
+def test_pending_proposal_sorts_slot_starts() -> None:
+    seen: list[httpx.Request] = []
+
+    proposal = run(client_for(answer(200, PROPOSAL), seen).pending_proposal(AUTH))
+
+    assert [s.isoformat() for s in proposal.slot_starts] == [
+        "2026-10-31T07:00:00+07:00",
+        "2026-10-31T02:00:00+00:00",
+    ]
+    assert (proposal.is_feasible, proposal.missing_minutes) == (False, 45)
+    assert (seen[0].method, seen[0].url.path) == (
+        "GET",
+        "/api/schedule/proposals/pending",
+    )
+
+
+def test_no_pending_proposal_is_204() -> None:
+    assert run(client_for(answer(204)).pending_proposal(AUTH)) is None
+
+
+def test_milestones() -> None:
+    seen: list[httpx.Request] = []
+
+    milestones = run(
+        client_for(answer(200, MILESTONES), seen).milestones(PROJECT, AUTH)
+    )
+
+    assert milestones == [
+        MilestoneSummary("Thiết kế", date(2026, 11, 5), "InProgress"),
+        MilestoneSummary("Bàn giao", None, "Planned"),
+    ]
+    assert (seen[0].method, seen[0].url.path) == (
+        "GET",
+        f"/api/projects/{PROJECT}/milestones",
+    )
+
+
 # T9: 404 / 403 → not found
 @pytest.mark.parametrize("status", [403, 404])
 def test_not_owner_is_not_found(status: int) -> None:
@@ -163,11 +268,21 @@ def test_timeout_is_a_read_error() -> None:
         ("projects", {"items": []}),
         ("project_progress", {"name": "x", "deadline": "soon", "totalTasks": 1}),
         ("project_progress", []),
+        ("pending_confirmations", [{"taskTitle": "x"}]),
+        ("unread_notifications", [{"title": "x"}]),
+        ("pending_proposal", {"slots": [{"startTime": "soon"}], "isFeasible": True}),
+        (
+            "pending_proposal",
+            {"slots": [{"startTime": "2026-10-31T07:00:00"}], "isFeasible": True},
+        ),
+        ("milestones", [{"name": "x", "dueDate": "soon", "status": "Planned"}]),
+        ("milestones", {"items": []}),
     ],
 )
 def test_unexpected_answers_are_read_errors(method: str, body) -> None:
     reader = client_for(answer(200, body))
-    args = (PROJECT, AUTH) if method == "project_progress" else (AUTH,)
+    with_id = {"project_progress", "milestones"}
+    args = (PROJECT, AUTH) if method in with_id else (AUTH,)
 
     with pytest.raises(BackendReadError):
         run(getattr(reader, method)(*args))

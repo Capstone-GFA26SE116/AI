@@ -74,7 +74,6 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 | ⚠️ `PUT /api/schedule-slots/{id}` không cập nhật sự kiện Google của slot đã duyệt: slot dời trong app nhưng Google Calendar vẫn giờ cũ | FR-16b #3 | Client áp dụng đề xuất dời lịch bằng `PUT` này (plan #2, chốt A) |
 | ⚠️ `PUT /api/schedule-slots/{id}` ghi `ScheduleChangeLog.Source = Manual`; thay đổi từ đề xuất dời lịch nên là `AI` (W3-08) | FR-16b #4 | Ví dụ: thêm trường nguồn vào request |
 | ⚠️ (Mobile / Frontend) Khi user trả lời "Chưa xong, cần thêm X phút" (FR-16) hoặc bấm thông báo `OVERRUN` / `CHECK_IN`: gọi `POST /schedule/overrun` `{slot_id, extra_minutes (5–480), language}`, hiện `summary` + danh sách `moves`; user duyệt thì gọi `PUT /api/schedule-slots/{id}` cho slot kéo dài (`extended`) rồi từng slot trong `moves` | FR-16b | Endpoint chỉ đề xuất, không ghi gì; đề xuất cũ thì gọi lại |
-| ⚠️ `docs/database.md` + code AI chỉ biết 6 trạng thái `ScheduleSlot`; DB thật (CHECK, 2026-11-10) có 10: thêm `Due`, `InProgress`, `Overrun`, `Postponed`. FR-10 chỉ coi `Approved` là giờ bận và FR-12 / trợ lý chỉ đọc `Proposed` / `Approved` / `Done` → slot đang làm dở bị bỏ qua | FR-10, FR-12, FR-22 | Phát hiện ở FR-16b bước 0; cần Hiếu quyết sửa (FR-16b đã xử lý đủ 10) |
 
 ## Chờ quyết định (team / giảng viên)
 
@@ -108,6 +107,7 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 
 | Ngày | Câu hỏi | Kết quả |
 |---|---|---|
+| 2026-11-10 | Slot `Due` / `InProgress` / `Overrun` (Backend thêm) | AI coi là "nằm trên lịch": giờ bận ở FR-10 (kể cả task "đã có slot"), hiện như `Approved` ở FR-12 / trợ lý. Đã sửa (nhánh `fix/slot-active-states`) |
 | 2026-10-07 | JWT | HS256, user ID trong `sub`, iss `METANOIA`, aud `METANOIA.Client` |
 | 2026-10-11 | Đường gọi | Frontend → Backend → AI (**đổi 2026-10-30**, xem dòng dưới) |
 | 2026-10-30 | Đường gọi (FR-22) | **Frontend và Mobile được gọi thẳng AI service** với JWT của user (header `Authorization`). Backend không cần chuyển tiếp nữa. AI service gọi lại Backend (chỉ GET) bằng chính JWT đó |

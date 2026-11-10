@@ -137,6 +137,7 @@ Full text in `docs/functional-requirements.md`. Status: first line of each `plan
 | FR-12 | Daily "Today" briefing (text only, no LLM) | `plans/FR-12.md` |
 | FR-18 | Productive hours: onboarding answers, then timer data | `plans/FR-18.md` |
 | FR-22 | Voice assistant, phase 1: LLM picks one read-only tool, code answers from templates (GET only) | `plans/FR-22.md` |
+| FR-16b | A slot runs over: propose to extend it or move the slots after it (no LLM, writes nothing) | `plans/FR-16b.md` |
 
 **Not this repo:** FR-11 schedule approval + writing to Google Calendar (Backend).
 **Deferred:** FR-13 blind test. **Out of scope:** voice commands that write data (FR-22 phase 2 needs its own plan), STT/TTS on the server, Eisenhower matrix, training our own model.

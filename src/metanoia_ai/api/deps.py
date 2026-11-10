@@ -51,6 +51,10 @@ from metanoia_ai.application.use_cases.get_daily_briefing import (
 from metanoia_ai.application.use_cases.get_productive_hours import GetProductiveHours
 from metanoia_ai.application.use_cases.get_project_chat import GetProjectChat
 from metanoia_ai.application.use_cases.get_task_chat import GetTaskChat
+from metanoia_ai.application.use_cases.plan_overrun import (
+    OverrunSettings,
+    PlanOverrun,
+)
 from metanoia_ai.application.use_cases.propose_schedule import ProposeSchedule
 from metanoia_ai.application.use_cases.recompute_productive_hours import (
     RecomputeProductiveHours,
@@ -85,6 +89,7 @@ from metanoia_ai.infrastructure.db.briefing_repository import SqlBriefingReposit
 from metanoia_ai.infrastructure.db.chat_repository import SqlChatRepository
 from metanoia_ai.infrastructure.db.learning_repository import SqlLearningRepository
 from metanoia_ai.infrastructure.db.memory_repository import SqlMemoryRepository
+from metanoia_ai.infrastructure.db.overrun_repository import SqlOverrunRepository
 from metanoia_ai.infrastructure.db.productive_hours_repository import (
     SqlProductiveHoursRepository,
 )
@@ -164,6 +169,21 @@ def get_propose_schedule(
         round_minutes=settings.schedule_round_minutes,
         top_productive_hours=settings.schedule_top_productive_hours,
         clock=lambda: datetime.now(UTC),
+    )
+
+
+def get_plan_overrun(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> PlanOverrun:
+    """FR-16b use case on the real database. Reads only; no LLM."""
+    return PlanOverrun(
+        SqlOverrunRepository(session),
+        OverrunSettings(
+            round_minutes=settings.schedule_round_minutes,
+            window_days=settings.schedule_window_days,
+        ),
+        now=lambda: datetime.now(UTC),
     )
 
 

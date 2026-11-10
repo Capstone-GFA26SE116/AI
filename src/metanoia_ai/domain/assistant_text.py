@@ -28,6 +28,7 @@ OPTION_ITEMS = 3
 PENDING_ITEMS = 2
 NOTICE_ITEMS = 2
 MILESTONE_ITEMS = 2
+MOVED_ITEMS = 2
 SIMILAR_SLOWER_RATIO = 1.1  # below this, "took X times the plan" is not worth saying
 # Field and tool names that must never be read aloud, on top of the shared ones.
 FORBIDDEN_WORDS = (
@@ -577,6 +578,71 @@ def upcoming_milestones_text(
         n=_count(len(items), "milestone", "milestone", lang),
         items=_join(parts, lang),
         more=_more(len(items) - MILESTONE_ITEMS, "milestone", "milestone", lang),
+    )
+
+
+@dataclass(frozen=True)
+class MovedLine:
+    """A slot the overrun plan (FR-16b) moves: its title and new start."""
+
+    title: str
+    start: datetime
+
+
+def overrun_text(
+    title: str,
+    new_end: datetime,
+    moved: Sequence[MovedLine],
+    not_placed: int,
+    past_day_end: bool,
+    now: datetime,
+    zone: ZoneInfo,
+    lang: Language,
+) -> str:
+    """FR-16b proposal in one breath: the new end, then what moves (at most 2)."""
+    vi = lang is Language.VI
+    now = now.astimezone(zone)
+
+    def when(moment: datetime) -> str:
+        moment = moment.astimezone(zone)
+        if moment.date() == now.date():
+            return spoken_time(moment, lang)
+        return f"{spoken_time(moment, lang)} {spoken_day(moment, now, lang)}"
+
+    if moved:
+        template = (
+            "Để làm tiếp {title} đến {end}, nên dời {n}: {items}{more}."
+            if vi
+            else "To keep working on {title} until {end}, move {n}: {items}{more}."
+        )
+    else:
+        template = (
+            "Mình đề xuất làm tiếp {title} đến {end}."
+            if vi
+            else "Keep working on {title} until {end}."
+        )
+    if not_placed:
+        template += (
+            " {late} sẽ không kịp hạn chót."
+            if vi
+            else " {late} would miss the deadline."
+        )
+    if past_day_end:
+        template += (
+            " Như vậy là quá giờ làm." if vi else " This goes past your working hours."
+        )
+    joiner = " sang " if vi else " to "
+    items = [
+        f"{short_name(m.title)}{joiner}{when(m.start)}" for m in moved[:MOVED_ITEMS]
+    ]
+    return _say(
+        template,
+        title=short_name(title),
+        end=when(new_end),
+        n=_count(len(moved), "việc", "task", lang),
+        items=_join(items, lang),
+        more=_more(len(moved) - MOVED_ITEMS, "việc", "task", lang),
+        late=_count(not_placed, "việc", "task", lang),
     )
 
 

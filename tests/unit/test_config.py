@@ -161,6 +161,7 @@ def test_defaults(env):
     assert settings.schedule_min_chunk_minutes == 30
     assert settings.schedule_round_minutes == 5
     assert settings.schedule_top_productive_hours == 3
+    assert settings.overrun_extra_minutes_max == 480
     assert settings.llm_max_retries == 2
 
 

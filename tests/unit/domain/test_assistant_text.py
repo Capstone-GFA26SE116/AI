@@ -6,6 +6,7 @@ import pytest
 from metanoia_ai.domain.assistant_text import (
     MAX_WORDS,
     DueMilestone,
+    MovedLine,
     TimedLine,
     _say,
     ai_quota_text,
@@ -15,6 +16,7 @@ from metanoia_ai.domain.assistant_text import (
     list_projects_text,
     not_enough_data_text,
     not_found_text,
+    overrun_text,
     pending_confirmations_text,
     pending_proposal_text,
     productive_hours_text,
@@ -271,6 +273,34 @@ def test_upcoming_milestones() -> None:
     )
 
 
+def test_overrun_extend() -> None:
+    assert (
+        overrun_text("Viết blog", at(10, 35), [], 0, False, NOW, VN, VI)
+        == "Mình đề xuất làm tiếp Viết blog đến 10 giờ 35."
+    )
+    assert (
+        overrun_text("Write blog", at(18, 30), [], 0, True, NOW, VN, EN)
+        == "Keep working on Write blog until 6:30 pm. This goes past your working hours."
+    )
+
+
+def test_overrun_replan() -> None:
+    moved = [
+        MovedLine("Thiết kế", at(10, 50)),
+        MovedLine("Họp nội bộ", at(8, days=1)),
+        MovedLine("Sửa lỗi", at(9, days=1)),
+    ]
+    assert overrun_text("Viết blog", at(10, 35), moved, 1, False, NOW, VN, VI) == (
+        "Để làm tiếp Viết blog đến 10 giờ 35, nên dời 3 việc: "
+        "Thiết kế sang 10 giờ 50 và Họp nội bộ sang 8 giờ ngày mai, "
+        "và còn 1 việc khác. 1 việc sẽ không kịp hạn chót."
+    )
+    assert overrun_text("Write blog", at(10, 35), moved[:1], 2, False, NOW, VN, EN) == (
+        "To keep working on Write blog until 10:35 am, move 1 task: Thiết kế to "
+        "10:50 am. 2 tasks would miss the deadline."
+    )
+
+
 def every_reply(lang: Language) -> list[str]:
     many = [TimedLine(LONG, at(9, days=d)) for d in range(10)]
     return [
@@ -320,6 +350,17 @@ def every_reply(lang: Language) -> list[str]:
         ),
         upcoming_milestones_text([], None, NOW, VN, lang),
         upcoming_milestones_text([], LONG, NOW, VN, lang),
+        overrun_text(
+            LONG,
+            at(19, days=0),
+            [MovedLine(LONG, at(9, days=d)) for d in range(1, 9)],
+            5,
+            True,
+            NOW,
+            VN,
+            lang,
+        ),
+        overrun_text(LONG, at(10), [], 0, False, NOW, VN, lang),
     ]
 
 
@@ -328,7 +369,7 @@ def every_reply(lang: Language) -> list[str]:
 def test_every_reply_is_short_and_has_no_internal_name(lang: Language) -> None:
     replies = every_reply(lang)
 
-    assert len(replies) == 42
+    assert len(replies) == 44
     for text in replies:
         assert 0 < word_count(text) <= MAX_WORDS, text
         assert not has_internal_name(text), text

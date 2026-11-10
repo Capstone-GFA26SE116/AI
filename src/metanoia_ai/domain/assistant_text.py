@@ -25,6 +25,9 @@ AT_RISK_ITEMS = 2
 TOP_ITEMS = 3
 PROJECT_ITEMS = 5
 OPTION_ITEMS = 3
+PENDING_ITEMS = 2
+NOTICE_ITEMS = 2
+MILESTONE_ITEMS = 2
 SIMILAR_SLOWER_RATIO = 1.1  # below this, "took X times the plan" is not worth saying
 # Field and tool names that must never be read aloud, on top of the shared ones.
 FORBIDDEN_WORDS = (
@@ -140,7 +143,7 @@ def spoken_day(moment: datetime, now: datetime, lang: Language) -> str:
     return f"on {MONTHS[moment.month - 1]} {moment.day}"
 
 
-# --- the 10 read tools ---
+# --- the read tools ---
 
 
 def today_briefing_text(
@@ -408,6 +411,173 @@ def ai_quota_text(left: int | None, lang: Language) -> str:
         else "You have {left} AI uses left this period."
     )
     return _say(template, left=max(left, 0))
+
+
+def pending_confirmations_text(
+    sessions: Sequence[tuple[str, int]], lang: Language
+) -> str:
+    """Timer sessions the system stopped: (task title, recorded minutes), at most 2.
+
+    Phase 1 only reads: the user confirms on the screen (W4-06).
+    """
+    vi = lang is Language.VI
+    if not sessions:
+        return _say(
+            "Không có phiên bấm giờ nào cần bạn xác nhận."
+            if vi
+            else "No timer session is waiting for you to confirm."
+        )
+    parts = [
+        f"{short_name(title)} ({duration(max(minutes, 1), lang)})"
+        for title, minutes in sessions[:PENDING_ITEMS]
+    ]
+    template = (
+        "Có {n} cần bạn xác nhận: {items}{more}. Bạn xác nhận trên màn hình nhé."
+        if vi
+        else "{n} need your confirmation: {items}{more}. Please confirm on the screen."
+    )
+    return _say(
+        template,
+        n=_count(len(sessions), "phiên bấm giờ", "timer session", lang),
+        items=_join(parts, lang),
+        more=_more(len(sessions) - PENDING_ITEMS, "phiên", "session", lang),
+    )
+
+
+def unread_notifications_text(titles: Sequence[str], lang: Language) -> str:
+    """How many unread notifications, and the newest 2 titles."""
+    vi = lang is Language.VI
+    if not titles:
+        return _say(
+            "Bạn không có thông báo mới." if vi else "You have no new notifications."
+        )
+    template = "Bạn có {n}: {items}{more}." if vi else "You have {n}: {items}{more}."
+    return _say(
+        template,
+        n=_count(len(titles), "thông báo mới", "new notification", lang),
+        items=_join([short_name(t) for t in titles[:NOTICE_ITEMS]], lang),
+        more=_more(len(titles) - NOTICE_ITEMS, "thông báo", "notification", lang),
+    )
+
+
+def pending_proposal_text(
+    slot_starts: Sequence[datetime] | None,
+    is_feasible: bool,
+    missing_minutes: int | None,
+    now: datetime,
+    zone: ZoneInfo,
+    lang: Language,
+) -> str:
+    """`slot_starts` None: no proposal is waiting. Approving stays on the screen."""
+    vi = lang is Language.VI
+    if slot_starts is None:
+        return _say(
+            "Bạn không có lịch đề xuất nào đang chờ duyệt."
+            if vi
+            else "You have no schedule proposal waiting for approval."
+        )
+    first = ""
+    if slot_starts:
+        start = min(slot_starts).astimezone(zone)
+        first = f"{spoken_time(start, lang)} {spoken_day(start, now.astimezone(zone), lang)}"
+        template = (
+            "Có lịch đề xuất {n} đang chờ duyệt, bắt đầu lúc {first}."
+            if vi
+            else "A proposed schedule with {n} is waiting, starting at {first}."
+        )
+    else:
+        template = (
+            "Có lịch đề xuất đang chờ duyệt."
+            if vi
+            else "A proposed schedule is waiting."
+        )
+    missing = ""
+    if not is_feasible:
+        if missing_minutes:
+            missing = duration(missing_minutes, lang)
+            template += (
+                " Lịch này còn thiếu {missing} để kịp mọi hạn chót."
+                if vi
+                else " It is still {missing} short of meeting every deadline."
+            )
+        else:
+            template += (
+                " Lịch này chưa kịp mọi hạn chót."
+                if vi
+                else " It does not meet every deadline yet."
+            )
+    template += (
+        " Bạn duyệt trên màn hình nhé." if vi else " You can approve it on the screen."
+    )
+    return _say(
+        template,
+        n=_count(len(slot_starts), "khung giờ", "time slot", lang),
+        first=first,
+        missing=missing,
+    )
+
+
+@dataclass(frozen=True)
+class DueMilestone:
+    """An open milestone with its due date, as a local midnight in the user's zone."""
+
+    name: str
+    due: datetime
+
+
+def upcoming_milestones_text(
+    items: Sequence[DueMilestone],
+    project: str | None,
+    now: datetime,
+    zone: ZoneInfo,
+    lang: Language,
+) -> str:
+    """Open milestones by due date, at most 2, overdue ones said as such.
+
+    `project` set: the user asked about one project.
+    """
+    vi = lang is Language.VI
+    today = now.astimezone(zone)
+    if not items:
+        if project is not None:
+            template = (
+                "Dự án {project} không có milestone nào sắp tới hạn."
+                if vi
+                else "Project {project} has no milestone coming up."
+            )
+            return _say(template, project=short_name(project))
+        return _say(
+            "Bạn không có milestone nào sắp tới hạn."
+            if vi
+            else "You have no milestone coming up."
+        )
+    parts = []
+    for item in items[:MILESTONE_ITEMS]:
+        due = item.due.astimezone(zone)
+        if due.date() < today.date():
+            when = "đã quá hạn" if vi else "overdue"
+        else:
+            when = f"{'hạn' if vi else 'due'} {spoken_day(due, today, lang)}"
+        parts.append(f"{short_name(item.name)} ({when})")
+    if project is not None:
+        template = (
+            "Dự án {project} có {n} chưa xong: {items}{more}."
+            if vi
+            else "Project {project} has {n} to finish: {items}{more}."
+        )
+    else:
+        template = (
+            "Có {n} chưa xong: {items}{more}."
+            if vi
+            else "{n} still to finish: {items}{more}."
+        )
+    return _say(
+        template,
+        project=short_name(project or ""),
+        n=_count(len(items), "milestone", "milestone", lang),
+        items=_join(parts, lang),
+        more=_more(len(items) - MILESTONE_ITEMS, "milestone", "milestone", lang),
+    )
 
 
 # --- other kinds of turn ---

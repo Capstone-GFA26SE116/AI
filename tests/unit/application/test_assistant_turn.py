@@ -12,9 +12,13 @@ from metanoia_ai.application.llm_chat import CheckedLLMCaller
 from metanoia_ai.application.ports.assistant_repository import ScheduleRows
 from metanoia_ai.application.ports.backend_reader import (
     BackendReadError,
+    MilestoneSummary,
+    PendingProposal,
+    PendingSession,
     ProjectProgress,
     ProjectSummary,
     RunningFocus,
+    UnreadNotice,
 )
 from metanoia_ai.application.ports.llm_client import LLMError
 from metanoia_ai.application.ports.quota_repository import Subscription
@@ -364,6 +368,128 @@ def test_ai_quota_without_limit() -> None:
     assert ask(use_case, lang=Language.EN).reply == "Your plan has unlimited AI use."
 
 
+# --- T4: the 4 read tools added after phase 1 ---
+
+
+def test_pending_confirmations() -> None:
+    backend = FakeBackendReader(pending=[PendingSession("Viết blog", 95)])
+    use_case, *_ = setup(pick("pending_confirmations"), backend=backend)
+
+    turn = ask(use_case, "Có phiên nào cần mình xác nhận không?")
+
+    assert (turn.tool, turn.emotion) == (
+        ToolName.PENDING_CONFIRMATIONS,
+        Emotion.NEUTRAL,
+    )
+    assert turn.reply.startswith("Có 1 phiên bấm giờ cần bạn xác nhận: Viết blog")
+    assert backend.calls == [("pending_confirmations", AUTH)]
+
+
+def test_no_pending_confirmations_is_good_news() -> None:
+    use_case, *_ = setup(pick("pending_confirmations"))
+
+    assert ask(use_case).emotion is Emotion.HAPPY
+
+
+def test_unread_notifications() -> None:
+    backend = FakeBackendReader(notices=[UnreadNotice("Sắp hết giờ")])
+    use_case, *_ = setup(pick("unread_notifications"), backend=backend)
+
+    turn = ask(use_case)
+
+    assert turn.tool is ToolName.UNREAD_NOTIFICATIONS
+    assert turn.reply == "Bạn có 1 thông báo mới: Sắp hết giờ."
+    assert backend.calls == [("unread_notifications", AUTH)]
+
+
+def test_pending_proposal() -> None:
+    proposal = PendingProposal((at(9) + timedelta(days=1),), False, 45)
+    backend = FakeBackendReader(proposal=proposal)
+    use_case, *_ = setup(pick("pending_proposal"), backend=backend)
+
+    turn = ask(use_case)
+
+    assert (turn.tool, turn.emotion) == (ToolName.PENDING_PROPOSAL, Emotion.NEUTRAL)
+    assert turn.reply.startswith(
+        "Có lịch đề xuất 1 khung giờ đang chờ duyệt, bắt đầu lúc 9 giờ ngày mai."
+    )
+    assert backend.calls == [("pending_proposal", AUTH)]
+
+
+def test_no_pending_proposal() -> None:
+    use_case, *_ = setup(pick("pending_proposal"))
+
+    assert ask(use_case).reply == "Bạn không có lịch đề xuất nào đang chờ duyệt."
+
+
+MILESTONE_PROJECTS = [
+    ProjectSummary(LANDING_A.id, LANDING_A.name, "Active"),
+    ProjectSummary(SPA.id, SPA.name, "Active"),
+    ProjectSummary(LANDING_B.id, LANDING_B.name, "Completed"),
+]
+MILESTONE_LISTS = {
+    LANDING_A.id: [
+        MilestoneSummary("Bàn giao A", date(2026, 11, 2), "InProgress"),
+        MilestoneSummary("Thiết kế A", date(2026, 10, 20), "Approved"),
+    ],
+    SPA.id: [
+        MilestoneSummary("Thiết kế spa", date(2026, 10, 28), "InRevision"),
+        MilestoneSummary("Không hạn", None, "Planned"),
+    ],
+    LANDING_B.id: [MilestoneSummary("Cũ", date(2026, 10, 1), "Planned")],
+}
+
+
+def test_upcoming_milestones_of_all_active_projects() -> None:
+    backend = FakeBackendReader(projects=MILESTONE_PROJECTS, milestones=MILESTONE_LISTS)
+    use_case, *_ = setup(pick("upcoming_milestones"), backend=backend)
+
+    turn = ask(use_case, "Milestone nào sắp tới hạn?")
+
+    # Approved, undated and inactive-project milestones are left out; oldest first.
+    assert turn.reply == (
+        "Có 2 milestone chưa xong: Thiết kế spa (đã quá hạn) và Bàn giao A (hạn ngày 2/11)."
+    )
+    assert (turn.tool, turn.emotion) == (ToolName.UPCOMING_MILESTONES, Emotion.NEUTRAL)
+    assert backend.calls.count(("milestones", AUTH)) == 2
+
+
+def test_upcoming_milestones_of_one_named_project() -> None:
+    backend = FakeBackendReader(projects=MILESTONE_PROJECTS, milestones=MILESTONE_LISTS)
+    use_case, *_ = setup(
+        pick("upcoming_milestones", name="landing page"), backend=backend
+    )
+
+    turn = ask(use_case)
+
+    # Landing page B is not active, so "landing page" matches only A.
+    assert turn.reply == (
+        "Dự án Landing page Client A có 1 milestone chưa xong: Bàn giao A (hạn ngày 2/11)."
+    )
+    assert turn.emotion is Emotion.HAPPY
+    assert backend.calls.count(("milestones", AUTH)) == 1
+
+
+def test_upcoming_milestones_unknown_project() -> None:
+    backend = FakeBackendReader(projects=MILESTONE_PROJECTS, milestones=MILESTONE_LISTS)
+    use_case, *_ = setup(pick("upcoming_milestones", name="logo"), backend=backend)
+
+    turn = ask(use_case)
+
+    assert turn.reply == "Mình không tìm thấy dự án nào tên logo."
+    assert ("milestones", AUTH) not in backend.calls
+
+
+def test_upcoming_milestones_skip_a_project_the_backend_hides() -> None:
+    lists = {SPA.id: MILESTONE_LISTS[SPA.id]}  # Landing A answers 404
+    backend = FakeBackendReader(projects=MILESTONE_PROJECTS, milestones=lists)
+    use_case, *_ = setup(pick("upcoming_milestones"), backend=backend)
+
+    assert ask(use_case).reply == (
+        "Có 1 milestone chưa xong: Thiết kế spa (đã quá hạn)."
+    )
+
+
 # --- AC6: names ---
 
 
@@ -514,6 +640,25 @@ def test_good_answer_is_logged_as_chat_and_charged() -> None:
         (
             pick("list_projects"),
             FakeBackendReader(projects=BackendReadError("ReadTimeout")),
+        ),
+        (
+            pick("pending_confirmations"),
+            FakeBackendReader(pending=BackendReadError("HTTP 500")),
+        ),
+        (
+            pick("unread_notifications"),
+            FakeBackendReader(notices=BackendReadError("HTTP 500")),
+        ),
+        (
+            pick("pending_proposal"),
+            FakeBackendReader(proposal=BackendReadError("ReadTimeout")),
+        ),
+        (
+            pick("upcoming_milestones"),
+            FakeBackendReader(
+                projects=MILESTONE_PROJECTS,
+                milestones=BackendReadError("HTTP 500"),
+            ),
         ),
     ],
 )

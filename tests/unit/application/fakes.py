@@ -49,6 +49,7 @@ from metanoia_ai.application.ports.memory_repository import (
     PendingMemory,
     TaskForMemory,
 )
+from metanoia_ai.application.ports.overrun_repository import OverrunData
 from metanoia_ai.application.ports.productive_hours_repository import (
     ProductiveProfile,
 )
@@ -1238,3 +1239,25 @@ class FakeBackendReader:
         if project_id not in lists:
             raise BackendNotFoundError(str(project_id))
         return lists[project_id]
+
+
+class FakeOverrunRepository:
+    """Prepared OverrunData per user; the late slot is picked by id. Read-only, like the port."""
+
+    def __init__(self) -> None:
+        self.users: dict[UUID, OverrunData] = {}
+        self.windows: list[tuple[datetime, datetime]] = []
+
+    async def get_overrun_data(
+        self,
+        user_id: UUID,
+        slot_id: UUID,
+        window_start: datetime,
+        window_end: datetime,
+    ) -> OverrunData | None:
+        self.windows.append((window_start, window_end))
+        data = self.users.get(user_id)
+        if data is None:
+            return None
+        late = next((s for s in data.slots if s.slot_id == slot_id), None)
+        return replace(data, late=late)

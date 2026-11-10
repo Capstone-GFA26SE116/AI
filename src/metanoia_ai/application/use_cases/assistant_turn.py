@@ -12,6 +12,7 @@
 The spoken text is masked before the prompt and never logged (#11).
 """
 
+import asyncio
 import json
 import logging
 import statistics
@@ -28,6 +29,7 @@ from metanoia_ai.application.ports.assistant_repository import AssistantReposito
 from metanoia_ai.application.ports.backend_reader import (
     BackendNotFoundError,
     BackendReader,
+    MilestoneSummary,
 )
 from metanoia_ai.application.ports.quota_repository import (
     QuotaRepository,
@@ -44,7 +46,7 @@ from metanoia_ai.application.use_cases.send_task_chat_message import (
     AIUnavailableError,
 )
 from metanoia_ai.domain import assistant_text as say
-from metanoia_ai.domain.assistant_text import Emotion, TimedLine
+from metanoia_ai.domain.assistant_text import DueMilestone, Emotion, TimedLine
 from metanoia_ai.domain.assistant_tools import (
     BadToolChoiceError,
     SmalltalkKind,
@@ -63,9 +65,11 @@ from metanoia_ai.prompts import load_prompt
 
 logger = logging.getLogger(__name__)
 
-PROMPT_VERSION = "assistant_router_v2"  # v2: "hay trễ" → estimation_habits
+PROMPT_VERSION = "assistant_router_v3"  # v3: 4 more read tools
 NOW_FORMAT = "%Y-%m-%d %H:%M"
 ACTIVE_PROJECT = "Active"
+# Milestones still to deliver; Delivered / Approved ones are done for the user.
+OPEN_MILESTONES = frozenset({"Planned", "InProgress", "InRevision"})
 
 # Reads of AI-owned data, built in deps.py from the existing use cases.
 BriefingReader = Callable[
@@ -339,6 +343,35 @@ class AssistantTurn:
                 return answer(say.list_projects_text(names, lang))
             case ToolName.AI_QUOTA:
                 return answer(say.ai_quota_text(calls_left, lang))
+            case ToolName.PENDING_CONFIRMATIONS:
+                sessions = await self.backend.pending_confirmations(request.auth_header)
+                reply = say.pending_confirmations_text(
+                    [(s.task_title, s.system_minutes) for s in sessions], lang
+                )
+                return answer(reply, Emotion.NEUTRAL if sessions else Emotion.HAPPY)
+            case ToolName.UNREAD_NOTIFICATIONS:
+                notices = await self.backend.unread_notifications(request.auth_header)
+                return answer(
+                    say.unread_notifications_text([n.title for n in notices], lang)
+                )
+            case ToolName.PENDING_PROPOSAL:
+                proposal = await self.backend.pending_proposal(request.auth_header)
+                if proposal is None:
+                    return answer(
+                        say.pending_proposal_text(None, True, None, now, zone, lang)
+                    )
+                reply = say.pending_proposal_text(
+                    proposal.slot_starts,
+                    proposal.is_feasible,
+                    proposal.missing_minutes,
+                    now,
+                    zone,
+                    lang,
+                )
+                emotion = Emotion.HAPPY if proposal.is_feasible else Emotion.NEUTRAL
+                return answer(reply, emotion)
+            case ToolName.UPCOMING_MILESTONES:
+                return await self._milestones(choice, request, now, zone)
         raise ValueError(f"tool {tool} has no reader")  # pragma: no cover
 
     async def _pick(
@@ -419,3 +452,48 @@ class AssistantTurn:
             lang,
         )
         return Turn(TurnKind.ANSWER, ToolName.PROJECT_PROGRESS, reply, Emotion.HAPPY)
+
+    async def _milestones(
+        self, choice: ToolChoice, request: TurnRequest, now: datetime, zone: ZoneInfo
+    ) -> Turn:
+        """Open milestones of all active projects, or of the one the user named."""
+        lang, auth = request.language, request.auth_header
+        projects = [
+            p for p in await self.backend.projects(auth) if p.status == ACTIVE_PROJECT
+        ]
+        project_name = None
+        if choice.name is not None or request.selected_id is not None:
+            items = [NamedItem(p.id, p.name) for p in projects]
+            picked = await self._pick(choice, request, items, "dự án", "project")
+            if isinstance(picked, Turn):
+                return picked
+            projects = [p for p in projects if p.id == picked.id]
+            project_name = picked.name
+        lists = await asyncio.gather(
+            *(self._project_milestones(p.id, auth) for p in projects)
+        )
+        due = sorted(
+            (
+                DueMilestone(m.name, datetime.combine(m.due_date, time(0), tzinfo=zone))
+                for milestones in lists
+                for m in milestones
+                if m.status in OPEN_MILESTONES and m.due_date is not None
+            ),
+            key=lambda m: m.due,
+        )
+        overdue = any(m.due.date() < now.astimezone(zone).date() for m in due)
+        return Turn(
+            TurnKind.ANSWER,
+            ToolName.UPCOMING_MILESTONES,
+            say.upcoming_milestones_text(due, project_name, now, zone, lang),
+            Emotion.NEUTRAL if overdue else Emotion.HAPPY,
+        )
+
+    async def _project_milestones(
+        self, project_id: UUID, auth: str
+    ) -> list[MilestoneSummary]:
+        """A project the Backend says is not the user's counts as having none."""
+        try:
+            return await self.backend.milestones(project_id, auth)
+        except BackendNotFoundError:
+            return []

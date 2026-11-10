@@ -28,14 +28,25 @@ class ToolName(StrEnum):
     PROJECT_PROGRESS = "project_progress"
     LIST_PROJECTS = "list_projects"
     AI_QUOTA = "ai_quota"
+    PENDING_CONFIRMATIONS = "pending_confirmations"
+    UNREAD_NOTIFICATIONS = "unread_notifications"
+    PENDING_PROPOSAL = "pending_proposal"
+    UPCOMING_MILESTONES = "upcoming_milestones"
     UNSUPPORTED = "unsupported"
     SMALLTALK = "smalltalk"
 
 
-# The 10 tools that read data (#3). The other two never call anything.
+# The tools that read data (#3). The other two never call anything.
 READ_TOOLS = frozenset(ToolName) - {ToolName.UNSUPPORTED, ToolName.SMALLTALK}
-# Tools that need a spoken task / project name, matched by code (#6).
-NAMED_TOOLS = frozenset({ToolName.SIMILAR_TASK_TIME, ToolName.PROJECT_PROGRESS})
+# Tools that take a spoken task / project name, matched by code (#6).
+# For upcoming_milestones the name is optional: no name → all active projects.
+NAMED_TOOLS = frozenset(
+    {
+        ToolName.SIMILAR_TASK_TIME,
+        ToolName.PROJECT_PROGRESS,
+        ToolName.UPCOMING_MILESTONES,
+    }
+)
 
 
 class SmalltalkKind(StrEnum):

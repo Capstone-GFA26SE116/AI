@@ -48,6 +48,39 @@ class ProjectProgress:
     progress_percent: float
 
 
+@dataclass(frozen=True)
+class PendingSession:
+    """One item of GET /api/focus/pending-confirmation: a timer stopped by the system."""
+
+    task_title: str
+    system_minutes: int  # what the timer recorded, before the user confirms
+
+
+@dataclass(frozen=True)
+class UnreadNotice:
+    """One item of GET /api/notifications?unreadOnly=true (newest first)."""
+
+    title: str
+
+
+@dataclass(frozen=True)
+class PendingProposal:
+    """GET /api/schedule/proposals/pending."""
+
+    slot_starts: tuple[datetime, ...]  # timezone-aware, in time order
+    is_feasible: bool  # False: not every deadline can be met
+    missing_minutes: int | None
+
+
+@dataclass(frozen=True)
+class MilestoneSummary:
+    """One item of GET /api/projects/{id}/milestones."""
+
+    name: str
+    due_date: date | None
+    status: str  # Planned / InProgress / Delivered / InRevision / Approved
+
+
 class BackendReader(Protocol):
     async def current_focus(self, auth_header: str) -> RunningFocus | None:
         """The running timer, or None when nothing is being timed."""
@@ -60,5 +93,23 @@ class BackendReader(Protocol):
     async def project_progress(
         self, project_id: UUID, auth_header: str
     ) -> ProjectProgress:
+        """Raises BackendNotFoundError when the project is not the user's."""
+        ...
+
+    async def pending_confirmations(self, auth_header: str) -> list[PendingSession]:
+        """Timer sessions the system stopped, waiting for the user to confirm."""
+        ...
+
+    async def unread_notifications(self, auth_header: str) -> list[UnreadNotice]:
+        """Unread notifications, newest first."""
+        ...
+
+    async def pending_proposal(self, auth_header: str) -> PendingProposal | None:
+        """The schedule proposal waiting for approval, or None."""
+        ...
+
+    async def milestones(
+        self, project_id: UUID, auth_header: str
+    ) -> list[MilestoneSummary]:
         """Raises BackendNotFoundError when the project is not the user's."""
         ...

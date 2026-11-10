@@ -17,9 +17,13 @@ from metanoia_ai.application.ports.analytics_repository import (
 from metanoia_ai.application.ports.assistant_repository import ScheduleRows
 from metanoia_ai.application.ports.backend_reader import (
     BackendNotFoundError,
+    MilestoneSummary,
+    PendingProposal,
+    PendingSession,
     ProjectProgress,
     ProjectSummary,
     RunningFocus,
+    UnreadNotice,
 )
 from metanoia_ai.application.ports.briefing_repository import BriefingData
 from metanoia_ai.application.ports.chat_repository import (
@@ -1177,10 +1181,18 @@ class FakeBackendReader:
         focus: RunningFocus | None | Exception = None,
         projects: list[ProjectSummary] | Exception | None = None,
         progress: dict[UUID, ProjectProgress] | Exception | None = None,
+        pending: list[PendingSession] | Exception | None = None,
+        notices: list[UnreadNotice] | Exception | None = None,
+        proposal: PendingProposal | None | Exception = None,
+        milestones: dict[UUID, list[MilestoneSummary]] | Exception | None = None,
     ) -> None:
         self.focus = focus
         self.project_list = projects if projects is not None else []
         self.progress = progress if progress is not None else {}
+        self.pending = pending if pending is not None else []
+        self.notices = notices if notices is not None else []
+        self.proposal = proposal
+        self.milestone_lists = milestones if milestones is not None else {}
         self.calls: list[tuple[str, str]] = []  # (method, auth header)
 
     @staticmethod
@@ -1205,3 +1217,24 @@ class FakeBackendReader:
         if project_id not in progress:
             raise BackendNotFoundError(str(project_id))
         return progress[project_id]
+
+    async def pending_confirmations(self, auth_header: str) -> list[PendingSession]:
+        self.calls.append(("pending_confirmations", auth_header))
+        return self._give(self.pending)
+
+    async def unread_notifications(self, auth_header: str) -> list[UnreadNotice]:
+        self.calls.append(("unread_notifications", auth_header))
+        return self._give(self.notices)
+
+    async def pending_proposal(self, auth_header: str) -> PendingProposal | None:
+        self.calls.append(("pending_proposal", auth_header))
+        return self._give(self.proposal)
+
+    async def milestones(
+        self, project_id: UUID, auth_header: str
+    ) -> list[MilestoneSummary]:
+        self.calls.append(("milestones", auth_header))
+        lists = self._give(self.milestone_lists)
+        if project_id not in lists:
+            raise BackendNotFoundError(str(project_id))
+        return lists[project_id]

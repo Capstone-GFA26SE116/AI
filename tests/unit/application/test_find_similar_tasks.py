@@ -19,8 +19,15 @@ from metanoia_ai.application.use_cases.find_similar_tasks import (
 from metanoia_ai.application.use_cases.record_task_completion import (
     TaskNotFoundError,
 )
+from metanoia_ai.domain.memory_text import StopReason
 from metanoia_ai.domain.models import TaskType
-from metanoia_ai.domain.similar_tasks import MatchSource, PastTask, SimilarOutcome
+from metanoia_ai.domain.similar_tasks import (
+    MatchSource,
+    PastSession,
+    PastTask,
+    SimilarOutcome,
+    StopReasons,
+)
 from tests.unit.application.fakes import (
     FakeEmbeddingClient,
     FakeMemory,
@@ -322,3 +329,40 @@ def test_limit_and_summary():
 
     assert len(result.items) == 3
     assert result.summary.count == 3
+
+
+# --- FR-09b: stop reasons (T3) ---
+
+
+def test_t3_stop_reasons_are_attached_to_each_result() -> None:
+    s = Setup(GOOD)
+    slow = s.add(past("Landing page khách A", actual=180))
+    smooth = s.add(past("Landing page khách B", actual=60))
+    s.repo.add_sessions(
+        USER,
+        slow.task_id,
+        [
+            PastSession(StopReason.BLOCKED, "Chờ khách gửi nội dung", "Khách A"),
+            PastSession(StopReason.INTERRUPTED, None, "Khách A"),
+        ],
+    )
+    # Another user's sessions on a task id that is in the result: never read.
+    s.repo.add_sessions(
+        OTHER_USER, smooth.task_id, [PastSession(StopReason.OTHER, "x", None)]
+    )
+
+    result = s.find()
+
+    assert result.reasons[slow.task_id] == StopReasons(
+        interrupted=1, blocked=1, notes=("Chờ khách gửi nội dung",)
+    )
+    assert smooth.task_id not in result.reasons
+    [(user, ids)] = s.repo.reason_calls  # one read for all results
+    assert user == USER and set(ids) == {slow.task_id, smooth.task_id}
+
+
+def test_t3_no_results_reads_no_reasons() -> None:
+    s = Setup(GOOD)
+
+    assert s.find().reasons == {}
+    assert s.repo.reason_calls == []

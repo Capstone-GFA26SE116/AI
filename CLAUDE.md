@@ -133,6 +133,7 @@ Full text in `docs/functional-requirements.md`. Status: first line of each `plan
 | FR-08b-1 | AI chat, project level: text brief → milestones + Flexible tasks, then Apply | `plans/FR-08b-1.md` |
 | FR-08b-2 | Project chat reads documents: library files (only with `AllowAiDocumentAccess`) and uploads, ≤ 3 per message; no streaming | `plans/FR-08b-2.md` |
 | FR-09 | Similar past tasks: hybrid search (vector + full-text) + RRF. Free/busy time and workload are already in FR-10 | `plans/FR-09.md` |
+| FR-09b | Similar tasks also return why their sessions stopped (counts + 2 masked notes) | `plans/FR-09b.md` |
 | FR-19 | Long-term memory: embeddings in pgvector, built in the background | `plans/FR-19.md` |
 | FR-12 | Daily "Today" briefing (text only, no LLM) | `plans/FR-12.md` |
 | FR-18 | Productive hours: onboarding answers, then timer data | `plans/FR-18.md` |

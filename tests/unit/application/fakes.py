@@ -88,7 +88,7 @@ from metanoia_ai.domain.productive_hours import (
     HourScore,
     OnboardingBlock,
 )
-from metanoia_ai.domain.similar_tasks import WORD, PastTask
+from metanoia_ai.domain.similar_tasks import WORD, PastSession, PastTask
 from metanoia_ai.domain.task_breakdown import Subtask
 
 
@@ -460,9 +460,27 @@ class FakeSimilarTaskRepository:
         self.vector_calls: list[tuple[UUID, UUID, list[float], int]] = []
         self.text_calls: list[tuple[UUID, UUID, str, int]] = []
         self.transactions: list[str] = []  # "read_only" / "write", in order
+        # FR-09b: task id -> (owner id, finished sessions newest first)
+        self.sessions: dict[UUID, tuple[UUID, list[PastSession]]] = {}
+        self.reason_calls: list[tuple[UUID, list[UUID]]] = []
 
     def add_task(self, owner_id: UUID, task: QueryTask) -> None:
         self.tasks[task.task_id] = (owner_id, task)
+
+    def add_sessions(
+        self, owner_id: UUID, task_id: UUID, sessions: list[PastSession]
+    ) -> None:
+        self.sessions[task_id] = (owner_id, sessions)
+
+    async def stop_reasons(
+        self, user_id: UUID, task_ids: Sequence[UUID]
+    ) -> dict[UUID, list[PastSession]]:
+        self.reason_calls.append((user_id, list(task_ids)))
+        return {
+            task_id: sessions
+            for task_id, (owner, sessions) in self.sessions.items()
+            if owner == user_id and task_id in task_ids
+        }
 
     def add_memory(self, memory: FakeMemory) -> None:
         self.memories.append(memory)

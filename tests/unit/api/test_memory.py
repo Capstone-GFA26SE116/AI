@@ -121,6 +121,13 @@ def test_t19_answer_matches_the_plan(client, fakes):
                 "finished_at": "2026-10-10T17:00:00+07:00",  # user's time zone
                 "score": 0.0328,
                 "matched_by": ["vector", "text"],
+                # FR-09b: no finished sessions for this past task in the fake
+                "stop_reasons": {
+                    "interrupted": 0,
+                    "blocked": 0,
+                    "other": 0,
+                    "notes": [],
+                },
             }
         ],
         "summary": {"count": 1, "done_count": 1, "average_ratio": 1.5},

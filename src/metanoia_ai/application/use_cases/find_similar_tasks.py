@@ -40,10 +40,12 @@ from metanoia_ai.domain.similar_tasks import (
     PastTask,
     SimilarSummary,
     SimilarTask,
+    StopReasons,
     build_search_query,
     rrf_merge,
     search_terms,
     summarize_similar,
+    summarize_stop_reasons,
 )
 
 logger = logging.getLogger(__name__)
@@ -62,6 +64,8 @@ class SimilarTasksResult:
     time_zone: ZoneInfo  # the user's, for finished_at in the answer
     items: list[SimilarTask] = field(default_factory=list)
     summary: SimilarSummary = field(default_factory=lambda: SimilarSummary(0, 0, None))
+    # FR-09b: why each past task's sessions stopped; a task without sessions is missing
+    reasons: dict[UUID, StopReasons] = field(default_factory=dict)
 
 
 class FindSimilarTasks:
@@ -110,8 +114,15 @@ class FindSimilarTasks:
 
         items = rrf_merge(vector_found, text_found, k=self.rrf_k, limit=limit)
         mode = SearchMode.HYBRID if vector is not None else SearchMode.TEXT_ONLY
+        reasons: dict[UUID, StopReasons] = {}
+        if items:
+            async with self.repo.read_only():
+                sessions = await self.repo.stop_reasons(
+                    user_id, [item.task.task_id for item in items]
+                )
+            reasons = {tid: summarize_stop_reasons(s) for tid, s in sessions.items()}
         return SimilarTasksResult(
-            task_id, mode, task.time_zone, items, summarize_similar(items)
+            task_id, mode, task.time_zone, items, summarize_similar(items), reasons
         )
 
     async def _embed(self, user_id: UUID, query: str) -> list[float] | None:

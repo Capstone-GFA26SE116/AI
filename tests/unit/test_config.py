@@ -721,6 +721,9 @@ def test_assistant_defaults(env):
     assert s.assistant_min_confidence == 0.5
     assert s.assistant_match_min_score == 0.8
     assert s.assistant_match_min_gap == 0.2
+    assert s.assistant_local_router is True
+    assert s.assistant_local_min_score == 0.45
+    assert s.assistant_local_min_gap == 0.05
 
 
 def test_assistant_values_can_be_changed(env):

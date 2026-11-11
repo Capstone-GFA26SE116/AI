@@ -179,6 +179,10 @@ class Settings(BaseSettings):
     # Spoken name matching (#6): best score and lead over the second best.
     assistant_match_min_score: float = Field(default=0.8, gt=0, le=1)
     assistant_match_min_gap: float = Field(default=0.2, ge=0, lt=1)
+    # FR-22b: pick familiar questions without the LLM (and without using quota).
+    assistant_local_router: bool = True
+    assistant_local_min_score: float = Field(default=0.45, gt=0, le=1)
+    assistant_local_min_gap: float = Field(default=0.05, ge=0, lt=1)
 
     @field_validator("productive_learning_plans", mode="before")
     @classmethod

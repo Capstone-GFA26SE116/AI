@@ -1,5 +1,8 @@
 """FR-22 phase 1: one spoken question → one read-only tool → one spoken reply.
 
+0. FR-22b: the local router tries first (no LLM). A sure pick runs the tool at once:
+   no quota check, nothing charged, no AIUsageLog — so familiar questions still work
+   when the plan or Gemini's free tier is used up. Anything unclear goes on below.
 1. Quota check (nothing charged yet) and the user's time zone.
 2. One LLM call picks the tool and copies words (#1, #2). No retry (plan §5).
    Bad answer or failure → AIUnavailableError (502), not charged (AC4).
@@ -48,6 +51,7 @@ from metanoia_ai.application.use_cases.send_task_chat_message import (
 from metanoia_ai.domain import assistant_text as say
 from metanoia_ai.domain.assistant_text import DueMilestone, Emotion, TimedLine
 from metanoia_ai.domain.assistant_tools import (
+    NAMED_TOOLS,
     BadToolChoiceError,
     SmalltalkKind,
     ToolChoice,
@@ -56,6 +60,7 @@ from metanoia_ai.domain.assistant_tools import (
     router_schema,
 )
 from metanoia_ai.domain.briefing import schedule_between
+from metanoia_ai.domain.local_router import LocalRouter, LocalSettings, local_choice
 from metanoia_ai.domain.memory_text import mask_contact
 from metanoia_ai.domain.models import Language
 from metanoia_ai.domain.name_matching import MatchKind, NamedItem, match_name
@@ -116,6 +121,7 @@ class AssistantSettings:
     min_confidence: float
     match_min_score: float
     match_min_gap: float
+    local: LocalSettings | None = None  # FR-22b; None: always ask the LLM
 
 
 @dataclass(frozen=True)
@@ -174,7 +180,9 @@ class AssistantTurn:
         similar: SimilarReader,
         settings: AssistantSettings,
         now: Callable[[], datetime],
+        router: LocalRouter | None = None,
     ) -> None:
+        self.router = router
         self.repo = repo
         self.quota_repo = quota_repo
         self.quota = ChatQuota(quota_repo, now=now)
@@ -188,11 +196,18 @@ class AssistantTurn:
         self.now = now
 
     async def execute(self, request: TurnRequest) -> Turn:
-        subscription = await self.quota.check(request.user_id)
         zone = await self.repo.get_time_zone(request.user_id)
         if zone is None:
             raise UserNotFoundError(str(request.user_id))
         now = self.now().astimezone(zone)
+
+        local = await self._local_choice(request)
+        if local is not None:
+            return await self._run(
+                local, request, now, zone, await self._calls_left(request.user_id)
+            )
+
+        subscription = await self.quota.check(request.user_id)
 
         result = await self.caller.call(
             build_prompt(request.text, request.history, now),
@@ -208,6 +223,43 @@ class AssistantTurn:
         if subscription.ai_call_limit is not None:
             left = subscription.ai_call_limit - subscription.ai_calls_used - 1
         return await self._run(result.value, request, now, zone, left)
+
+    # --- FR-22b: local router ---
+
+    async def _local_choice(self, request: TurnRequest) -> ToolChoice | None:
+        """A sure pick without the LLM, or None. A spoken name must match one item."""
+        if self.router is None or self.settings.local is None:
+            return None
+        choice = local_choice(
+            self.router, request.text, bool(request.history), self.settings.local
+        )
+        if choice is None or choice.tool not in NAMED_TOOLS:
+            return choice
+        if choice.name is None or request.selected_id is not None:
+            return choice  # milestones of every project; or the user picked from a list
+        items = (
+            await self.repo.open_tasks(request.user_id)
+            if choice.tool is ToolName.SIMILAR_TASK_TIME
+            else await self.repo.projects(request.user_id)
+        )
+        match = match_name(
+            choice.name,
+            items,
+            min_score=self.settings.match_min_score,
+            min_gap=self.settings.match_min_gap,
+        )
+        if match.kind is not MatchKind.FOUND or match.found is None:
+            return None  # the leftover words may not be a name: the LLM decides
+        return ToolChoice(choice.tool, choice.confidence, name=match.found.name)
+
+    async def _calls_left(self, user_id: UUID) -> int | None:
+        """For ai_quota on a local turn: nothing is charged, so this is what is left now."""
+        subscription = await self.quota_repo.get_subscription(user_id, self.now())
+        if subscription is None:
+            return 0  # no plan: no AI use at all, not "unlimited"
+        if subscription.ai_call_limit is None:
+            return None
+        return max(subscription.ai_call_limit - subscription.ai_calls_used, 0)
 
     # --- quota ---
 

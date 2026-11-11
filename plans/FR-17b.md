@@ -1,6 +1,6 @@
 # FR-17b — Không học K_bias từ ước lượng do AI đặt
 
-Trạng thái: Đã duyệt · Branch: `feature/fr17b-estimate-source` · Cập nhật: 2026-10-16
+Trạng thái: Xong · Branch: `feature/fr17b-estimate-source` · Cập nhật: 2026-10-16
 
 <!-- Thiết kế trên Claude web (2026-10-16), tách ra từ FR-08b-1 #11. Claude Code chỉ được tick checkbox ở mục 0 và 4.
 ⚠️ = cần báo Backend/team; danh sách đầy đủ ở docs/open-questions.md. -->

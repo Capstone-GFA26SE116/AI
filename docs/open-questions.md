@@ -96,8 +96,7 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 | Ngưỡng `SIMILAR_MIN_SIMILARITY` (FR-09 #4) | FR-09 | 0.5. Chạy thật 2026-10-15: task không liên quan vẫn qua ngưỡng (Gemini cho câu khác nghĩa ~0.69) → cân nhắc ~0.75 khi có thêm dữ liệu |
 | FR-17: có đổi công thức K sang EMA trên log ratio (`ln K ← α·ln r + (1−α)·ln K`)? | FR-17, K-SiP #6 | Replay SiP (2026-10-29, `research/kbias_sip/results/results.md`): X1 tốt hơn M ở P1 (0.177 so với 0.183), P1 theo developer (0.179 so với 0.219), độ lệch (+0.07 so với +0.17). Chỉ là dữ liệu công ty, chưa đổi production. Cũng cân nhắc K0 = 1.3 (SiP ước lượng dư, K0 = 1.0 tốt hơn) |
 | ⚠️ FR-20: Dashboard (kể cả câu độ lệch) mở cho **mọi gói**, vì không tốn LLM. Muốn khóa theo gói thì Backend chặn ở đường chuyển tiếp | FR-20 #12 | Hiếu đã quyết, chỉ báo team |
-| ⚠️ Thêm **FR-22** + UC "Hỏi trợ lý bằng giọng nói" vào SRS (giai đoạn 1 chỉ đọc). SRS cũ ghi voice ngoài phạm vi | FR-22 | Code đã có trên `feature/fr22-assistant` |
-| Chạy lại FR-22 bước 10 (T11, cần ≥ 18/20, p95 < 5 s) sau khi sửa khóa JWT và có Gemini trả phí | FR-22 AC1, AC8 | 2026-11-04: 16/20 (4 câu Gemini Free 429), p95 5,6 s từ máy dev; Hiếu cho bỏ qua chạy lại |
+| ⚠️ Thêm **FR-22** + UC "Hỏi trợ lý bằng giọng nói" vào SRS (giai đoạn 1 chỉ đọc). SRS cũ ghi voice ngoài phạm vi | FR-22 | Code đã merge vào `main` (PR #21–#23, #26), chạy trên Azure |
 
 ## Cập nhật Google Doc
 
@@ -108,6 +107,7 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 | Ngày | Câu hỏi | Kết quả |
 |---|---|---|
 | 2026-11-10 | Slot `Due` / `InProgress` / `Overrun` (Backend thêm) | AI coi là "nằm trên lịch": giờ bận ở FR-10 (kể cả task "đã có slot"), hiện như `Approved` ở FR-12 / trợ lý. Đã sửa (nhánh `fix/slot-active-states`) |
+| 2026-11-11 | Chạy lại FR-22 bước 10 | Xong cùng FR-22b: 20/20 đúng, p95 3,1 s (AC1, AC8 đạt); 18/20 câu chọn tại chỗ không tốn lượt |
 | 2026-10-07 | JWT | HS256, user ID trong `sub`, iss `METANOIA`, aud `METANOIA.Client` |
 | 2026-10-11 | Đường gọi | Frontend → Backend → AI (**đổi 2026-10-30**, xem dòng dưới) |
 | 2026-10-30 | Đường gọi (FR-22) | **Frontend và Mobile được gọi thẳng AI service** với JWT của user (header `Authorization`). Backend không cần chuyển tiếp nữa. AI service gọi lại Backend (chỉ GET) bằng chính JWT đó |

@@ -99,3 +99,17 @@ def test_t21_unsafe_parts_are_dropped(terms, clean):
 def test_repository_matches_the_port():
     repo: SimilarTaskRepository = SqlSimilarTaskRepository(session=None)  # type only
     assert repo is not None
+
+
+# --- FR-09b (T4) ---
+
+
+def test_t4_stop_reasons_sql_is_limited_to_the_user_and_finished_sessions() -> None:
+    from metanoia_ai.infrastructure.db.similar_task_repository import STOP_REASONS
+
+    text = " ".join(str(STOP_REASONS).split())
+    assert 'p."UserId" = :user_id' in text
+    assert 'fs."TaskId" = ANY(CAST(:task_ids AS uuid[]))' in text
+    assert 'fs."EndedAt" IS NOT NULL' in text
+    assert 'ORDER BY fs."EndedAt" DESC' in text
+    assert text.startswith("SELECT")

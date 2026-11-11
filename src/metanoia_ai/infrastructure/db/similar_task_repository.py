@@ -5,7 +5,7 @@ Full-text uses the 'simple' config of the GIN index, written out in every query:
 the database default is 'english', which would skip the index (plan #19).
 """
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -18,9 +18,17 @@ from metanoia_ai.application.ports.similar_task_repository import (
     VectorMatch,
 )
 from metanoia_ai.domain.models import estimate_source
-from metanoia_ai.domain.similar_tasks import WORD, PastTask, SimilarOutcome
+from metanoia_ai.domain.similar_tasks import (
+    WORD,
+    PastSession,
+    PastTask,
+    SimilarOutcome,
+)
 from metanoia_ai.infrastructure.db.learning_repository import TASK_TYPE_FROM_DB
-from metanoia_ai.infrastructure.db.memory_repository import to_pgvector
+from metanoia_ai.infrastructure.db.memory_repository import (
+    STOP_REASON_FROM_DB,
+    to_pgvector,
+)
 
 # DB Outcome → answer. "Partial" is never written by the AI (FR-19 #23); if the
 # Backend ever writes it, it is shown like "skipped" (no ratio).
@@ -43,6 +51,20 @@ GET_TASK = text("""
 
 # pgvector 0.8: keep scanning the HNSW index until enough rows pass the user
 # filter (plan #12). Only for this transaction.
+# FR-09b: finished sessions of the result tasks, newest first; the client name is hidden
+# in notes. A running session (EndedAt NULL) has no reason yet.
+STOP_REASONS = text("""
+    SELECT fs."TaskId", fs."StopReason", fs."Note", c."Name" AS "ClientName"
+    FROM "FocusSession" fs
+    JOIN "Task" t ON t."Id" = fs."TaskId"
+    JOIN "Project" p ON p."Id" = t."ProjectId"
+    LEFT JOIN "Client" c ON c."Id" = p."ClientId"
+    WHERE p."UserId" = :user_id
+      AND fs."TaskId" = ANY(CAST(:task_ids AS uuid[]))
+      AND fs."EndedAt" IS NOT NULL
+    ORDER BY fs."EndedAt" DESC
+""")
+
 ITERATIVE_SCAN = text("SET LOCAL hnsw.iterative_scan = relaxed_order")
 
 # <=> is cosine distance; similarity = 1 − distance.
@@ -165,3 +187,17 @@ class SqlSimilarTaskRepository:
         }
         rows = await self.session.execute(TEXT_SEARCH, params)
         return [to_past_task(r) for r in rows]
+
+    async def stop_reasons(
+        self, user_id: UUID, task_ids: Sequence[UUID]
+    ) -> dict[UUID, list[PastSession]]:
+        params = {"user_id": user_id, "task_ids": [str(t) for t in task_ids]}
+        result: dict[UUID, list[PastSession]] = {}
+        for r in await self.session.execute(STOP_REASONS, params):
+            reason = STOP_REASON_FROM_DB.get(r.StopReason)
+            if reason is None:
+                continue  # an unknown value: not counted, never guessed
+            result.setdefault(r.TaskId, []).append(
+                PastSession(reason, r.Note, r.ClientName)
+            )
+        return result

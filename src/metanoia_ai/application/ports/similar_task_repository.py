@@ -1,5 +1,6 @@
 """What the similar task search (FR-09) needs from storage. The database code implements it."""
 
+from collections.abc import Sequence
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from typing import Protocol
@@ -7,7 +8,7 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from metanoia_ai.domain.models import TaskType
-from metanoia_ai.domain.similar_tasks import PastTask
+from metanoia_ai.domain.similar_tasks import PastSession, PastTask
 
 
 @dataclass(frozen=True)
@@ -59,4 +60,10 @@ class SimilarTaskRepository(Protocol):
 
         Includes memories still waiting for a vector (Pending/Failed, plan #13).
         """
+        ...
+
+    async def stop_reasons(
+        self, user_id: UUID, task_ids: Sequence[UUID]
+    ) -> dict[UUID, list[PastSession]]:
+        """Finished focus sessions of these tasks (the user's only), newest first (FR-09b)."""
         ...

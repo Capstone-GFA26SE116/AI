@@ -1,6 +1,6 @@
 # FIX — Đồng bộ quota và K với tài liệu
 
-Trạng thái: Đã duyệt · Branch: `fix/quota-sync-docs` · Cập nhật: 2026-10-28
+Trạng thái: Xong · Branch: `fix/quota-sync-docs` · Cập nhật: 2026-10-28
 
 <!-- Thiết kế trên Claude web (2026-10-28). Claude Code chỉ được tick checkbox ở mục 0 và 4.
 ⚠️ = cần báo Backend/team; danh sách đầy đủ ở docs/open-questions.md.

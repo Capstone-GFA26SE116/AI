@@ -3,7 +3,7 @@
 Usage (from the repo root; no need to start the API):
     uv run python scripts/try_assistant.py
 
-1 test user ("Tiêu chuẩn" plan, 300 AI calls) with 3 projects (two "Landing page …"
+1 test user ("Pro" plan, 300 AI calls) with 3 projects (two "Landing page …"
 to test "clarify"), open tasks, a meeting this afternoon and this evening, an approved
 slot tomorrow, a running timer, a learned K for Writing, onboarding "morning + evening"
 and 2 finished "viết bài blog" tasks with memories (FR-09).
@@ -36,7 +36,7 @@ RUN = uuid4().hex[:8]
 ROLE_FREELANCER = "90a6d82a-be10-4e27-89b4-0be88fbf1a03"
 DOMAIN_WRITING = "494703e0-10de-4457-b245-7c24f088deeb"
 DOMAIN_CODING = "a7b1eb7a-e137-4a50-851b-199273b98c6f"
-PLAN = "Tiêu chuẩn"
+PLAN = "Pro"  # renamed from "Tiêu chuẩn" (300 AI calls)
 NAMES = ["user", "subscription", "landing_a", "landing_b", "spa"]
 NAMES += ["blog", "report", "meeting", "dinner", "old1", "old2"]
 IDS = {name: uuid4() for name in NAMES}
@@ -337,8 +337,14 @@ async def main() -> None:
             )
         ok = right >= MIN_CORRECT
         print(f"  [{'OK' if ok else 'FAIL'}] AC1/AC2: ≥ {MIN_CORRECT}/20 đúng công cụ")
-        charge_ok = used == statuses.count(200) and rows >= used
-        print(f"  [{'OK' if charge_ok else 'FAIL'}] AC4: mỗi lượt 200 trừ đúng 1 lượt")
+        # FR-22b: a turn picked by the local router uses no LLM and is not charged;
+        # each LLM turn charges exactly 1 call (FR-22 AC4).
+        charge_ok = rows == used and used <= statuses.count(200)
+        local = statuses.count(200) - used
+        print(
+            f"  [{'OK' if charge_ok else 'FAIL'}] AC4: chỉ lượt gọi LLM bị trừ "
+            f"({used} lượt LLM, {local} lượt chọn tại chỗ không trừ)"
+        )
         speed_ok = p95(timings) < MAX_P95_MS
         print(
             f"  [{'OK' if speed_ok else 'FAIL'}] AC8: p95 < 5 s (đo từ máy dev, có mạng)"

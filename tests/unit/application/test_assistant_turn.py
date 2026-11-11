@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from dataclasses import replace
 from datetime import date, datetime, timedelta
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -51,7 +52,7 @@ from metanoia_ai.application.use_cases.send_task_chat_message import (
     AIUnavailableError,
 )
 from metanoia_ai.domain.assistant_text import Emotion
-from metanoia_ai.domain.assistant_tools import ToolName
+from metanoia_ai.domain.assistant_tools import SmalltalkKind, ToolName
 from metanoia_ai.domain.briefing import (
     FixedEntry,
     ScheduleItem,
@@ -59,6 +60,7 @@ from metanoia_ai.domain.briefing import (
     SlotEntry,
     SlotStatus,
 )
+from metanoia_ai.domain.local_router import LocalRouter, LocalSettings, load_examples
 from metanoia_ai.domain.models import Language
 from metanoia_ai.domain.name_matching import NamedItem
 from metanoia_ai.domain.similar_tasks import (
@@ -67,6 +69,7 @@ from metanoia_ai.domain.similar_tasks import (
     SimilarSummary,
     SimilarTask,
 )
+from metanoia_ai.prompts import load_data
 from tests.unit.application.fakes import (
     FakeAssistantRepository,
     FakeAssistantUser,
@@ -85,6 +88,10 @@ LANDING_A = NamedItem(UUID(int=21), "Landing page Client A")
 LANDING_B = NamedItem(UUID(int=22), "Landing page Client B")
 SPA = NamedItem(UUID(int=23), "App đặt lịch spa")
 SETTINGS = AssistantSettings(min_confidence=0.5, match_min_score=0.8, match_min_gap=0.2)
+LOCAL_SETTINGS = replace(SETTINGS, local=LocalSettings(min_score=0.45, min_gap=0.05))
+LOCAL_ROUTER = LocalRouter(
+    load_examples(json.loads(load_data("assistant_router_examples")))
+)
 
 
 def at(hour: int, minute: int = 0) -> datetime:
@@ -174,6 +181,7 @@ def setup(
     calls_used: int = 3,
     limit: int | None = 30,
     user: UUID = USER,
+    local: bool = False,
 ):
     repo = FakeAssistantRepository()
     repo.add_user(
@@ -216,8 +224,9 @@ def setup(
         habits=sources.habits,
         hours=sources.hours,
         similar=sources.similar,
-        settings=SETTINGS,
+        settings=LOCAL_SETTINGS if local else SETTINGS,
         now=lambda: NOW,
+        router=LOCAL_ROUTER if local else None,
     )
     return use_case, repo, quota, llm, backend, sources
 
@@ -706,8 +715,10 @@ def test_no_plan_and_no_calls_left() -> None:
         ask(use_case)
     assert llm.prompts == []
 
+    use_case, _, quota, *_ = setup(pick("ai_quota"))
+    quota.subscriptions.clear()  # the user exists but has no plan
     with pytest.raises(NoSubscriptionError):
-        ask(use_case, user=UUID(int=2))
+        ask(use_case)
 
 
 def test_unknown_user() -> None:
@@ -732,3 +743,99 @@ def test_last_call_taken_meanwhile_is_429() -> None:
 def test_hour_ranges() -> None:
     assert hour_ranges([21, 9, 10, 20, 10]) == [(9, 11), (20, 22)]
     assert hour_ranges([]) == []
+
+
+# --- FR-22b: the local router (T6, T7) ---
+
+
+def test_local_pick_skips_the_llm_and_charges_nothing() -> None:
+    use_case, _, quota, llm, _, sources = setup(local=True)
+
+    turn = ask(use_case, "Hôm nay tôi nên làm gì?")
+
+    assert turn.tool is ToolName.TODAY_BRIEFING
+    assert sources.called == ["briefing"]
+    assert llm.prompts == []
+    assert charged(quota) == 3  # unchanged
+    assert quota.logs == []  # no AIUsageLog row without an LLM call
+
+
+def test_local_pick_works_when_the_plan_is_used_up() -> None:
+    use_case, *_ = setup(local=True, calls_used=30, limit=30)
+
+    turn = ask(use_case, "Tôi còn bao nhiêu lượt AI?")
+
+    assert turn.reply == "Bạn còn 0 lượt dùng AI trong kỳ này."
+
+
+def test_local_pick_works_without_a_plan() -> None:
+    use_case, _, quota, *_ = setup(local=True)
+    quota.subscriptions.clear()
+
+    assert ask(use_case, "Cảm ơn bạn").kind is TurnKind.SMALLTALK
+    # Without a plan there is nothing left, not "unlimited".
+    assert ask(use_case, "Tôi còn bao nhiêu lượt AI?").reply == (
+        "Bạn còn 0 lượt dùng AI trong kỳ này."
+    )
+
+
+def test_local_pick_works_when_the_llm_is_down() -> None:
+    use_case, *_ = setup(LLMError("503", model="m"), local=True)
+
+    assert ask(use_case, "Chiều nay tôi có lịch gì?").tool is ToolName.SCHEDULE_FOR
+
+
+def test_ai_quota_on_a_local_turn_does_not_count_this_question() -> None:
+    use_case, *_ = setup(local=True, calls_used=10, limit=30)
+
+    assert ask(use_case, "Tôi còn bao nhiêu lượt AI?").reply == (
+        "Bạn còn 20 lượt dùng AI trong kỳ này."
+    )
+
+
+def test_unclear_sentences_still_go_to_the_llm_and_are_charged() -> None:
+    use_case, _, quota, llm, *_ = setup(pick("ai_quota"), local=True)
+
+    ask(use_case, "Ủa mà khoan, cái vụ hồi nãy sao rồi?")
+
+    assert len(llm.prompts) == 1
+    assert charged(quota) == 4
+
+
+def test_local_name_must_match_one_project_or_the_llm_decides() -> None:
+    progress = {
+        SPA.id: ProjectProgress("App đặt lịch spa", date(2026, 10, 31), 8, 3, 37.5)
+    }
+    use_case, _, _, llm, _, _ = setup(
+        pick("project_progress", name="landing page"),
+        backend=FakeBackendReader(progress=progress),
+        local=True,
+    )
+
+    spa = ask(use_case, "Dự án app đặt lịch spa tới đâu rồi?")
+    assert spa.reply.startswith("Dự án App đặt lịch spa đã xong 3/8 việc")
+    assert llm.prompts == []
+
+    # Two "landing page" projects: not sure locally → the LLM path (it then asks).
+    landing = ask(use_case, "Dự án landing page tới đâu rồi?")
+    assert len(llm.prompts) == 1
+    assert landing.kind is TurnKind.CLARIFY
+
+
+def test_write_requests_are_refused_without_the_llm() -> None:
+    use_case, _, quota, llm, *_ = setup(local=True)
+
+    turn = ask(use_case, "Xóa task họp khách giúp tôi")
+
+    assert turn.kind is TurnKind.UNSUPPORTED
+    assert llm.prompts == [] and charged(quota) == 3
+
+
+def test_smalltalk_kind_from_the_local_router() -> None:
+    use_case, *_ = setup(local=True)
+
+    turn = ask(use_case, "Bạn làm được gì?")
+
+    assert turn.kind is TurnKind.SMALLTALK
+    assert turn.suggestions  # help → example questions
+    assert SmalltalkKind.HELP.value == "help"

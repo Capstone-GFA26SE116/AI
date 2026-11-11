@@ -143,9 +143,10 @@ def test_no_calls_left_is_429() -> None:
 
 
 def test_no_active_plan_is_409() -> None:
-    client, *_ = make_client(pick("ai_quota"))
+    client, quota, *_ = make_client(pick("ai_quota"))
+    quota.subscriptions.clear()  # the user exists but has no plan
 
-    response = client.post(URL, json={"text": "hi"}, headers=auth(sub=str(uuid4())))
+    response = client.post(URL, json={"text": "hi"}, headers=auth())
 
     assert response.status_code == 409
     assert response.json() == {"detail": {"code": "no_active_plan"}}

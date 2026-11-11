@@ -1,10 +1,11 @@
 """Wiring: builds the objects each request needs (DB session, use cases)."""
 
+import json
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime
 from decimal import Decimal
-from functools import partial
+from functools import cache, partial
 from typing import Annotated, Any
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -78,6 +79,7 @@ from metanoia_ai.application.use_cases.start_project_chat import (
 from metanoia_ai.config import MissingLlmSettingError, Settings, get_settings
 from metanoia_ai.domain.analytics import AnalyticsRange
 from metanoia_ai.domain.briefing import BiasRule
+from metanoia_ai.domain.local_router import LocalRouter, LocalSettings, load_examples
 from metanoia_ai.domain.models import Language
 from metanoia_ai.domain.project_breakdown import ProjectLimits
 from metanoia_ai.domain.task_breakdown import DraftLimits
@@ -105,6 +107,7 @@ from metanoia_ai.infrastructure.llm.gemini_client import GeminiClient
 from metanoia_ai.infrastructure.llm.gemini_embedding_client import (
     GeminiEmbeddingClient,
 )
+from metanoia_ai.prompts import load_data
 
 logger = logging.getLogger(__name__)
 
@@ -646,10 +649,25 @@ async def _no_similar_search(user_id: UUID, task_id: UUID) -> SimilarTasksResult
 
 
 def assistant_settings(settings: Settings) -> AssistantSettings:
+    local = None
+    if settings.assistant_local_router:
+        local = LocalSettings(
+            min_score=settings.assistant_local_min_score,
+            min_gap=settings.assistant_local_min_gap,
+        )
     return AssistantSettings(
         min_confidence=settings.assistant_min_confidence,
         match_min_score=settings.assistant_match_min_score,
         match_min_gap=settings.assistant_match_min_gap,
+        local=local,
+    )
+
+
+@cache
+def local_router() -> LocalRouter:
+    """FR-22b: built once from the examples file (about 250 sentences, a few ms)."""
+    return LocalRouter(
+        load_examples(json.loads(load_data("assistant_router_examples")))
     )
 
 
@@ -710,4 +728,5 @@ def get_assistant_turn(
         similar=similar,
         settings=assistant_settings(settings),
         now=now,
+        router=local_router() if settings.assistant_local_router else None,
     )

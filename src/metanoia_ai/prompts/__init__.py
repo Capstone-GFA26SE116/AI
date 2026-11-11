@@ -12,3 +12,8 @@ def load_samples(name: str) -> str:
     """Raw JSON of `<name>_samples.json`: inputs to re-run after a prompt change."""
     path = files(__package__).joinpath(f"{name}_samples.json")
     return path.read_text(encoding="utf-8")
+
+
+def load_data(name: str) -> str:
+    """Raw JSON of `<name>.json`, e.g. the FR-22b router examples and checks."""
+    return files(__package__).joinpath(f"{name}.json").read_text(encoding="utf-8")

@@ -9,8 +9,10 @@ from uuid import UUID
 
 from metanoia_ai.domain.memory_text import (
     CLIENT_MASK,
+    COUNTED_REASONS,
     EMAIL_MASK,
     PHONE_MASK,
+    StopReason,
     mask_contact,
 )
 from metanoia_ai.domain.models import EstimateSource
@@ -152,4 +154,54 @@ def summarize_similar(results: Sequence[SimilarTask]) -> SimilarSummary:
     average = round(sum(ratios) / len(ratios), RATIO_DECIMALS) if ratios else None
     return SimilarSummary(
         count=len(results), done_count=len(done), average_ratio=average
+    )
+
+
+# --- FR-09b: why past similar tasks stopped (W2-14) ---
+
+MAX_REASON_NOTES = 2
+MAX_NOTE_CHARS = 150
+
+
+@dataclass(frozen=True)
+class PastSession:
+    """A finished focus session of a past task, newest first when listed."""
+
+    stop_reason: StopReason
+    note: str | None
+    client_name: str | None  # the project's client, hidden in the note
+
+
+@dataclass(frozen=True)
+class StopReasons:
+    """How often the past task's sessions stopped for a problem, and the user's notes."""
+
+    interrupted: int = 0
+    blocked: int = 0
+    other: int = 0
+    notes: tuple[str, ...] = ()
+
+
+def summarize_stop_reasons(sessions: Sequence[PastSession]) -> StopReasons:
+    """Counts of Interrupted / Blocked / Other (Completed is not a problem) and up to
+    MAX_REASON_NOTES notes: newest first, no repeats, contacts hidden, cut to
+    MAX_NOTE_CHARS with "…"."""
+    counts = {reason: 0 for reason in COUNTED_REASONS}
+    notes: list[str] = []
+    for session in sessions:
+        if session.stop_reason in counts:
+            counts[session.stop_reason] += 1
+        note = " ".join((session.note or "").split())
+        if not note or len(notes) >= MAX_REASON_NOTES:
+            continue
+        note = mask_contact(note, session.client_name)
+        if len(note) > MAX_NOTE_CHARS:
+            note = note[: MAX_NOTE_CHARS - 1].rstrip() + "…"
+        if note not in notes:
+            notes.append(note)
+    return StopReasons(
+        interrupted=counts[StopReason.INTERRUPTED],
+        blocked=counts[StopReason.BLOCKED],
+        other=counts[StopReason.OTHER],
+        notes=tuple(notes),
     )

@@ -19,9 +19,18 @@ from metanoia_ai.application.use_cases.record_task_completion import (
 )
 from metanoia_ai.config import Settings, get_settings
 from metanoia_ai.domain.models import EstimateSource
-from metanoia_ai.domain.similar_tasks import MatchSource, SimilarOutcome
+from metanoia_ai.domain.similar_tasks import MatchSource, SimilarOutcome, StopReasons
 
 router = APIRouter(prefix="/memory", tags=["memory"])
+
+
+class StopReasonsResponse(BaseModel):
+    """FR-09b: why the past task's focus sessions stopped (Completed is not counted)."""
+
+    interrupted: int
+    blocked: int
+    other: int
+    notes: list[str]  # up to 2, newest first, contacts hidden
 
 
 class SimilarItemResponse(BaseModel):
@@ -36,6 +45,7 @@ class SimilarItemResponse(BaseModel):
     finished_at: datetime | None  # ISO 8601 in the user's time zone
     score: float
     matched_by: list[MatchSource]
+    stop_reasons: StopReasonsResponse
 
 
 class SummaryResponse(BaseModel):
@@ -71,6 +81,9 @@ def to_response(result: SimilarTasksResult) -> SimilarResponse:
                 else None,
                 score=item.score,
                 matched_by=list(item.matched_by),
+                stop_reasons=stop_reasons_response(
+                    result.reasons.get(item.task.task_id, StopReasons())
+                ),
             )
             for item in result.items
         ],
@@ -100,3 +113,12 @@ async def similar(
             status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
         ) from error
     return to_response(result)
+
+
+def stop_reasons_response(reasons: StopReasons) -> StopReasonsResponse:
+    return StopReasonsResponse(
+        interrupted=reasons.interrupted,
+        blocked=reasons.blocked,
+        other=reasons.other,
+        notes=list(reasons.notes),
+    )

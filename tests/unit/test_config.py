@@ -98,6 +98,9 @@ DOCUMENT_VARS = [
     "CHAT_DOCUMENT_MAX_PDF_PAGES",
 ]
 OPTIONAL_VARS = [
+    "FALLBACK_LLM_BASE_URL",
+    "FALLBACK_LLM_MODEL",
+    "FALLBACK_LLM_API_KEY",
     "JWT_LEEWAY_SECONDS",
     "KBIAS_ALPHA",
     "KBIAS_INITIAL",
@@ -772,3 +775,30 @@ def test_bad_lunch_break_stops_the_app(env, value):
     env.setenv("SCHEDULE_LUNCH_BREAK", value)
     with pytest.raises(ValidationError):
         load()
+
+
+def test_fallback_llm_is_off_by_default(env):
+    assert load().fallback_llm() is None
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        {"FALLBACK_LLM_MODEL": "llama"},
+        {"FALLBACK_LLM_API_KEY": "fake-groq-key"},
+        {"FALLBACK_LLM_MODEL": "llama", "FALLBACK_LLM_API_KEY": "  "},
+    ],
+)
+def test_fallback_llm_needs_model_and_key(env, values):
+    for name, value in values.items():
+        env.setenv(name, value)
+    assert load().fallback_llm() is None
+
+
+def test_fallback_llm_when_set(env):
+    env.setenv("FALLBACK_LLM_MODEL", "llama")
+    env.setenv("FALLBACK_LLM_API_KEY", "fake-groq-key")
+    config = load().fallback_llm()
+    assert config.base_url == "https://api.groq.com/openai/v1"
+    assert config.model == "llama"
+    assert "fake-groq-key" not in repr(config)

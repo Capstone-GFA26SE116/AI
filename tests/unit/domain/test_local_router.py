@@ -4,7 +4,12 @@ import json
 
 import pytest
 
-from metanoia_ai.domain.assistant_tools import SmalltalkKind, ToolChoice, ToolName
+from metanoia_ai.domain.assistant_tools import (
+    READ_TOOLS,
+    SmalltalkKind,
+    ToolChoice,
+    ToolName,
+)
 from metanoia_ai.domain.local_router import (
     Example,
     LocalRouter,
@@ -14,6 +19,7 @@ from metanoia_ai.domain.local_router import (
     load_examples,
     local_choice,
     ngrams,
+    spoken_minutes,
     spoken_period,
 )
 from metanoia_ai.domain.spoken_period import SpokenPeriod
@@ -51,6 +57,55 @@ def test_examples_file_is_checked() -> None:
         load_examples(["x"])
     with pytest.raises(ValueError):
         LocalRouter([])
+
+
+def test_other_writes_are_unsupported_locally() -> None:
+    assert ask("Xóa milestone thiết kế").tool is ToolName.UNSUPPORTED
+
+
+@pytest.mark.parametrize(
+    ("text", "tool"),
+    [
+        ("Dừng lại", ToolName.STOP_TIMER),
+        ("Tạm dừng", ToolName.STOP_TIMER),
+        ("Xong rồi", ToolName.FINISH_TIMER),
+        ("I'm done", ToolName.FINISH_TIMER),
+        ("Duyệt lịch đề xuất", ToolName.APPROVE_PROPOSAL),
+    ],
+)
+def test_commands(text: str, tool: ToolName) -> None:
+    assert ask(text).tool is tool
+
+
+def test_start_timer_keeps_the_task_name() -> None:
+    choice = ask("Bắt đầu bấm giờ việc báo cáo")
+    assert (choice.tool, choice.name) == (ToolName.START_TIMER, "bao cao")
+
+
+@pytest.mark.parametrize(
+    ("text", "minutes"),
+    [
+        ("Thêm 15 phút", 15),
+        ("Cần thêm 30 phút", 30),
+        ("Cho thêm nửa tiếng", 30),
+        ("Thêm một tiếng nữa", 60),
+        ("Extend by 2 hours", 120),
+        ("Tôi cần thêm thời gian", 15),
+        ("Thêm 900 phút", 480),
+    ],
+)
+def test_spoken_minutes(text: str, minutes: int) -> None:
+    assert spoken_minutes(text) == minutes
+
+
+def test_extend_choice_carries_minutes() -> None:
+    choice = ask("Cần thêm 30 phút")
+    assert (choice.tool, choice.minutes) == (ToolName.EXTEND_TIMER, 30)
+
+
+def test_a_question_about_the_timer_is_not_a_command() -> None:
+    choice = ask("Tôi đang bấm giờ việc gì vậy?")
+    assert choice is None or choice.tool is ToolName.RUNNING_TIMER
 
 
 def test_every_label_has_examples() -> None:
@@ -120,8 +175,10 @@ def test_checks_answered_locally_and_right() -> None:
     ],
 )
 def test_write_requests_are_never_a_read_tool(text: str) -> None:
+    # FR-22c: one of the 5 commands (the app asks before running it), "unsupported",
+    # or the LLM decides — never a read answer to a write request.
     choice = ask(text)
-    assert choice is None or choice.tool is ToolName.UNSUPPORTED
+    assert choice is None or choice.tool not in READ_TOOLS
 
 
 def test_questions_with_a_write_word_go_to_the_llm() -> None:

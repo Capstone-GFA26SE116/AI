@@ -32,12 +32,31 @@ class ToolName(StrEnum):
     UNREAD_NOTIFICATIONS = "unread_notifications"
     PENDING_PROPOSAL = "pending_proposal"
     UPCOMING_MILESTONES = "upcoming_milestones"
+    # FR-22c: commands that change data. The AI only proposes; the app asks the user
+    # and calls the Backend after a "yes".
+    START_TIMER = "start_timer"
+    STOP_TIMER = "stop_timer"
+    FINISH_TIMER = "finish_timer"
+    EXTEND_TIMER = "extend_timer"
+    APPROVE_PROPOSAL = "approve_proposal"
     UNSUPPORTED = "unsupported"
     SMALLTALK = "smalltalk"
 
 
-# The tools that read data (#3). The other two never call anything.
-READ_TOOLS = frozenset(ToolName) - {ToolName.UNSUPPORTED, ToolName.SMALLTALK}
+# FR-22c: commands the app runs after the user confirms.
+WRITE_TOOLS = frozenset(
+    {
+        ToolName.START_TIMER,
+        ToolName.STOP_TIMER,
+        ToolName.FINISH_TIMER,
+        ToolName.EXTEND_TIMER,
+        ToolName.APPROVE_PROPOSAL,
+    }
+)
+# The tools that read data (#3). Smalltalk and unsupported never call anything.
+READ_TOOLS = (
+    frozenset(ToolName) - {ToolName.UNSUPPORTED, ToolName.SMALLTALK} - WRITE_TOOLS
+)
 # Tools that take a spoken task / project name, matched by code (#6).
 # For upcoming_milestones the name is optional: no name → all active projects.
 NAMED_TOOLS = frozenset(
@@ -45,8 +64,13 @@ NAMED_TOOLS = frozenset(
         ToolName.SIMILAR_TASK_TIME,
         ToolName.PROJECT_PROGRESS,
         ToolName.UPCOMING_MILESTONES,
+        ToolName.START_TIMER,
     }
 )
+# FR-22c #3: extra minutes asked for, like FR-16b.
+MIN_EXTRA_MINUTES = 5
+MAX_EXTRA_MINUTES = 480
+DEFAULT_EXTRA_MINUTES = 15
 
 
 class SmalltalkKind(StrEnum):
@@ -62,6 +86,7 @@ class ToolChoice:
     period: SpokenPeriod | None = None  # schedule_for only; missing → today
     name: str | None = None  # named tools only; None when the user said no name
     smalltalk: SmalltalkKind | None = None  # smalltalk only; missing → help
+    minutes: int | None = None  # extend_timer only (FR-22c #3)
     low_confidence: bool = False  # the LLM picked something else, but too unsure (#12)
 
 
@@ -78,6 +103,7 @@ def router_schema() -> dict[str, object]:
             "period": {"type": "string", "enum": [p.value for p in SpokenPeriod]},
             "name": {"type": "string"},
             "smalltalk": {"type": "string", "enum": [s.value for s in SmalltalkKind]},
+            "minutes": {"type": "integer", "minimum": 1},
             "confidence": {"type": "number", "minimum": 0, "maximum": 1},
         },
         "required": ["tool", "confidence"],
@@ -132,5 +158,18 @@ def parse_choice(raw: object, min_confidence: float = MIN_CONFIDENCE) -> ToolCho
             return ToolChoice(
                 tool, confidence, smalltalk=smalltalk or SmalltalkKind.HELP
             )
+        case ToolName.EXTEND_TIMER:
+            return ToolChoice(
+                tool, confidence, minutes=clamp_minutes(raw.get("minutes"))
+            )
         case _:
             return ToolChoice(tool, confidence)
+
+
+def clamp_minutes(value: object) -> int:
+    """Extra minutes in [5, 480]; anything missing or not a number → 15 (FR-22c #3)."""
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return DEFAULT_EXTRA_MINUTES
+    if not math.isfinite(value):
+        return DEFAULT_EXTRA_MINUTES
+    return max(MIN_EXTRA_MINUTES, min(MAX_EXTRA_MINUTES, round(value)))

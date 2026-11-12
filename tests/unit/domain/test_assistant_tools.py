@@ -3,6 +3,7 @@ import pytest
 from metanoia_ai.domain.assistant_tools import (
     NAMED_TOOLS,
     READ_TOOLS,
+    WRITE_TOOLS,
     BadToolChoiceError,
     SmalltalkKind,
     ToolChoice,
@@ -13,14 +14,27 @@ from metanoia_ai.domain.assistant_tools import (
 from metanoia_ai.domain.spoken_period import SpokenPeriod
 
 
-def test_fourteen_read_tools_plus_two() -> None:
+def test_fourteen_read_tools_five_commands_plus_two() -> None:
     assert len(READ_TOOLS) == 14
+    assert len(WRITE_TOOLS) == 5
+    assert not READ_TOOLS & WRITE_TOOLS
     assert ToolName.UNSUPPORTED not in READ_TOOLS
     assert NAMED_TOOLS == {
         ToolName.SIMILAR_TASK_TIME,
         ToolName.PROJECT_PROGRESS,
         ToolName.UPCOMING_MILESTONES,
+        ToolName.START_TIMER,
     }
+
+
+@pytest.mark.parametrize(
+    ("value", "minutes"),
+    [(15, 15), (30.4, 30), (2, 5), (999, 480), (None, 15), ("x", 15), (True, 15)],
+)
+def test_extend_minutes_are_clamped(value, minutes) -> None:
+    choice = parse_choice({"tool": "extend_timer", "confidence": 0.9, "minutes": value})
+
+    assert choice == ToolChoice(ToolName.EXTEND_TIMER, 0.9, minutes=minutes)
 
 
 def test_milestones_keep_an_optional_project_name() -> None:
@@ -108,7 +122,7 @@ def test_low_confidence_becomes_unsupported() -> None:
         None,
         [],
         {"confidence": 0.9},
-        {"tool": "start_timer", "confidence": 0.9},  # no write tool exists
+        {"tool": "delete_task", "confidence": 0.9},  # not a tool
         {"tool": "today_briefing"},
         {"tool": "today_briefing", "confidence": "high"},
         {"tool": "today_briefing", "confidence": True},

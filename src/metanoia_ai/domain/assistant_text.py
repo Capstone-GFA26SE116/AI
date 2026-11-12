@@ -646,6 +646,108 @@ def overrun_text(
     )
 
 
+# --- FR-22c: commands, asked back before the app runs them ---
+
+
+def _minutes(minutes: int, lang: Language) -> str:
+    """Exact minutes the user asked for: "15 phút" / "15 minutes", "1 giờ" / "1 hour"."""
+    vi = lang is Language.VI
+    if minutes % 60 == 0:
+        hours = minutes // 60
+        return f"{hours} giờ" if vi else f"{hours} hour" + ("" if hours == 1 else "s")
+    return f"{minutes} phút" if vi else f"{minutes} minutes"
+
+
+def confirm_start_text(title: str, lang: Language) -> str:
+    template = (
+        "Bắt đầu bấm giờ cho {title} nhé?"
+        if lang is Language.VI
+        else "Start the timer for {title}?"
+    )
+    return _say(template, title=short_name(title))
+
+
+def confirm_stop_text(title: str, elapsed_minutes: int, lang: Language) -> str:
+    template = (
+        "Tạm dừng bấm giờ {title} sau {spent} nhé?"
+        if lang is Language.VI
+        else "Pause the timer for {title} after {spent}?"
+    )
+    spent = duration(max(elapsed_minutes, 1), lang)
+    return _say(template, title=short_name(title), spent=spent)
+
+
+def confirm_finish_text(title: str, elapsed_minutes: int, lang: Language) -> str:
+    template = (
+        "Kết thúc phiên {title} là đã xong, sau {spent} nhé?"
+        if lang is Language.VI
+        else "Finish {title} as done after {spent}?"
+    )
+    spent = duration(max(elapsed_minutes, 1), lang)
+    return _say(template, title=short_name(title), spent=spent)
+
+
+def confirm_extend_text(title: str, minutes: int, lang: Language) -> str:
+    template = (
+        "Thêm {extra} cho {title} nhé? Mình sẽ xem có cần dời việc phía sau không."
+        if lang is Language.VI
+        else "Add {extra} to {title}? I will check whether later tasks need to move."
+    )
+    return _say(template, title=short_name(title), extra=_minutes(minutes, lang))
+
+
+def confirm_approve_text(
+    slot_starts: Sequence[datetime], now: datetime, zone: ZoneInfo, lang: Language
+) -> str:
+    vi = lang is Language.VI
+    if not slot_starts:
+        return _say(
+            "Duyệt lịch đề xuất đang chờ nhé?"
+            if vi
+            else "Approve the proposed schedule?"
+        )
+    start = min(slot_starts).astimezone(zone)
+    first = (
+        f"{spoken_time(start, lang)} {spoken_day(start, now.astimezone(zone), lang)}"
+    )
+    template = (
+        "Duyệt lịch đề xuất {n}, bắt đầu lúc {first} nhé?"
+        if vi
+        else "Approve the proposed schedule with {n}, starting at {first}?"
+    )
+    return _say(
+        template,
+        n=_count(len(slot_starts), "khung giờ", "time slot", lang),
+        first=first,
+    )
+
+
+def timer_already_running_text(title: str, lang: Language) -> str:
+    template = (
+        "Bạn đang bấm giờ {title}. Dừng việc đó trước rồi bắt đầu việc mới nhé."
+        if lang is Language.VI
+        else "You are already timing {title}. Stop it first, then start the new one."
+    )
+    return _say(template, title=short_name(title))
+
+
+def no_timer_text(lang: Language) -> str:
+    return _say(
+        "Hiện không có phiên bấm giờ nào đang chạy."
+        if lang is Language.VI
+        else "No timer is running right now."
+    )
+
+
+def timer_without_slot_text(lang: Language) -> str:
+    return _say(
+        "Phiên này không gắn với lịch nên mình chưa thêm giờ được. Bạn cứ làm tiếp nhé."
+        if lang is Language.VI
+        else "This session is not on your calendar, so there is no slot to extend. "
+        "Just keep going."
+    )
+
+
 # --- other kinds of turn ---
 
 

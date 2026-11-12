@@ -262,5 +262,68 @@
     "Who won the football match?",
     "Write an email to my client",
     "Play some music"
+  ],
+  "start_timer": [
+    "Bắt đầu bấm giờ việc {x}",
+    "Bấm giờ cho {x}",
+    "Bắt đầu làm {x}",
+    "Bắt đầu {x} đi",
+    "Bật timer cho {x}",
+    "Tôi bắt đầu làm {x} nhé",
+    "Bắt đầu tập trung vào {x}",
+    "Bấm giờ {x} giúp tôi",
+    "Start the timer for {x}",
+    "Start working on {x}",
+    "Start {x} now"
+  ],
+  "stop_timer": [
+    "Dừng lại",
+    "Tạm dừng",
+    "Dừng bấm giờ",
+    "Tạm nghỉ một chút",
+    "Dừng timer",
+    "Tôi nghỉ chút",
+    "Dừng lại giúp tôi",
+    "Tạm dừng phiên này",
+    "Pause the timer",
+    "Stop the timer",
+    "Pause for a bit"
+  ],
+  "finish_timer": [
+    "Xong rồi",
+    "Tôi làm xong rồi",
+    "Hoàn thành rồi",
+    "Việc này xong rồi",
+    "Xong việc rồi nhé",
+    "Đã hoàn thành",
+    "Done",
+    "I'm done",
+    "Finished",
+    "I finished this task"
+  ],
+  "extend_timer": [
+    "Thêm 15 phút",
+    "Cần thêm 30 phút",
+    "Cho thêm nửa tiếng",
+    "Tôi cần thêm thời gian",
+    "Gia hạn thêm 20 phút",
+    "Chưa xong, cần thêm 15 phút",
+    "Thêm một tiếng nữa",
+    "Cho tôi thêm chút thời gian",
+    "I need 15 more minutes",
+    "Add 30 minutes",
+    "Extend by an hour",
+    "I need more time"
+  ],
+  "approve_proposal": [
+    "Duyệt lịch đề xuất",
+    "Duyệt lịch giúp tôi",
+    "Đồng ý lịch AI xếp",
+    "Duyệt hết lịch đề xuất đi",
+    "Chấp nhận lịch đề xuất",
+    "Ok duyệt lịch đó đi",
+    "Approve the proposed schedule",
+    "Approve my schedule",
+    "Accept the schedule proposal"
   ]
 }

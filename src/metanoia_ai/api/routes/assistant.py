@@ -13,7 +13,9 @@ from pydantic import BaseModel, Field
 from metanoia_ai.api.auth import get_current_user_id
 from metanoia_ai.api.deps import get_assistant_turn
 from metanoia_ai.application.use_cases.assistant_turn import (
+    ActionType,
     AssistantTurn,
+    FocusStop,
     HistoryLine,
     Turn,
     TurnKind,
@@ -54,6 +56,19 @@ class OptionResponse(BaseModel):
     title: str
 
 
+class ActionResponse(BaseModel):
+    """FR-22c: what the app runs on the Backend after the user says yes."""
+
+    type: ActionType
+    task_id: UUID | None = None
+    task_title: str | None = None
+    slot_id: UUID | None = None
+    session_id: UUID | None = None
+    stop_reason: FocusStop | None = None  # "Completed" / "Interrupted" (Backend names)
+    minutes: int | None = None
+    proposal_id: UUID | None = None
+
+
 class TurnResponse(BaseModel):
     kind: TurnKind
     tool: ToolName | None
@@ -61,6 +76,7 @@ class TurnResponse(BaseModel):
     emotion: Emotion
     options: list[OptionResponse]  # only for "clarify", at most 3
     suggestions: list[str]  # for "unsupported" and smalltalk "help"
+    action: ActionResponse | None = None  # only for "confirm" (FR-22c)
 
 
 def _bad_body(message: str) -> HTTPException:
@@ -95,6 +111,9 @@ def to_response(turn: Turn) -> TurnResponse:
         emotion=turn.emotion,
         options=[OptionResponse(id=o.id, title=o.title) for o in turn.options],
         suggestions=list(turn.suggestions),
+        action=None
+        if turn.action is None
+        else ActionResponse(**{k: v for k, v in vars(turn.action).items()}),
     )
 
 

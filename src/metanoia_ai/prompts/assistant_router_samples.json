@@ -1,29 +1,118 @@
 [
-  {"text": "Hôm nay tôi nên làm gì?", "language": "vi", "tool": "today_briefing"},
-  {"text": "Có deadline nào đang gấp không?", "language": "vi", "tool": "at_risk_deadlines"},
-  {"text": "Chiều nay tôi có lịch gì?", "language": "vi", "tool": "schedule_for", "period": "afternoon"},
-  {"text": "Ngày mai tôi bận gì không?", "language": "vi", "tool": "schedule_for", "period": "tomorrow"},
-  {"text": "Tôi đang bấm giờ việc gì vậy?", "language": "vi", "tool": "running_timer"},
-  {"text": "Tôi ước lượng thời gian có hay bị thiếu không?", "language": "vi", "tool": "estimation_habits"},
-  {"text": "Giờ nào trong ngày tôi làm việc hiệu quả nhất?", "language": "vi", "tool": "productive_hours"},
-  {"text": "Viết bài blog thường mất bao lâu?", "language": "vi", "tool": "similar_task_time", "name": "viết bài blog"},
-  {"text": "Dự án app đặt lịch spa tới đâu rồi?", "language": "vi", "tool": "project_progress", "name": "app đặt lịch spa"},
-  {"text": "Tôi đang có những dự án nào?", "language": "vi", "tool": "list_projects"},
-  {"text": "Tôi còn bao nhiêu lượt AI?", "language": "vi", "tool": "ai_quota"},
-  {"text": "Chào bạn nha", "language": "vi", "tool": "smalltalk"},
-  {"text": "Bắt đầu bấm giờ cho việc viết blog giúp tôi", "language": "vi", "tool": "unsupported"},
-  {"text": "Xóa task họp khách giúp tôi", "language": "vi", "tool": "unsupported"},
-  {"text": "What's on my schedule this evening?", "language": "en", "tool": "schedule_for", "period": "evening"},
-  {"text": "How is the landing page project going?", "language": "en", "tool": "project_progress", "name": "landing page"},
-  {"text": "Which of my deadlines are at risk?", "language": "en", "tool": "at_risk_deadlines"},
-  {"text": "Create a new task called design logo", "language": "en", "tool": "unsupported"},
-  {"text": "What's the weather like tomorrow?", "language": "en", "tool": "unsupported"},
+  {
+    "text": "Hôm nay tôi nên làm gì?",
+    "language": "vi",
+    "tool": "today_briefing"
+  },
+  {
+    "text": "Có deadline nào đang gấp không?",
+    "language": "vi",
+    "tool": "at_risk_deadlines"
+  },
+  {
+    "text": "Chiều nay tôi có lịch gì?",
+    "language": "vi",
+    "tool": "schedule_for",
+    "period": "afternoon"
+  },
+  {
+    "text": "Ngày mai tôi bận gì không?",
+    "language": "vi",
+    "tool": "schedule_for",
+    "period": "tomorrow"
+  },
+  {
+    "text": "Tôi đang bấm giờ việc gì vậy?",
+    "language": "vi",
+    "tool": "running_timer"
+  },
+  {
+    "text": "Tôi ước lượng thời gian có hay bị thiếu không?",
+    "language": "vi",
+    "tool": "estimation_habits"
+  },
+  {
+    "text": "Giờ nào trong ngày tôi làm việc hiệu quả nhất?",
+    "language": "vi",
+    "tool": "productive_hours"
+  },
+  {
+    "text": "Viết bài blog thường mất bao lâu?",
+    "language": "vi",
+    "tool": "similar_task_time",
+    "name": "viết bài blog"
+  },
+  {
+    "text": "Dự án app đặt lịch spa tới đâu rồi?",
+    "language": "vi",
+    "tool": "project_progress",
+    "name": "app đặt lịch spa"
+  },
+  {
+    "text": "Tôi đang có những dự án nào?",
+    "language": "vi",
+    "tool": "list_projects"
+  },
+  {
+    "text": "Tôi còn bao nhiêu lượt AI?",
+    "language": "vi",
+    "tool": "ai_quota"
+  },
+  {
+    "text": "Chào bạn nha",
+    "language": "vi",
+    "tool": "smalltalk"
+  },
+  {
+    "text": "Bắt đầu bấm giờ cho việc viết blog giúp tôi",
+    "language": "vi",
+    "tool": "start_timer",
+    "name": "viết blog"
+  },
+  {
+    "text": "Xóa task họp khách giúp tôi",
+    "language": "vi",
+    "tool": "unsupported"
+  },
+  {
+    "text": "What's on my schedule this evening?",
+    "language": "en",
+    "tool": "schedule_for",
+    "period": "evening"
+  },
+  {
+    "text": "How is the landing page project going?",
+    "language": "en",
+    "tool": "project_progress",
+    "name": "landing page"
+  },
+  {
+    "text": "Which of my deadlines are at risk?",
+    "language": "en",
+    "tool": "at_risk_deadlines"
+  },
+  {
+    "text": "Create a new task called design logo",
+    "language": "en",
+    "tool": "unsupported"
+  },
+  {
+    "text": "What's the weather like tomorrow?",
+    "language": "en",
+    "tool": "unsupported"
+  },
   {
     "text": "Còn ngày mai thì sao?",
     "language": "vi",
     "history": [
-      {"role": "user", "text": "Chiều nay tôi có lịch gì?"},
-      {"role": "assistant", "text": "Chiều nay bạn có 1 việc: 15 giờ Họp khách."}
+      {
+        "role": "user",
+        "text": "Chiều nay tôi có lịch gì?"
+      },
+      {
+        "role": "assistant",
+        "text": "Chiều nay bạn có 1 việc: 15 giờ Họp khách."
+      }
     ],
     "tool": "schedule_for",
     "period": "tomorrow"

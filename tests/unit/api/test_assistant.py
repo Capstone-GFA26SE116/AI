@@ -56,6 +56,7 @@ def test_answer_shape_and_token_passed_on() -> None:
         "emotion": "happy",
         "options": [],
         "suggestions": [],
+        "action": None,
     }
     assert backend.calls == [("current_focus", headers["Authorization"])]
 
@@ -171,3 +172,26 @@ def test_unknown_user_is_404() -> None:
     response = client.post(URL, json={"text": "hi"}, headers=auth(sub=str(other)))
 
     assert response.status_code == 404
+
+
+def test_confirm_turn_sends_the_action() -> None:
+    from tests.unit.application.test_assistant_turn import SESSION, running
+
+    client, *_ = make_client(
+        pick("finish_timer"), backend=FakeBackendReader(focus=running())
+    )
+
+    response = client.post(URL, json={"text": "Xong rồi"}, headers=auth())
+
+    body = response.json()
+    assert body["kind"] == "confirm"
+    assert body["action"] == {
+        "type": "stop_timer",
+        "task_id": None,
+        "task_title": "Viết blog",
+        "slot_id": None,
+        "session_id": str(SESSION),
+        "stop_reason": "Completed",
+        "minutes": None,
+        "proposal_id": None,
+    }

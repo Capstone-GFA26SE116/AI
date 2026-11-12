@@ -139,10 +139,11 @@ Full text in `docs/functional-requirements.md`. Status: first line of each `plan
 | FR-18 | Productive hours: onboarding answers, then timer data | `plans/FR-18.md` |
 | FR-22 | Voice assistant, phase 1: LLM picks one read-only tool, code answers from templates (GET only) | `plans/FR-22.md` |
 | FR-22b | Assistant: familiar questions picked by a local router (no LLM, no quota); unclear ones go to the LLM | `plans/FR-22b.md` |
+| FR-22c | Assistant phase 2: 5 voice commands (start / stop / finish / extend timer, approve proposal) returned as "confirm" + action; the app runs them after a yes | `plans/FR-22c.md` |
 | FR-16b | A slot runs over: propose to extend it or move the slots after it (no LLM, writes nothing) | `plans/FR-16b.md` |
 
 **Not this repo:** FR-11 schedule approval + writing to Google Calendar (Backend).
-**Deferred:** FR-13 blind test. **Out of scope:** voice commands that write data (FR-22 phase 2 needs its own plan), STT/TTS on the server, Eisenhower matrix, training our own model.
+**Deferred:** FR-13 blind test. **Out of scope:** voice commands other than the 5 of FR-22c (create / edit / delete tasks…), STT/TTS on the server, Eisenhower matrix, training our own model.
 
 ## 7. Rules for LLM use
 

@@ -103,9 +103,16 @@ from metanoia_ai.infrastructure.db.schedule_repository import SqlScheduleReposit
 from metanoia_ai.infrastructure.db.similar_task_repository import (
     SqlSimilarTaskRepository,
 )
-from metanoia_ai.infrastructure.llm.gemini_client import GeminiClient
+from metanoia_ai.infrastructure.llm.fallback_client import FallbackLLMClient
+from metanoia_ai.infrastructure.llm.gemini_client import (
+    DEFAULT_TIMEOUT_SECONDS,
+    GeminiClient,
+)
 from metanoia_ai.infrastructure.llm.gemini_embedding_client import (
     GeminiEmbeddingClient,
+)
+from metanoia_ai.infrastructure.llm.openai_compatible_client import (
+    OpenAICompatibleClient,
 )
 from metanoia_ai.prompts import load_data
 
@@ -134,6 +141,21 @@ def get_record_task_completion(
     )
 
 
+def with_fallback(
+    settings: Settings,
+    primary: LLMClient,
+    timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+) -> LLMClient:
+    """Gemini alone, or Gemini then the second provider when FALLBACK_LLM_* are set."""
+    fallback = settings.fallback_llm()
+    if fallback is None:
+        return primary
+    secondary = OpenAICompatibleClient(
+        fallback.base_url, fallback.api_key, fallback.model, timeout_seconds
+    )
+    return FallbackLLMClient(primary, secondary)
+
+
 def get_llm_client(
     request: Request, settings: Annotated[Settings, Depends(get_settings)]
 ) -> LLMClient:
@@ -145,7 +167,7 @@ def get_llm_client(
     client = getattr(request.app.state, "llm_client", None)
     if client is None:
         llm = settings.llm_config()
-        client = GeminiClient(llm.api_key, llm.model)
+        client = with_fallback(settings, GeminiClient(llm.api_key, llm.model))
         request.app.state.llm_client = client
     return client
 
@@ -334,8 +356,14 @@ def get_chat_llm_client(
     client = getattr(request.app.state, "chat_llm_client", None)
     if client is None:
         llm = settings.llm_config()
-        client = GeminiClient(
-            llm.api_key, llm.model, timeout_seconds=settings.chat_llm_timeout_seconds
+        client = with_fallback(
+            settings,
+            GeminiClient(
+                llm.api_key,
+                llm.model,
+                timeout_seconds=settings.chat_llm_timeout_seconds,
+            ),
+            settings.chat_llm_timeout_seconds,
         )
         request.app.state.chat_llm_client = client
     return client
@@ -408,10 +436,14 @@ def get_project_chat_llm_client(
     client = getattr(request.app.state, "project_chat_llm_client", None)
     if client is None:
         llm = settings.llm_config()
-        client = GeminiClient(
-            llm.api_key,
-            llm.model,
-            timeout_seconds=settings.chat_project_llm_timeout_seconds,
+        client = with_fallback(
+            settings,
+            GeminiClient(
+                llm.api_key,
+                llm.model,
+                timeout_seconds=settings.chat_project_llm_timeout_seconds,
+            ),
+            settings.chat_project_llm_timeout_seconds,
         )
         request.app.state.project_chat_llm_client = client
     return client
@@ -636,10 +668,14 @@ def get_assistant_llm_client(
     client = getattr(request.app.state, "assistant_llm_client", None)
     if client is None:
         llm = settings.llm_config()
-        client = GeminiClient(
-            llm.api_key,
-            llm.model,
-            timeout_seconds=settings.assistant_llm_timeout_seconds,
+        client = with_fallback(
+            settings,
+            GeminiClient(
+                llm.api_key,
+                llm.model,
+                timeout_seconds=settings.assistant_llm_timeout_seconds,
+            ),
+            settings.assistant_llm_timeout_seconds,
         )
         request.app.state.assistant_llm_client = client
     return client

@@ -162,6 +162,7 @@ def test_defaults(env):
     assert settings.schedule_round_minutes == 5
     assert settings.schedule_top_productive_hours == 3
     assert settings.overrun_extra_minutes_max == 480
+    assert settings.schedule_lunch_break == "12:00-13:00"
     assert settings.llm_max_retries == 2
 
 
@@ -750,5 +751,24 @@ def test_assistant_values_can_be_changed(env):
 )
 def test_bad_assistant_values_are_rejected(env, name, value):
     env.setenv(name, value)
+    with pytest.raises(ValidationError):
+        load()
+
+
+def test_lunch_break_setting(env):
+    from datetime import time
+
+    from metanoia_ai.domain.free_time import DailyBreak
+
+    assert load().lunch_breaks() == (DailyBreak(time(12), time(13)),)
+    env.setenv("SCHEDULE_LUNCH_BREAK", "11:30 - 12:30")
+    assert load().lunch_breaks() == (DailyBreak(time(11, 30), time(12, 30)),)
+    env.setenv("SCHEDULE_LUNCH_BREAK", "none")
+    assert load().lunch_breaks() == ()
+
+
+@pytest.mark.parametrize("value", ["noon", "13:00-12:00", "12:00"])
+def test_bad_lunch_break_stops_the_app(env, value):
+    env.setenv("SCHEDULE_LUNCH_BREAK", value)
     with pytest.raises(ValidationError):
         load()

@@ -1,12 +1,14 @@
 """Service settings, read from environment variables and the .env file."""
 
 from dataclasses import dataclass
+from datetime import time
 from functools import lru_cache
 from typing import Annotated
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+from metanoia_ai.domain.free_time import DailyBreak
 from metanoia_ai.domain.kbias import (
     DEFAULT_ALPHA,
     DEFAULT_OUTLIER_RATIO,
@@ -41,6 +43,8 @@ class Settings(BaseSettings):
     schedule_min_chunk_minutes: int = Field(default=30, gt=0)
     schedule_round_minutes: int = Field(default=5, gt=0, le=60)
     schedule_top_productive_hours: int = Field(default=3, gt=0, le=24)
+    # W3-01: kept free every working day, "HH:MM-HH:MM"; "none" = no break.
+    schedule_lunch_break: str = "12:00-13:00"
     # A slot runs over (FR-16b): the most extra minutes the user may ask for.
     overrun_extra_minutes_max: int = Field(default=480, gt=0)
 
@@ -183,6 +187,33 @@ class Settings(BaseSettings):
     assistant_local_router: bool = True
     assistant_local_min_score: float = Field(default=0.45, gt=0, le=1)
     assistant_local_min_gap: float = Field(default=0.05, ge=0, lt=1)
+
+    @field_validator("schedule_lunch_break")
+    @classmethod
+    def check_lunch_break(cls, value: str) -> str:
+        cls.parse_break(value)  # a bad value stops the app at startup
+        return value
+
+    @staticmethod
+    def parse_break(value: str) -> tuple[time, time] | None:
+        """ "12:00-13:00" → (12:00, 13:00); "none" / "off" → None (an empty variable is
+        ignored by the settings loader, so it cannot turn the break off)."""
+        value = value.strip()
+        if value.lower() in {"", "none", "off"}:
+            return None
+        try:
+            start, end = (time.fromisoformat(part.strip()) for part in value.split("-"))
+        except ValueError as error:
+            raise ValueError(
+                "SCHEDULE_LUNCH_BREAK must look like 12:00-13:00"
+            ) from error
+        if end <= start:
+            raise ValueError("SCHEDULE_LUNCH_BREAK must end after it starts")
+        return start, end
+
+    def lunch_breaks(self) -> tuple[DailyBreak, ...]:
+        parsed = self.parse_break(self.schedule_lunch_break)
+        return () if parsed is None else (DailyBreak(*parsed),)
 
     @field_validator("productive_learning_plans", mode="before")
     @classmethod

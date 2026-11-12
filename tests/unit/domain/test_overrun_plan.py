@@ -178,3 +178,27 @@ def test_friday_overflow_skips_the_weekend() -> None:
     )
 
     assert times(result.moves) == [(1, "16 08:00", "09:00")]  # Monday
+
+
+# --- W3-01: moved slots skip the lunch break, the late slot may run through it ---
+
+
+def test_moved_slots_skip_lunch_but_the_late_slot_may_run_into_it() -> None:
+    late = span(11, 0, 12, 0)
+    after = slot(1, span(12, 0, 13, 0))
+    lunch = [span(12, 0, 13, 0)]
+
+    result = plan_overrun(
+        late,
+        [after],
+        [],
+        HOURS,
+        now=at(12, 0),
+        extra_minutes=30,
+        round_minutes=5,
+        window_days=7,
+        breaks=lunch,
+    )
+
+    assert result.extended.end == at(12, 30)  # through lunch: the user chose to go on
+    assert times(result.moves) == [(1, "10 13:00", "14:00")]  # not inside 12–13

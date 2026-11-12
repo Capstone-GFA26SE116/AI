@@ -293,3 +293,22 @@ def test_not_json_is_a_read_error() -> None:
 
     with pytest.raises(BackendReadError):
         run(reader.projects(AUTH))
+
+
+# --- FR-22c (T6): ids for the commands ---
+
+
+def test_current_focus_reads_session_and_slot_ids() -> None:
+    body = {**FOCUS, "scheduleSlotId": str(UUID(int=9))}
+
+    focus = run(client_for(answer(200, body)).current_focus(AUTH))
+
+    assert focus.session_id == UUID(int=1)
+    assert focus.slot_id == UUID(int=9)
+    assert run(client_for(answer(200, FOCUS)).current_focus(AUTH)).slot_id is None
+
+
+def test_pending_proposal_reads_its_id() -> None:
+    proposal = run(client_for(answer(200, PROPOSAL)).pending_proposal(AUTH))
+
+    assert proposal.proposal_id == UUID(int=6)

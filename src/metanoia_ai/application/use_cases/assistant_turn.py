@@ -51,7 +51,9 @@ from metanoia_ai.application.use_cases.send_task_chat_message import (
 from metanoia_ai.domain import assistant_text as say
 from metanoia_ai.domain.assistant_text import DueMilestone, Emotion, TimedLine
 from metanoia_ai.domain.assistant_tools import (
+    DEFAULT_EXTRA_MINUTES,
     NAMED_TOOLS,
+    WRITE_TOOLS,
     BadToolChoiceError,
     SmalltalkKind,
     ToolChoice,
@@ -70,9 +72,13 @@ from metanoia_ai.prompts import load_prompt
 
 logger = logging.getLogger(__name__)
 
-PROMPT_VERSION = "assistant_router_v3"  # v3: 4 more read tools
+PROMPT_VERSION = "assistant_router_v4"  # v4: 5 commands (FR-22c)
 NOW_FORMAT = "%Y-%m-%d %H:%M"
+# FR-22c #4: a voice-started timer is attached to the task's slot starting this soon.
+SLOT_AHEAD_MINUTES = 30
 ACTIVE_PROJECT = "Active"
+# Named tools whose name is a task (the others name a project).
+TASK_NAMED_TOOLS = frozenset({ToolName.SIMILAR_TASK_TIME, ToolName.START_TIMER})
 # Milestones still to deliver; Delivered / Approved ones are done for the user.
 OPEN_MILESTONES = frozenset({"Planned", "InProgress", "InRevision"})
 
@@ -92,6 +98,37 @@ class TurnKind(StrEnum):
     CLARIFY = "clarify"
     UNSUPPORTED = "unsupported"
     SMALLTALK = "smalltalk"
+    CONFIRM = "confirm"  # FR-22c: the app asks the user, then runs `action`
+
+
+class ActionType(StrEnum):
+    """FR-22c: what the app runs on the Backend after the user says yes. Sent in the API."""
+
+    START_TIMER = "start_timer"  # POST /api/focus/start
+    STOP_TIMER = "stop_timer"  # POST /api/focus/{session_id}/stop
+    EXTEND_TIMER = "extend_timer"  # POST /schedule/overrun (FR-16b), then PUT slots
+    APPROVE_PROPOSAL = "approve_proposal"  # POST /api/schedule/proposals/{id}/approve
+
+
+class FocusStop(StrEnum):
+    """FocusSession.StopReason values the app sends with stop_timer (Backend names)."""
+
+    COMPLETED = "Completed"
+    INTERRUPTED = "Interrupted"
+
+
+@dataclass(frozen=True)
+class PendingAction:
+    """A command the user still has to confirm. The AI service never runs it (#1)."""
+
+    type: ActionType
+    task_id: UUID | None = None
+    task_title: str | None = None
+    slot_id: UUID | None = None
+    session_id: UUID | None = None
+    stop_reason: FocusStop | None = None
+    minutes: int | None = None
+    proposal_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -114,6 +151,7 @@ class Turn:
     emotion: Emotion
     options: tuple[TurnOption, ...] = ()
     suggestions: tuple[str, ...] = ()
+    action: PendingAction | None = None  # only for CONFIRM
 
 
 @dataclass(frozen=True)
@@ -239,7 +277,7 @@ class AssistantTurn:
             return choice  # milestones of every project; or the user picked from a list
         items = (
             await self.repo.open_tasks(request.user_id)
-            if choice.tool is ToolName.SIMILAR_TASK_TIME
+            if choice.tool in TASK_NAMED_TOOLS
             else await self.repo.projects(request.user_id)
         )
         match = match_name(
@@ -424,6 +462,8 @@ class AssistantTurn:
                 return answer(reply, emotion)
             case ToolName.UPCOMING_MILESTONES:
                 return await self._milestones(choice, request, now, zone)
+            case _ if tool in WRITE_TOOLS:
+                return await self._command(choice, request, now, zone)
         raise ValueError(f"tool {tool} has no reader")  # pragma: no cover
 
     async def _pick(
@@ -549,3 +589,96 @@ class AssistantTurn:
             return await self.backend.milestones(project_id, auth)
         except BackendNotFoundError:
             return []
+
+    # --- FR-22c: commands ---
+
+    async def _command(
+        self, choice: ToolChoice, request: TurnRequest, now: datetime, zone: ZoneInfo
+    ) -> Turn:
+        """A CONFIRM turn with the action, or a plain answer when it cannot be done (AC2).
+
+        Only reads here (AC3): the app runs the action after the user says yes.
+        """
+        lang, tool, auth = request.language, choice.tool, request.auth_header
+
+        def answer(reply: str, emotion: Emotion = Emotion.NEUTRAL) -> Turn:
+            return Turn(TurnKind.ANSWER, tool, reply, emotion)
+
+        def confirm(reply: str, action: PendingAction) -> Turn:
+            return Turn(TurnKind.CONFIRM, tool, reply, Emotion.THINKING, action=action)
+
+        if tool is ToolName.APPROVE_PROPOSAL:
+            proposal = await self.backend.pending_proposal(auth)
+            if proposal is None:
+                return answer(
+                    say.pending_proposal_text(None, True, None, now, zone, lang)
+                )
+            if proposal.proposal_id is None:
+                return answer(say.source_error_text(lang), Emotion.SAD)
+            return confirm(
+                say.confirm_approve_text(proposal.slot_starts, now, zone, lang),
+                PendingAction(
+                    ActionType.APPROVE_PROPOSAL, proposal_id=proposal.proposal_id
+                ),
+            )
+
+        focus = await self.backend.current_focus(auth)
+        if tool is ToolName.START_TIMER:
+            if focus is not None:
+                return answer(say.timer_already_running_text(focus.task_title, lang))
+            picked = await self._pick(
+                choice,
+                request,
+                await self.repo.open_tasks(request.user_id),
+                "việc",
+                "task",
+            )
+            if isinstance(picked, Turn):
+                return picked
+            slot = await self.repo.startable_slot(
+                request.user_id, picked.id, now, SLOT_AHEAD_MINUTES
+            )
+            return confirm(
+                say.confirm_start_text(picked.name, lang),
+                PendingAction(
+                    ActionType.START_TIMER,
+                    task_id=picked.id,
+                    task_title=picked.name,
+                    slot_id=slot,
+                ),
+            )
+
+        if focus is None:
+            return answer(say.no_timer_text(lang))
+        if focus.session_id is None:
+            return answer(say.source_error_text(lang), Emotion.SAD)
+        elapsed = focus.elapsed_seconds // 60
+        if tool is ToolName.EXTEND_TIMER:
+            if focus.slot_id is None:
+                return answer(say.timer_without_slot_text(lang))
+            minutes = choice.minutes or DEFAULT_EXTRA_MINUTES
+            return confirm(
+                say.confirm_extend_text(focus.task_title, minutes, lang),
+                PendingAction(
+                    ActionType.EXTEND_TIMER,
+                    task_title=focus.task_title,
+                    slot_id=focus.slot_id,
+                    session_id=focus.session_id,
+                    minutes=minutes,
+                ),
+            )
+        finished = tool is ToolName.FINISH_TIMER
+        reply = (
+            say.confirm_finish_text(focus.task_title, elapsed, lang)
+            if finished
+            else say.confirm_stop_text(focus.task_title, elapsed, lang)
+        )
+        return confirm(
+            reply,
+            PendingAction(
+                ActionType.STOP_TIMER,
+                task_title=focus.task_title,
+                session_id=focus.session_id,
+                stop_reason=FocusStop.COMPLETED if finished else FocusStop.INTERRUPTED,
+            ),
+        )

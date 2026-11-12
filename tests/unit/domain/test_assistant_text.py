@@ -12,8 +12,14 @@ from metanoia_ai.domain.assistant_text import (
     ai_quota_text,
     at_risk_text,
     clarify_text,
+    confirm_approve_text,
+    confirm_extend_text,
+    confirm_finish_text,
+    confirm_start_text,
+    confirm_stop_text,
     estimation_habits_text,
     list_projects_text,
+    no_timer_text,
     not_enough_data_text,
     not_found_text,
     overrun_text,
@@ -30,6 +36,8 @@ from metanoia_ai.domain.assistant_text import (
     spoken_day,
     spoken_time,
     suggestions,
+    timer_already_running_text,
+    timer_without_slot_text,
     today_briefing_text,
     unread_notifications_text,
     unsupported_text,
@@ -361,6 +369,15 @@ def every_reply(lang: Language) -> list[str]:
             lang,
         ),
         overrun_text(LONG, at(10), [], 0, False, NOW, VN, lang),
+        confirm_start_text(LONG, lang),
+        confirm_stop_text(LONG, 600, lang),
+        confirm_finish_text(LONG, 600, lang),
+        confirm_extend_text(LONG, 480, lang),
+        confirm_approve_text([at(9, days=d) for d in range(9)], NOW, VN, lang),
+        confirm_approve_text([], NOW, VN, lang),
+        timer_already_running_text(LONG, lang),
+        no_timer_text(lang),
+        timer_without_slot_text(lang),
     ]
 
 
@@ -369,7 +386,7 @@ def every_reply(lang: Language) -> list[str]:
 def test_every_reply_is_short_and_has_no_internal_name(lang: Language) -> None:
     replies = every_reply(lang)
 
-    assert len(replies) == 44
+    assert len(replies) == 53
     for text in replies:
         assert 0 < word_count(text) <= MAX_WORDS, text
         assert not has_internal_name(text), text
@@ -397,3 +414,11 @@ def test_template_guards() -> None:
         _say("Tool: schedule_for")
     with pytest.raises(ValueError):
         _say("{text}", text="từ " * 61)
+
+
+def test_extend_minutes_read_exactly() -> None:
+    assert confirm_extend_text("Viết blog", 60, VI).startswith(
+        "Thêm 1 giờ cho Viết blog"
+    )
+    assert confirm_extend_text("Blog", 15, EN).startswith("Add 15 minutes to Blog?")
+    assert confirm_extend_text("Blog", 120, EN).startswith("Add 2 hours to Blog?")

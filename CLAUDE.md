@@ -32,8 +32,8 @@ The team Google Doc is for humans only; Hieu copies decided facts into `docs/` o
 - pgvector (FR-19): vectors go in as text `"[…]"` + `CAST(… AS vector)`, no extra library
 - Planned: LLM providers (OpenAI + Google)
 - LLM routing: Free plan → cheapest model; paid plans → cheap model ~90% of calls,
-  stronger model ~10% "hard" calls. If one provider fails, switch to the other
-  (planned after FR-08a; FR-08a and FR-10 use Gemini only, one model from config).
+  stronger model ~10% "hard" calls. If Gemini fails, the call goes to a second provider
+  (Groq, OpenAI-style API, `plans/LLM-fallback.md`) when `FALLBACK_LLM_*` are set.
   Models come from **config, never hard-coded**. Embedding model: `gemini-embedding-2`,
   1536 dimensions (FR-19).
 
@@ -141,6 +141,7 @@ Full text in `docs/functional-requirements.md`. Status: first line of each `plan
 | FR-22 | Voice assistant, phase 1: LLM picks one read-only tool, code answers from templates (GET only) | `plans/FR-22.md` |
 | FR-22b | Assistant: familiar questions picked by a local router (no LLM, no quota); unclear ones go to the LLM | `plans/FR-22b.md` |
 | FR-22c | Assistant phase 2: 5 voice commands (start / stop / finish / extend timer, approve proposal) returned as "confirm" + action; the app runs them after a yes | `plans/FR-22c.md` |
+| — | Second LLM provider (OpenAI-style API, Groq) when Gemini fails; off until `FALLBACK_LLM_*` are set | `plans/LLM-fallback.md` |
 | FR-16b | A slot runs over: propose to extend it or move the slots after it (no LLM, writes nothing) | `plans/FR-16b.md` |
 
 **Not this repo:** FR-11 schedule approval + writing to Google Calendar (Backend).

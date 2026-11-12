@@ -55,6 +55,11 @@ class Settings(BaseSettings):
     gemini_api_key: SecretStr | None = None
     llm_input_price_per_1m: float | None = Field(default=None, ge=0)
     llm_output_price_per_1m: float | None = Field(default=None, ge=0)
+    # Second provider when Gemini fails (OpenAI-style API, Groq by default).
+    # Off until both the key and the model are set. Cost is logged with the prices above.
+    fallback_llm_base_url: str = "https://api.groq.com/openai/v1"
+    fallback_llm_model: str | None = None
+    fallback_llm_api_key: SecretStr | None = None
 
     # Embedding + long-term memory (FR-19). Like the LLM: optional at startup,
     # required through embedding_config(). Uses the same GEMINI_API_KEY.
@@ -308,6 +313,27 @@ class Settings(BaseSettings):
             input_price_per_1m=self.llm_input_price_per_1m,
             output_price_per_1m=self.llm_output_price_per_1m,
         )
+
+    def fallback_llm(self) -> "FallbackLlmConfig | None":
+        """The second provider, or None while its key or model is missing."""
+        if not self.fallback_llm_model or self.fallback_llm_api_key is None:
+            return None
+        if not self.fallback_llm_api_key.get_secret_value().strip():
+            return None
+        return FallbackLlmConfig(
+            base_url=self.fallback_llm_base_url,
+            model=self.fallback_llm_model,
+            api_key=self.fallback_llm_api_key,
+        )
+
+
+@dataclass(frozen=True)
+class FallbackLlmConfig:
+    """Where to send an LLM call when Gemini fails."""
+
+    base_url: str
+    model: str
+    api_key: SecretStr
 
 
 class MissingLlmSettingError(Exception):

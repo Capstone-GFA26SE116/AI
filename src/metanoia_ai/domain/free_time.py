@@ -3,7 +3,7 @@
 import math
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from metanoia_ai.domain.models import BusyKind, TimeRange, WorkingHours
@@ -157,3 +157,33 @@ def free_ranges(
             if rounded < gap.end:
                 result.append(TimeRange(rounded, gap.end))
     return result
+
+
+@dataclass(frozen=True)
+class DailyBreak:
+    """A break kept free every working day, on the user's clock (W3-01: lunch)."""
+
+    start: time
+    end: time
+
+    def __post_init__(self) -> None:
+        if self.end <= self.start:
+            raise ValueError("a break must end after it starts")
+
+
+def break_ranges(
+    hours: WorkingHours, now: datetime, window_days: int, breaks: Sequence[DailyBreak]
+) -> list[TimeRange]:
+    """The breaks of every working day from today until now + window_days."""
+    if not breaks:
+        return []
+    first = now.astimezone(hours.time_zone).date()
+    last = (now + timedelta(days=window_days)).astimezone(hours.time_zone).date()
+    return [
+        TimeRange(
+            datetime.combine(day.start.date(), b.start, tzinfo=hours.time_zone),
+            datetime.combine(day.start.date(), b.end, tzinfo=hours.time_zone),
+        )
+        for day in working_days(hours, first, last)
+        for b in breaks
+    ]

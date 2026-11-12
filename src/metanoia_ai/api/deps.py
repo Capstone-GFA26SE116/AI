@@ -172,6 +172,7 @@ def get_propose_schedule(
         round_minutes=settings.schedule_round_minutes,
         top_productive_hours=settings.schedule_top_productive_hours,
         clock=lambda: datetime.now(UTC),
+        breaks=settings.lunch_breaks(),
     )
 
 
@@ -185,6 +186,7 @@ def get_plan_overrun(
         OverrunSettings(
             round_minutes=settings.schedule_round_minutes,
             window_days=settings.schedule_window_days,
+            breaks=settings.lunch_breaks(),
         ),
         now=lambda: datetime.now(UTC),
     )

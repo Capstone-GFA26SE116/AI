@@ -118,6 +118,7 @@ def plan_overrun(
     extra_minutes: int,
     round_minutes: int,
     window_days: int,
+    breaks: Sequence[TimeRange] = (),
 ) -> OverrunPlan:
     """`late`: the slot that runs over. `blocked`: Fixed tasks and Google events.
 
@@ -153,9 +154,10 @@ def plan_overrun(
     if not in_the_way:
         return OverrunPlan(OverrunKind.EXTEND, extended, (), (), end > day_end)
 
+    # W3-01: moved slots skip the lunch break; the late slot itself may run through it.
     moves, not_placed = _place_in_order(
         to_move,
-        [*staying, extended],
+        [*staying, extended, *breaks],
         hours,
         earliest=round_up(end + buffer, round_minutes, hours.time_zone),
         now=now,

@@ -20,7 +20,7 @@ from metanoia_ai.application.use_cases.recompute_productive_hours import (
 )
 from metanoia_ai.domain import assistant_text as say
 from metanoia_ai.domain.assistant_text import MovedLine
-from metanoia_ai.domain.free_time import busy_ranges
+from metanoia_ai.domain.free_time import DailyBreak, break_ranges, busy_ranges
 from metanoia_ai.domain.models import Language, TimeRange
 from metanoia_ai.domain.overrun_plan import (
     BUSY_STATES,
@@ -47,6 +47,7 @@ class SlotNotLateError(Exception):
 class OverrunSettings:
     round_minutes: int  # SCHEDULE_ROUND_MINUTES, like FR-10
     window_days: int  # SCHEDULE_WINDOW_DAYS, like FR-10
+    breaks: tuple[DailyBreak, ...] = ()  # SCHEDULE_LUNCH_BREAK, like FR-10 (W3-01)
 
 
 @dataclass(frozen=True)
@@ -114,6 +115,9 @@ class PlanOverrun:
             extra_minutes=request.extra_minutes,
             round_minutes=self.settings.round_minutes,
             window_days=self.settings.window_days,
+            breaks=break_ranges(
+                data.hours, now, self.settings.window_days, self.settings.breaks
+            ),
         )
         summary = say.overrun_text(
             late.title,

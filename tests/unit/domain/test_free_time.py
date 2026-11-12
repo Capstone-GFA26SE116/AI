@@ -166,3 +166,39 @@ def test_round_up_keeps_round_times_and_uses_the_user_clock():
     assert round_up(at(19, 9, 10), 5, SAIGON) == at(19, 9, 10)
     utc_time = at(19, 9, 7).astimezone(ZoneInfo("UTC"))  # 02:07 UTC
     assert round_up(utc_time, 5, SAIGON) == at(19, 9, 10)
+
+
+# --- W3-01: daily breaks ---
+
+
+def test_break_ranges_every_working_day_in_the_user_zone() -> None:
+    from datetime import datetime, time, timedelta
+    from zoneinfo import ZoneInfo
+
+    from metanoia_ai.domain.free_time import DailyBreak, break_ranges
+    from metanoia_ai.domain.models import WorkingHours
+
+    vn = ZoneInfo("Asia/Ho_Chi_Minh")
+    hours = WorkingHours(vn, time(8), time(18), False, 15)
+    friday = datetime(2026, 11, 13, 9, tzinfo=vn)
+
+    ranges = break_ranges(hours, friday, 3, [DailyBreak(time(12), time(13))])
+
+    # Friday, then Monday: the weekend has no working day.
+    assert [(r.start.day, r.start.hour, r.end.hour) for r in ranges] == [
+        (13, 12, 13),
+        (16, 12, 13),
+    ]
+    assert ranges[0].start.utcoffset() == timedelta(hours=7)
+    assert break_ranges(hours, friday, 3, []) == []
+
+
+def test_a_break_must_end_after_it_starts() -> None:
+    from datetime import time
+
+    import pytest
+
+    from metanoia_ai.domain.free_time import DailyBreak
+
+    with pytest.raises(ValueError):
+        DailyBreak(time(13), time(12))

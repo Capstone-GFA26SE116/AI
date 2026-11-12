@@ -27,7 +27,7 @@ from metanoia_ai.application.use_cases.propose_schedule import (
     ProposeSchedule,
     QuotaExceededError,
 )
-from metanoia_ai.domain.free_time import CalendarEvent
+from metanoia_ai.domain.free_time import CalendarEvent, DailyBreak
 from metanoia_ai.domain.models import (
     ActualTimeSource,
     FocusSessionRecord,
@@ -101,7 +101,7 @@ def planning(*tasks, events=(), synced=True, k=Decimal("1.3")) -> PlanningData:
 class World:
     """Fakes + use case for one test."""
 
-    def __init__(self, *answers, price=100_000, limit=10, used=0) -> None:
+    def __init__(self, *answers, price=100_000, limit=10, used=0, breaks=()) -> None:
         self.quota = FakeQuotaRepository(NOW)
         self.repo = FakeScheduleRepository(self.quota)
         self.llm = FakeLLMClient(*(answers or (good_answer,)))
@@ -120,6 +120,7 @@ class World:
             round_minutes=5,
             top_productive_hours=3,
             clock=lambda: NOW,
+            breaks=breaks,
         )
 
     def run(self, data: PlanningData, task_ids=None, language=Language.VI):
@@ -448,3 +449,20 @@ def test_slot_ids_in_result_match_saved_slots():
     saved = world.repo.pending(USER)[0]
     assert {s.slot_id for s in result.slots} == {s.slot_id for s in saved.slots}
     assert all(isinstance(s.slot_id, UUID) for s in result.slots)
+
+
+# --- W3-01: lunch break ---
+
+
+def test_lunch_break_is_kept_free_every_working_day():
+    tasks = [task(f"Task {i}", minutes=60, deadline=at(23, 17)) for i in range(3)]
+    without = World().run(planning(*tasks))
+    lunch = World(breaks=(DailyBreak(time(12), time(13)),)).run(planning(*tasks))
+
+    # Without a break the third slot starts at noon; with it, after lunch.
+    assert sorted(s.start for s in without.slots)[2] == at(19, 12)
+    assert sorted(s.start for s in lunch.slots)[2] == at(19, 13)
+    for slot in lunch.slots:
+        day = slot.start.date()
+        noon = datetime.combine(day, time(12), tzinfo=SAIGON)
+        assert slot.end <= noon or slot.start >= noon + timedelta(hours=1)

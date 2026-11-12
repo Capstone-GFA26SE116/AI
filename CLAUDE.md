@@ -128,6 +128,7 @@ Full text in `docs/functional-requirements.md`. Status: first line of each `plan
 | FR-17 | Learn K_bias when a Flexible task is done | `plans/FR-17.md` |
 | FR-17b | Do not learn K_bias from estimates set by the AI | `plans/FR-17b.md` |
 | FR-10 | Schedule proposal (planner + one-line reason per slot) | `plans/FR-10.md` |
+| FR-10b | Keep the lunch break free when scheduling and moving slots (config, same for all users) | `plans/FR-10b.md` |
 | — | Quota check + `AIUsageLog` (before every LLM call) | — |
 | FR-08a | AI chat, task level: split a big task into subtasks, then Apply | `plans/FR-08a.md` |
 | FR-08b-1 | AI chat, project level: text brief → milestones + Flexible tasks, then Apply | `plans/FR-08b-1.md` |

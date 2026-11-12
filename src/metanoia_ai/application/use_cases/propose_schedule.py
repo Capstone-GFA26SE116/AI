@@ -34,6 +34,8 @@ from metanoia_ai.application.ports.schedule_repository import (
 from metanoia_ai.application.reason_writer import LLMCall, ReasonResult, ReasonWriter
 from metanoia_ai.domain.free_time import (
     BusyBlock,
+    DailyBreak,
+    break_ranges,
     busy_blocks,
     free_ranges,
     running_timer_busy,
@@ -122,6 +124,7 @@ class ProposeSchedule:
         round_minutes: int,
         top_productive_hours: int,
         clock: Callable[[], datetime],
+        breaks: Sequence[DailyBreak] = (),
     ) -> None:
         self.repo = schedule_repo
         self.quota = quota_repo
@@ -132,6 +135,7 @@ class ProposeSchedule:
         self.round_minutes = round_minutes
         self.top_hours = top_productive_hours
         self.clock = clock
+        self.breaks = tuple(breaks)  # W3-01: kept free every working day (lunch)
 
     async def execute(
         self, user_id: UUID, task_ids: Sequence[UUID] | None, language: Language
@@ -312,6 +316,7 @@ class ProposeSchedule:
         window_end: datetime,
     ) -> PlanResult:
         busy = [b.time for b in blocks]
+        busy += break_ranges(data.hours, now, self.window_days, self.breaks)
         free = free_ranges(data.hours, now, self.window_days, busy, self.round_minutes)
         return plan_schedule(
             units,

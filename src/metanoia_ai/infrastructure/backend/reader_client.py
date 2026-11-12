@@ -83,6 +83,8 @@ class BackendReaderClient:
                 started_at=datetime.fromisoformat(body["startedAt"]),
                 elapsed_seconds=int(body["elapsedSeconds"]),
                 is_overrun=bool(body["isOverrun"]),
+                session_id=_uuid(body.get("sessionId")),
+                slot_id=_uuid(body.get("scheduleSlotId")),
             )
         except (KeyError, TypeError, ValueError) as error:
             raise BackendReadError("unexpected focus answer") from error
@@ -149,6 +151,7 @@ class BackendReaderClient:
                 slot_starts=tuple(starts),
                 is_feasible=bool(body["isFeasible"]),
                 missing_minutes=None if missing is None else int(missing),
+                proposal_id=_uuid(body.get("id")),
             )
         except (AttributeError, KeyError, TypeError, ValueError) as error:
             raise BackendReadError("unexpected proposal answer") from error
@@ -170,3 +173,8 @@ class BackendReaderClient:
             ]
         except (AttributeError, KeyError, TypeError, ValueError) as error:
             raise BackendReadError("unexpected milestones answer") from error
+
+
+def _uuid(value: object) -> UUID | None:
+    """An optional id from the Backend; a bad value is a read error (caught above)."""
+    return None if value is None else UUID(str(value))

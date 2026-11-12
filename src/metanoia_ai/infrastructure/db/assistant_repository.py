@@ -6,7 +6,7 @@ so the "Today" screen and the assistant read the same rows.
 
 from collections.abc import AsyncIterator
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -47,6 +47,23 @@ GET_PROJECTS = text("""
 """)
 
 
+# FR-22c #4: the slot to attach a voice-started timer to — the task's Approved / Due
+# slot running now or starting soon, earliest first (the Backend accepts only these).
+GET_STARTABLE_SLOT = text("""
+    SELECT s."Id"
+    FROM "ScheduleSlot" s
+    JOIN "Task" t ON t."Id" = s."TaskId"
+    JOIN "Project" p ON p."Id" = t."ProjectId"
+    WHERE p."UserId" = :user_id
+      AND s."TaskId" = :task_id
+      AND s."Status" IN ('Approved', 'Due')
+      AND s."EndTime" > :now
+      AND s."StartTime" <= :latest_start
+    ORDER BY s."StartTime"
+    LIMIT 1
+""")
+
+
 class SqlAssistantRepository:
     """AssistantRepository on Postgres. One instance per session."""
 
@@ -84,6 +101,20 @@ class SqlAssistantRepository:
 
     async def projects(self, user_id: UUID) -> list[NamedItem]:
         return await self._names(GET_PROJECTS, user_id)
+
+    async def startable_slot(
+        self, user_id: UUID, task_id: UUID, now: datetime, ahead_minutes: int
+    ) -> UUID | None:
+        params = {
+            "user_id": user_id,
+            "task_id": task_id,
+            "now": now,
+            "latest_start": now + timedelta(minutes=ahead_minutes),
+        }
+        async with self._read_only():
+            return (
+                await self.session.execute(GET_STARTABLE_SLOT, params)
+            ).scalar_one_or_none()
 
     async def schedule(
         self, user_id: UUID, start: datetime, end: datetime

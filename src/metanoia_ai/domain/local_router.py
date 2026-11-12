@@ -12,21 +12,26 @@ them is the spoken name (#4).
 """
 
 import math
+import re
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
 from metanoia_ai.domain.assistant_tools import (
+    DEFAULT_EXTRA_MINUTES,
     NAMED_TOOLS,
+    WRITE_TOOLS,
     SmalltalkKind,
     ToolChoice,
     ToolName,
+    clamp_minutes,
 )
 from metanoia_ai.domain.name_matching import fold
 from metanoia_ai.domain.spoken_period import SpokenPeriod
 
 NGRAM_SIZES = (3, 4, 5)
 NAME_SLOT = "{x}"
+COMMAND_LABELS = frozenset(t.value for t in WRITE_TOOLS)  # FR-22c
 SMALLTALK_LABELS = {
     "smalltalk_greet": SmalltalkKind.GREET,
     "smalltalk_thanks": SmalltalkKind.THANKS,
@@ -64,6 +69,9 @@ WRITE_PHRASES = (
     "pay",
     "upgrade",
     "mark",
+    "accept",
+    "chap nhan",
+    "dong y",
 )
 # A sentence with one of these is a question ("Tôi đã bắt đầu việc gì?") ...
 QUESTION_WORDS = (
@@ -72,7 +80,10 @@ QUESTION_WORDS = (
     "bao nhieu",
     "bao lau",
     "khi nao",
-    "dau",
+    # not plain "dau": "bắt đầu" folds to "bat dau"
+    "toi dau",
+    "o dau",
+    "den dau",
     "the nao",
     "sao",
     "khong",
@@ -214,6 +225,12 @@ ANCHORS: dict[str, tuple[str, ...]] = {
         "help me",
         "ask you",
     ),
+    # FR-22c commands
+    "start_timer": ("bat dau", "bam gio cho", "bat timer", "start"),
+    "stop_timer": ("dung", "tam dung", "tam nghi", "nghi chut", "stop", "pause"),
+    "finish_timer": ("xong", "hoan thanh", "done", "finished", "finish"),
+    "extend_timer": ("them", "gia han", "more", "extra", "extend", "add"),
+    "approve_proposal": ("duyet", "chap nhan lich", "dong y lich", "approve", "accept"),
     "unsupported": (),  # open-ended: reached only by clear examples and the write rule
 }
 
@@ -355,19 +372,32 @@ def local_choice(
     settings: LocalSettings,
 ) -> ToolChoice | None:
     """A sure tool choice, or None to ask the LLM. Names are found by the caller (#4)."""
-    if is_write_request(text):
-        return ToolChoice(ToolName.UNSUPPORTED, 1.0)
-    if has_phrase(text, WRITE_PHRASES) or is_follow_up(text, has_history):
-        # A question with a write verb ("Sửa lỗi mất bao lâu?" is a task name) or a
-        # follow-up: the LLM reads it better (AC2, #6).
-        return None
+    if is_follow_up(text, has_history):
+        return None  # needs the earlier turns: the LLM reads it better (#6)
     guess = router.guess(text)
-    if guess is None:
+    sure = guess is not None and (
+        guess.score >= settings.min_score
+        and guess.score - guess.runner_up >= settings.min_gap
+    )
+    if guess is not None and guess.label in COMMAND_LABELS:
+        # FR-22c: one of the 5 commands the app runs after a "yes". A question
+        # ("Tôi đã bắt đầu việc gì?") is not a command, unless it asks for help.
+        is_question = has_phrase(text, QUESTION_WORDS) and not has_phrase(
+            text, REQUEST_MARKERS
+        )
+        if sure and not is_question and has_phrase(text, ANCHORS[guess.label]):
+            return _command_choice(router, text, guess)
+        # Otherwise fall through: another write request is still refused below.
+    if is_write_request(text):
+        if any(has_phrase(text, ANCHORS[label]) for label in COMMAND_LABELS):
+            return (
+                None  # may be one of the 5 commands said another way: the LLM decides
+            )
+        return ToolChoice(ToolName.UNSUPPORTED, 1.0)  # any other write: not supported
+    if has_phrase(text, WRITE_PHRASES):
+        # A question with a write verb ("Sửa lỗi mất bao lâu?" is a task name).
         return None
-    if (
-        guess.score < settings.min_score
-        or guess.score - guess.runner_up < settings.min_gap
-    ):
+    if guess is None or not sure or guess.label in COMMAND_LABELS:
         return None
     if guess.label == "unsupported":
         # Only when nothing in the sentence points to a read tool ("What's on my
@@ -390,6 +420,38 @@ def local_choice(
             return None  # a task / project is needed but none was said
         return ToolChoice(tool, confidence, name=name)
     return ToolChoice(tool, confidence)
+
+
+def _command_choice(router: LocalRouter, text: str, guess: Guess) -> ToolChoice | None:
+    tool = ToolName(guess.label)
+    confidence = round(guess.score, 3)
+    if tool is ToolName.START_TIMER:
+        name = router.spoken_name(text, guess.label)
+        return None if name is None else ToolChoice(tool, confidence, name=name)
+    if tool is ToolName.EXTEND_TIMER:
+        return ToolChoice(tool, confidence, minutes=spoken_minutes(text))
+    return ToolChoice(tool, confidence)
+
+
+_MINUTES = re.compile(r"\b(\d{1,3})\s*(phut|p|minute|minutes|mins|min)\b")
+_HOURS = re.compile(r"\b(\d{1,2})\s*(tieng|gio|hour|hours|h)\b")
+_HALF_HOUR = ("nua tieng", "nua gio", "half an hour", "half hour")
+_ONE_HOUR = ("mot tieng", "mot gio", "an hour", "one hour")
+
+
+def spoken_minutes(text: str) -> int:
+    """Extra minutes said in the sentence (FR-22c #3), clamped; nothing said → 15."""
+    words = fold(text)
+    total = 0
+    for match in _HOURS.finditer(words):
+        total += int(match.group(1)) * 60
+    for match in _MINUTES.finditer(words):
+        total += int(match.group(1))
+    if total == 0 and has_phrase(text, _HALF_HOUR):
+        total = 30
+    if total == 0 and has_phrase(text, _ONE_HOUR):
+        total = 60
+    return clamp_minutes(total) if total else DEFAULT_EXTRA_MINUTES
 
 
 def load_examples(raw: object) -> list[Example]:

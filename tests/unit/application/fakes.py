@@ -1156,6 +1156,7 @@ class FakeAssistantUser:
     open_tasks: list[NamedItem] = field(default_factory=list)
     projects: list[NamedItem] = field(default_factory=list)
     schedule: ScheduleRows = field(default_factory=lambda: ScheduleRows((), (), ()))
+    startable_slots: dict[UUID, UUID] = field(default_factory=dict)  # task -> slot
 
 
 class FakeAssistantRepository:
@@ -1190,6 +1191,12 @@ class FakeAssistantRepository:
         assert start.tzinfo is not None and end.tzinfo is not None
         self.schedule_reads.append((start, end))
         return self.users[user_id].schedule
+
+    async def startable_slot(
+        self, user_id: UUID, task_id: UUID, now: datetime, ahead_minutes: int
+    ) -> UUID | None:
+        assert now.tzinfo is not None and ahead_minutes > 0
+        return self.users[user_id].startable_slots.get(task_id)
 
 
 class FakeBackendReader:

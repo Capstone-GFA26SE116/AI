@@ -75,6 +75,7 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 | ⚠️ `PUT /api/schedule-slots/{id}` ghi `ScheduleChangeLog.Source = Manual`; thay đổi từ đề xuất dời lịch nên là `AI` (W3-08) | FR-16b #4 | Ví dụ: thêm trường nguồn vào request |
 | ⚠️ (Mobile / Frontend) Khi user trả lời "Chưa xong, cần thêm X phút" (FR-16) hoặc bấm thông báo `OVERRUN` / `CHECK_IN`: gọi `POST /schedule/overrun` `{slot_id, extra_minutes (5–480), language}`, hiện `summary` + danh sách `moves`; user duyệt thì gọi `PUT /api/schedule-slots/{id}` cho slot kéo dài (`extended`) rồi từng slot trong `moves` | FR-16b | Endpoint chỉ đề xuất, không ghi gì; đề xuất cũ thì gọi lại |
 | ⚠️ (Frontend / Mobile) `GET /memory/similar`: mỗi task tương tự có thêm `stop_reasons` `{interrupted, blocked, other, notes[≤2]}` — hiện cạnh "thường lâu gấp X lần" (W2-14) | FR-09b | Ghi chú đã che liên hệ; không có phiên → tất cả 0 |
+| ⚠️ (Mobile) `POST /assistant/turn` có `kind = "confirm"` + `action` (FR-22c): hỏi lại user, "Có" thì gọi Backend — `start_timer` → `POST /api/focus/start {taskId, scheduleSlotId?}`, `stop_timer` → `POST /api/focus/{session_id}/stop {stopReason}`, `extend_timer` → `POST /schedule/overrun` rồi `PUT` slot, `approve_proposal` → `POST /api/schedule/proposals/{id}/approve` | FR-22c | AI không gọi API ghi nào |
 
 ## Chờ quyết định (team / giảng viên)
 

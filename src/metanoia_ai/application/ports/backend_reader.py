@@ -26,6 +26,8 @@ class RunningFocus:
     started_at: datetime
     elapsed_seconds: int
     is_overrun: bool  # the task already took longer than planned
+    session_id: UUID | None = None  # FR-22c: to stop it
+    slot_id: UUID | None = None  # FR-22c: to add time to it (FR-16b)
 
 
 @dataclass(frozen=True)
@@ -70,6 +72,7 @@ class PendingProposal:
     slot_starts: tuple[datetime, ...]  # timezone-aware, in time order
     is_feasible: bool  # False: not every deadline can be met
     missing_minutes: int | None
+    proposal_id: UUID | None = None  # FR-22c: to approve it
 
 
 @dataclass(frozen=True)

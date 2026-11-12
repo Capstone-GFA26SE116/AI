@@ -48,3 +48,10 @@ class AssistantRepository(Protocol):
     ) -> ScheduleRows:
         """Everything that overlaps [start, end)."""
         ...
+
+    async def startable_slot(
+        self, user_id: UUID, task_id: UUID, now: datetime, ahead_minutes: int
+    ) -> UUID | None:
+        """FR-22c #4: the task's Approved / Due slot that is running now or starts
+        within `ahead_minutes`; the earliest one, or None."""
+        ...

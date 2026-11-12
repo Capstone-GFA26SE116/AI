@@ -24,9 +24,12 @@ from metanoia_ai.application.ports.backend_reader import (
 from metanoia_ai.application.ports.llm_client import LLMError
 from metanoia_ai.application.ports.quota_repository import Subscription
 from metanoia_ai.application.use_cases.assistant_turn import (
+    ActionType,
     AssistantSettings,
     AssistantTurn,
+    FocusStop,
     HistoryLine,
+    PendingAction,
     TurnKind,
     TurnRequest,
     build_prompt,
@@ -613,7 +616,7 @@ def test_smalltalk() -> None:
     "answer",
     [
         "not json",
-        pick("start_timer"),
+        pick("delete_task"),
         json.dumps({"tool": "today_briefing"}),
         LLMError("down", model="m"),
     ],
@@ -839,3 +842,182 @@ def test_smalltalk_kind_from_the_local_router() -> None:
     assert turn.kind is TurnKind.SMALLTALK
     assert turn.suggestions  # help → example questions
     assert SmalltalkKind.HELP.value == "help"
+
+
+# --- FR-22c: commands (T4, T5) ---
+
+SESSION = UUID(int=71)
+SLOT = UUID(int=72)
+PROPOSAL = UUID(int=73)
+
+
+def running(slot: UUID | None = SLOT) -> RunningFocus:
+    return RunningFocus("Viết blog", NOW, 1830, False, session_id=SESSION, slot_id=slot)
+
+
+def test_start_timer_asks_first_and_attaches_today_slot() -> None:
+    use_case, repo, _, _, backend, _ = setup(pick("start_timer", name="viết bài blog"))
+    repo.users[USER].startable_slots[TASK_BLOG.id] = SLOT
+
+    turn = ask(use_case, "Bắt đầu bấm giờ việc viết bài blog")
+
+    assert (turn.kind, turn.tool, turn.emotion) == (
+        TurnKind.CONFIRM,
+        ToolName.START_TIMER,
+        Emotion.THINKING,
+    )
+    assert turn.reply == "Bắt đầu bấm giờ cho Viết bài blog tháng 11 nhé?"
+    assert turn.action == PendingAction(
+        ActionType.START_TIMER,
+        task_id=TASK_BLOG.id,
+        task_title=TASK_BLOG.name,
+        slot_id=SLOT,
+    )
+    assert backend.calls == [("current_focus", AUTH)]  # only reads (AC3)
+
+
+def test_start_timer_without_a_slot_today() -> None:
+    use_case, *_ = setup(pick("start_timer", name="viết bài blog"))
+
+    turn = ask(use_case)
+
+    assert turn.action.slot_id is None
+
+
+def test_start_timer_while_another_runs_says_so() -> None:
+    use_case, *_ = setup(
+        pick("start_timer", name="viết bài blog"),
+        backend=FakeBackendReader(focus=running()),
+    )
+
+    turn = ask(use_case)
+
+    assert turn.kind is TurnKind.ANSWER and turn.action is None
+    assert turn.reply.startswith("Bạn đang bấm giờ Viết blog.")
+
+
+def test_start_timer_unknown_task_is_not_found() -> None:
+    use_case, *_ = setup(pick("start_timer", name="logo"))
+
+    turn = ask(use_case)
+
+    assert turn.action is None
+    assert turn.reply == "Mình không tìm thấy việc nào tên logo."
+
+
+def test_stop_and_finish_carry_the_session_and_reason() -> None:
+    backend = FakeBackendReader(focus=running())
+    stop, *_ = setup(pick("stop_timer"), backend=backend)
+    finish, *_ = setup(pick("finish_timer"), backend=backend)
+
+    paused = ask(stop, "Dừng lại")
+    done = ask(finish, "Xong rồi")
+
+    assert paused.action == PendingAction(
+        ActionType.STOP_TIMER,
+        task_title="Viết blog",
+        session_id=SESSION,
+        stop_reason=FocusStop.INTERRUPTED,
+    )
+    assert paused.reply == "Tạm dừng bấm giờ Viết blog sau khoảng 30 phút nhé?"
+    assert done.action.stop_reason is FocusStop.COMPLETED
+    assert done.reply == "Kết thúc phiên Viết blog là đã xong, sau khoảng 30 phút nhé?"
+
+
+@pytest.mark.parametrize("tool", ["stop_timer", "finish_timer", "extend_timer"])
+def test_no_timer_running(tool: str) -> None:
+    use_case, *_ = setup(pick(tool))
+
+    turn = ask(use_case)
+
+    assert turn.action is None
+    assert turn.reply == "Hiện không có phiên bấm giờ nào đang chạy."
+
+
+def test_extend_timer_carries_slot_and_minutes() -> None:
+    use_case, *_ = setup(
+        pick("extend_timer", minutes=30), backend=FakeBackendReader(focus=running())
+    )
+
+    turn = ask(use_case, "Cần thêm nửa tiếng")
+
+    assert turn.action == PendingAction(
+        ActionType.EXTEND_TIMER,
+        task_title="Viết blog",
+        slot_id=SLOT,
+        session_id=SESSION,
+        minutes=30,
+    )
+    assert turn.reply.startswith("Thêm 30 phút cho Viết blog nhé?")
+
+
+def test_extend_timer_without_minutes_uses_15() -> None:
+    use_case, *_ = setup(
+        pick("extend_timer"), backend=FakeBackendReader(focus=running())
+    )
+
+    assert ask(use_case).action.minutes == 15
+
+
+def test_extend_timer_needs_a_slot() -> None:
+    use_case, *_ = setup(
+        pick("extend_timer"), backend=FakeBackendReader(focus=running(slot=None))
+    )
+
+    turn = ask(use_case)
+
+    assert turn.action is None
+    assert turn.reply.startswith("Phiên này không gắn với lịch")
+
+
+def test_approve_proposal() -> None:
+    proposal = PendingProposal(
+        (at(9) + timedelta(days=1),), True, None, proposal_id=PROPOSAL
+    )
+    use_case, *_ = setup(
+        pick("approve_proposal"), backend=FakeBackendReader(proposal=proposal)
+    )
+
+    turn = ask(use_case, "Duyệt lịch đề xuất")
+
+    assert turn.action == PendingAction(
+        ActionType.APPROVE_PROPOSAL, proposal_id=PROPOSAL
+    )
+    assert (
+        turn.reply == "Duyệt lịch đề xuất 1 khung giờ, bắt đầu lúc 9 giờ ngày mai nhé?"
+    )
+
+
+def test_approve_without_a_proposal() -> None:
+    use_case, *_ = setup(pick("approve_proposal"))
+
+    turn = ask(use_case)
+
+    assert turn.action is None
+    assert turn.reply == "Bạn không có lịch đề xuất nào đang chờ duyệt."
+
+
+def test_commands_picked_locally_use_no_quota() -> None:
+    use_case, _, quota, llm, *_ = setup(
+        backend=FakeBackendReader(focus=running()), local=True
+    )
+
+    turn = ask(use_case, "Dừng lại")
+
+    assert turn.kind is TurnKind.CONFIRM
+    assert llm.prompts == [] and charged(quota) == 3
+
+
+def test_the_backend_reader_has_no_write_method() -> None:
+    from metanoia_ai.application.ports.backend_reader import BackendReader
+
+    names = {n for n in vars(BackendReader) if not n.startswith("_")}
+    assert names == {
+        "current_focus",
+        "projects",
+        "project_progress",
+        "pending_confirmations",
+        "unread_notifications",
+        "pending_proposal",
+        "milestones",
+    }

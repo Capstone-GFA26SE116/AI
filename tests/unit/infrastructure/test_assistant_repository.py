@@ -155,3 +155,17 @@ def test_schedule_reads_the_fr12_statements_for_the_range() -> None:
         "day_start": START,
         "window_end": END,
     }
+
+
+# --- FR-22c (T6) ---
+
+
+def test_startable_slot_sql() -> None:
+    from metanoia_ai.infrastructure.db.assistant_repository import GET_STARTABLE_SLOT
+
+    text = sql(GET_STARTABLE_SLOT)
+    assert 'p."UserId" = :user_id' in text
+    assert 's."TaskId" = :task_id' in text
+    assert "s.\"Status\" IN ('Approved', 'Due')" in text
+    assert 's."EndTime" > :now AND s."StartTime" <= :latest_start' in text
+    assert text.endswith('ORDER BY s."StartTime" LIMIT 1')

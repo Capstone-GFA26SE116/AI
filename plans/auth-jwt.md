@@ -51,7 +51,7 @@ Mọi API của AI service chỉ chạy khi có token hợp lệ do Backend phá
 
 ## Cải thiện sau
 
-- [ ] **Chặn user đã xóa tài khoản**: Backend có `OnTokenValidated` (`Program.cs`) gọi `IUserRepository.IsActiveAsync` → token còn hạn nhưng user đã `DELETE /api/me` bị 401 ngay. AI chưa làm → token cũ vẫn gọi được AI tối đa ~60' (+5' leeway). Khi AI đã nối DB (FR-10): thêm truy vấn kiểm tra user còn hoạt động vào `get_current_user_id`.
+- [x] **Chặn user đã xóa tài khoản** (xong 2026-11-13, `plans/auth-active-user.md`): Backend có `OnTokenValidated` (`Program.cs`) gọi `IUserRepository.IsActiveAsync` → token còn hạn nhưng user đã `DELETE /api/me` bị 401 ngay. AI chưa làm → token cũ vẫn gọi được AI tối đa ~60' (+5' leeway). Khi AI đã nối DB (FR-10): thêm truy vấn kiểm tra user còn hoạt động vào `get_current_user_id`.
 
 ## File sẽ tạo / sửa
 

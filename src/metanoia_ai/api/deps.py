@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from metanoia_ai.application.chat_writer import ChatWriter
 from metanoia_ai.application.llm_chat import CheckedLLMCaller
+from metanoia_ai.application.ports.account_repository import AccountRepository
 from metanoia_ai.application.ports.embedding_client import EmbeddingClient
 from metanoia_ai.application.ports.llm_client import LLMClient
 from metanoia_ai.application.project_chat_writer import ProjectChatWriter
@@ -85,6 +86,7 @@ from metanoia_ai.domain.project_breakdown import ProjectLimits
 from metanoia_ai.domain.task_breakdown import DraftLimits
 from metanoia_ai.infrastructure.backend.document_client import BackendDocumentClient
 from metanoia_ai.infrastructure.backend.reader_client import BackendReaderClient
+from metanoia_ai.infrastructure.db.account_repository import SqlAccountRepository
 from metanoia_ai.infrastructure.db.analytics_repository import SqlAnalyticsRepository
 from metanoia_ai.infrastructure.db.assistant_repository import SqlAssistantRepository
 from metanoia_ai.infrastructure.db.briefing_repository import SqlBriefingRepository
@@ -126,6 +128,13 @@ async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
     """One DB session per request, closed when the request ends."""
     async with request.app.state.session_factory() as session:
         yield session
+
+
+def get_account_repository(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> AccountRepository:
+    """Checks that the token's user still has an account (plans/auth-active-user.md)."""
+    return SqlAccountRepository(session)
 
 
 def get_record_task_completion(

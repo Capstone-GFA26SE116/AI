@@ -9,7 +9,9 @@ from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
 from metanoia_ai.api.auth import AuthError, decode_user_id, get_current_user_id
+from metanoia_ai.api.deps import get_account_repository
 from metanoia_ai.config import Settings, get_settings
+from tests.unit.application.fakes import FakeAccountRepository
 
 # Fake key, only for tests. Looks like the real one (base64-like characters).
 SECRET = "test+only/key0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOP"
@@ -103,7 +105,12 @@ def test_key_is_utf8_not_base64():
 
 
 @pytest.fixture
-def client() -> TestClient:
+def accounts() -> FakeAccountRepository:
+    return FakeAccountRepository()
+
+
+@pytest.fixture
+def client(accounts) -> TestClient:
     """A tiny app with one protected route, using the test settings."""
     app = FastAPI()
 
@@ -112,6 +119,7 @@ def client() -> TestClient:
         return {"user_id": str(user_id)}
 
     app.dependency_overrides[get_settings] = make_settings
+    app.dependency_overrides[get_account_repository] = lambda: accounts
     return TestClient(app)
 
 
@@ -143,5 +151,45 @@ def test_missing_header_returns_401(client):
         pytest.param(f"Bearer {make_token(key='another-key-' * 6)}", id="wrong-key"),
     ],
 )
-def test_bad_header_returns_401(client, header):
+def test_bad_header_returns_401(client, accounts, header):
     assert_401(client.get("/protected", headers={"Authorization": header}))
+    assert accounts.checked == []  # a bad token never reaches the DB (T3)
+
+
+# --- deleted accounts (plans/auth-active-user.md) ---
+
+
+def test_active_user_is_checked_once(client, accounts):
+    response = client.get(
+        "/protected", headers={"Authorization": f"Bearer {make_token()}"}
+    )
+    assert response.status_code == 200
+    assert accounts.checked == [USER_ID]
+
+
+def test_deleted_user_returns_plain_401(client, accounts):
+    accounts.deleted.add(USER_ID)
+    assert_401(
+        client.get("/protected", headers={"Authorization": f"Bearer {make_token()}"})
+    )
+
+
+class BrokenAccounts:
+    async def is_active(self, user_id):
+        raise OSError("db down")
+
+
+def test_db_error_is_not_turned_into_401():
+    app = FastAPI()
+
+    @app.get("/protected")
+    def protected(user_id: Annotated[UUID, Depends(get_current_user_id)]):
+        return {"user_id": str(user_id)}
+
+    app.dependency_overrides[get_settings] = make_settings
+    app.dependency_overrides[get_account_repository] = BrokenAccounts
+    client = TestClient(app, raise_server_exceptions=False)
+    response = client.get(
+        "/protected", headers={"Authorization": f"Bearer {make_token()}"}
+    )
+    assert response.status_code == 500

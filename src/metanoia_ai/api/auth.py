@@ -7,6 +7,8 @@ import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from metanoia_ai.api.deps import get_account_repository
+from metanoia_ai.application.ports.account_repository import AccountRepository
 from metanoia_ai.config import Settings, get_settings
 
 # The Backend signs with HS256 only. Never accept any other algorithm.
@@ -52,14 +54,22 @@ def unauthorized() -> HTTPException:
     )
 
 
-def get_current_user_id(
+async def get_current_user_id(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
     settings: Annotated[Settings, Depends(get_settings)],
+    accounts: Annotated[AccountRepository, Depends(get_account_repository)],
 ) -> UUID:
-    """FastAPI dependency: read `Authorization: Bearer <token>` and return the user ID."""
+    """FastAPI dependency: read `Authorization: Bearer <token>` and return the user ID.
+
+    Like the Backend, a valid token of a deleted account is refused at once.
+    A DB error is not turned into 401: the app would sign the user out for nothing.
+    """
     if credentials is None:
         raise unauthorized()
     try:
-        return decode_user_id(credentials.credentials, settings)
+        user_id = decode_user_id(credentials.credentials, settings)
     except AuthError as error:
         raise unauthorized() from error
+    if not await accounts.is_active(user_id):
+        raise unauthorized()
+    return user_id

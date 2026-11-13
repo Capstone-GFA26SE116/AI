@@ -125,6 +125,7 @@ Full text in `docs/functional-requirements.md`. Status: first line of each `plan
 | FR | What | Plan |
 |---|---|---|
 | — | JWT check (shared by all endpoints) | `plans/auth-jwt.md` |
+| — | Refuse tokens of deleted accounts (`User.DeletedAt`) | `plans/auth-active-user.md` |
 | FR-17 | Learn K_bias when a Flexible task is done | `plans/FR-17.md` |
 | FR-17b | Do not learn K_bias from estimates set by the AI | `plans/FR-17b.md` |
 | FR-10 | Schedule proposal (planner + one-line reason per slot) | `plans/FR-10.md` |
@@ -213,6 +214,8 @@ All test data is wiped before public launch.
 - Secrets are `SecretStr` in `config.py`; never print or log them (incl. `DATABASE_URL`).
 - JWT (details: `plans/auth-jwt.md`): HS256 only; require `exp`, `iss`, `aud`, `sub`;
   user ID = `sub`. Every endpoint except `/health` needs a valid token.
+  A valid token of a deleted account (`User.DeletedAt` set) is also 401, like the Backend
+  (`plans/auth-active-user.md`).
   Never log tokens; on failure return a plain 401 without the reason.
 - Tests use fake keys and never read the real `.env`.
 - Never send email, full name, OAuth tokens or client contact details to the LLM.

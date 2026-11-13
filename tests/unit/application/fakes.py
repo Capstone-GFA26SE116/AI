@@ -92,6 +92,18 @@ from metanoia_ai.domain.similar_tasks import WORD, PastSession, PastTask
 from metanoia_ai.domain.task_breakdown import Subtask
 
 
+class FakeAccountRepository:
+    """Every user is active unless listed in `deleted`; records each check."""
+
+    def __init__(self, deleted: set[UUID] | None = None) -> None:
+        self.deleted = deleted or set()
+        self.checked: list[UUID] = []
+
+    async def is_active(self, user_id: UUID) -> bool:
+        self.checked.append(user_id)
+        return user_id not in self.deleted
+
+
 class FakeLearningRepository:
     """Behaves like the real repository, but keeps everything in dicts."""
 

@@ -207,6 +207,8 @@ Bảng mới, **AI tạo 2026-10-28** (Hiếu cho phép, đã báo Backend; migr
 - `TimeZone` mặc định `Asia/Ho_Chi_Minh` · `WorkDayStart`, `WorkDayEnd` kiểu `time` (mặc định 08:00, 18:00; End > Start) ·
   `WorksOnWeekend` mặc định false · `DefaultBufferMinutes` 0–120, mặc định 15.
 - Không đọc `Email`, `FullName` để gửi LLM.
+- `DeletedAt` timestamptz NULL (cột của Backend, xóa mềm khi `DELETE /api/me`). Mọi request: AI kiểm
+  `"DeletedAt" IS NULL` sau JWT → đã xóa thì 401, giống `IsActiveAsync` của Backend (`plans/auth-active-user.md`).
 - `OnboardingCompleted` bool NOT NULL, mặc định false (cột của Backend; đọc DB 2026-10-16). Chỉ 1 user thật = true,
   đúng user có điểm `UserCircadianProfile` khác 0.5 → Backend bật cờ này sau màn onboarding (gồm cả phần khác ngoài giờ hiệu quả?) ⚠️.
 - **`ProductiveBlocks` text[] NULL** — AI ghi (FR-18 #19, chỉ lúc onboarding giờ hiệu quả). `NULL` = chưa trả lời.

@@ -100,6 +100,7 @@ CLEANUP = [
     ("ProjectDocument", '"ProjectId" = :project'),
     ("Project", '"Id" = :project'),
     ("UserSubscription", '"Id" = :subscription'),
+    ("Notification", '"UserId" = :user'),  # if the Backend notified the test user
     ("User", '"Id" = :user'),
 ]
 PARAMS = {k: IDS[k] for k in ("user", "subscription", "project")}

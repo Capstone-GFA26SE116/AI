@@ -216,8 +216,7 @@ class GetDailyBriefing:
     ) -> Candidate:
         assert task.deadline is not None and task.estimated_minutes is not None
         profile = data.k_by_domain.get(task.domain_id)
-        user_k = profile.k_bias if profile else self.settings.initial_k
-        k = None if data.is_free_plan else user_k  # Free plan: K only as a hint (#8)
+        k = profile.k_bias if profile else self.settings.initial_k
         return Candidate(
             task_id=task.task_id,
             title=task.title,

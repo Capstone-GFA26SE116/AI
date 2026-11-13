@@ -523,7 +523,6 @@ class SendProjectChatMessage:
                     self.initial_k,
                     project.deadline,
                     today,
-                    prepared.subscription.is_free,
                     self.daily_work_hours,
                     reply.language,
                 )

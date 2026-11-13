@@ -106,7 +106,7 @@ class UnitInfo:
 
     title: str
     deadline: datetime
-    user_k: Decimal  # the user's K, also on the Free plan (then only a hint)
+    user_k: Decimal  # the user's K for this domain (every plan)
     estimate_minutes: int  # the user's own estimate of what is left
     planned_minutes: int  # all minutes kept for the unit
 
@@ -145,7 +145,7 @@ class ProposeSchedule:
 
         window_end = now + timedelta(days=self.window_days)
         data = await self.repo.get_planning_data(user_id, now, window_end)
-        units, infos, timers = self._units(data, task_ids, subscription, now)
+        units, infos, timers = self._units(data, task_ids, now)
         if not units:
             return ProposalResult(
                 proposal_id=None,
@@ -207,7 +207,6 @@ class ProposeSchedule:
         self,
         data: PlanningData,
         task_ids: Sequence[UUID] | None,
-        subscription: Subscription,
         now: datetime,
     ) -> tuple[
         list[ScheduleUnit], dict[tuple[UUID, UUID | None], UnitInfo], list[TimeRange]
@@ -219,8 +218,7 @@ class ProposeSchedule:
         timers: list[TimeRange] = []
 
         for task in data.tasks:
-            user_k = data.k_by_domain.get(task.domain_id, self.initial_k)
-            k = None if subscription.is_free else user_k
+            k = data.k_by_domain.get(task.domain_id, self.initial_k)
             if running := self._running_timer(task, k, now):
                 timers.append(running)
                 continue  # a task with a running timer is not scheduled
@@ -233,7 +231,7 @@ class ProposeSchedule:
                 infos[(unit.task_id, unit.subtask_id)] = UnitInfo(
                     unit.title,
                     unit.deadline,
-                    user_k,
+                    k,
                     estimate_minutes=unit.estimate_minutes or unit.minutes,
                     planned_minutes=unit.minutes,
                 )

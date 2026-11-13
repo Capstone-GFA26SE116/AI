@@ -119,7 +119,7 @@ class DraftNumbers:
     your_estimate_minutes: int  # T_est, the user's own estimate
     adjusted_minutes: int  # ceil(T_est × K)
     subtask_total_minutes: int
-    adjusted_is_hint: bool  # Free plan: the adjusted time is only a hint (#7)
+    adjusted_is_hint: bool  # Always False: every plan uses K (kept for the API)
     warning: str | None  # set when the total is more than `ratio` away (#20)
 
 
@@ -148,7 +148,6 @@ def draft_numbers(
     estimate_minutes: int,
     k_bias: Decimal,
     draft: Draft,
-    is_free_plan: bool,
     warning_ratio: float,
     language: Language = Language.VI,
 ) -> DraftNumbers:
@@ -165,6 +164,6 @@ def draft_numbers(
         your_estimate_minutes=estimate_minutes,
         adjusted_minutes=adjusted,
         subtask_total_minutes=total,
-        adjusted_is_hint=is_free_plan,
+        adjusted_is_hint=False,
         warning=warning,
     )

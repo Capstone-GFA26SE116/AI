@@ -104,7 +104,6 @@ def task(
 def data(**changes) -> BriefingData:
     base = BriefingData(
         hours=HOURS,
-        is_free_plan=False,
         tasks=(),
         k_by_domain={},
         productive_scores={},
@@ -344,16 +343,12 @@ def test_t17_proposed_slot_is_flagged_not_shown():
     ]
 
 
-def test_t18_no_active_plan_runs_like_free():
-    # The repository maps "no Active plan" to is_free_plan = True (#7).
+def test_t18_k_is_used_on_every_plan():
+    # The briefing no longer reads the plan: the user's K always applies.
     profile = {DOMAIN: DomainK(Decimal("1.5"), 4)}
-    t = task(minutes=60)
-    free = run(data(tasks=(t,), k_by_domain=profile, is_free_plan=True))
-    paid = run(data(tasks=(t,), k_by_domain=profile, is_free_plan=False))
-    assert free.top_tasks[0].remaining_minutes == 60  # no × K
-    assert paid.top_tasks[0].remaining_minutes == 90
-    # The hint is still shown on the Free plan.
-    assert ReasonCode.BIAS in [r.code for r in free.top_tasks[0].reasons]
+    result = run(data(tasks=(task(minutes=60),), k_by_domain=profile))
+    assert result.top_tasks[0].remaining_minutes == 90
+    assert ReasonCode.BIAS in [r.code for r in result.top_tasks[0].reasons]
 
 
 def test_productive_hint_text():

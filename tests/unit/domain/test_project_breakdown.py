@@ -333,14 +333,13 @@ def numbers_draft(deadline=None) -> ProjectDraft:
     )
 
 
-def numbers(draft, project_deadline, k=None, free=False, language=Language.VI):
+def numbers(draft, project_deadline, k=None, language=Language.VI):
     return project_numbers(
         draft,
         k if k is not None else {CODING: Decimal("1.5")},
         Decimal("1.3"),
         project_deadline,
         TODAY,
-        free,
         6,
         language,
     )
@@ -377,8 +376,9 @@ def test_overload_warning_in_english():
     assert result.warning.startswith("About 20.5 hours of work, but only 2 days left")
 
 
-def test_t7_free_plan_numbers_are_a_hint():
-    assert numbers(numbers_draft(), date(2026, 10, 25), free=True).adjusted_is_hint
+def test_t7_adjusted_numbers_are_never_a_hint():
+    # Every plan uses K now.
+    assert not numbers(numbers_draft(), date(2026, 10, 25)).adjusted_is_hint
 
 
 def test_days_left_counts_to_the_latest_milestone_without_project_deadline():

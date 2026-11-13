@@ -276,7 +276,6 @@ class SendTaskChatMessage:
                         task.estimated_minutes or 0,
                         k_bias,
                         reply.draft,
-                        subscription.is_free,
                         self.warning_ratio,
                         reply.language,
                     ),

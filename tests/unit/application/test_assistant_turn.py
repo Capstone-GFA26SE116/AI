@@ -46,6 +46,7 @@ from metanoia_ai.application.use_cases.get_daily_briefing import (
 )
 from metanoia_ai.application.use_cases.propose_schedule import (
     NoSubscriptionError,
+    PlanFeatureError,
     QuotaExceededError,
 )
 from metanoia_ai.application.use_cases.recompute_productive_hours import (
@@ -211,7 +212,9 @@ def setup(
     )
     quota = FakeQuotaRepository(NOW)
     quota.add_subscription(
-        user, Subscription(SUB, 0, limit, calls_used), NOW - timedelta(days=1)
+        user,
+        Subscription(SUB, 149000, limit, calls_used, "Premium"),
+        NOW - timedelta(days=1),
     )
     llm = FakeLLMClient(*answers)
     backend = backend or FakeBackendReader()
@@ -727,7 +730,9 @@ def test_no_plan_and_no_calls_left() -> None:
 def test_unknown_user() -> None:
     use_case, _, quota, *_ = setup(pick("ai_quota"))
     quota.add_subscription(
-        UUID(int=3), Subscription(UUID(int=98), 0, 30, 0), NOW - timedelta(days=1)
+        UUID(int=3),
+        Subscription(UUID(int=98), 149000, 30, 0, "Premium"),
+        NOW - timedelta(days=1),
     )
 
     with pytest.raises(UserNotFoundError):
@@ -771,15 +776,28 @@ def test_local_pick_works_when_the_plan_is_used_up() -> None:
     assert turn.reply == "Bạn còn 0 lượt dùng AI trong kỳ này."
 
 
-def test_local_pick_works_without_a_plan() -> None:
+def test_local_pick_needs_a_plan_too() -> None:
     use_case, _, quota, *_ = setup(local=True)
     quota.subscriptions.clear()
 
-    assert ask(use_case, "Cảm ơn bạn").kind is TurnKind.SMALLTALK
-    # Without a plan there is nothing left, not "unlimited".
-    assert ask(use_case, "Tôi còn bao nhiêu lượt AI?").reply == (
-        "Bạn còn 0 lượt dùng AI trong kỳ này."
+    with pytest.raises(NoSubscriptionError):
+        ask(use_case, "Cảm ơn bạn")
+
+
+@pytest.mark.parametrize(("price", "plan"), [(0, "Free"), (99000, "Pro")])
+@pytest.mark.parametrize("local", [True, False])
+def test_assistant_is_only_in_the_top_plan(price, plan, local) -> None:
+    use_case, _, quota, llm, *_ = setup(pick("ai_quota"), local=local)
+    quota.subscriptions.clear()
+    quota.add_subscription(
+        USER, Subscription(SUB, price, 30, 0, plan), NOW - timedelta(days=1)
     )
+
+    with pytest.raises(PlanFeatureError) as raised:
+        ask(use_case, "Cảm ơn bạn" if local else "Kể chuyện vui đi")
+    assert raised.value.feature == "assistant"
+    assert llm.prompts == []  # refused before any LLM call
+    assert quota.logs == []
 
 
 def test_local_pick_works_when_the_llm_is_down() -> None:

@@ -25,6 +25,7 @@ class Subscription:
     price: int
     ai_call_limit: int | None  # None: no limit
     ai_calls_used: int
+    plan_name: str = ""  # SubscriptionPlan.Name, for plan-only features
 
     @property
     def is_free(self) -> bool:

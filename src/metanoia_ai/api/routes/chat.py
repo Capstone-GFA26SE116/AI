@@ -27,6 +27,7 @@ from metanoia_ai.application.use_cases.apply_task_breakdown import (
 from metanoia_ai.application.use_cases.get_task_chat import GetTaskChat
 from metanoia_ai.application.use_cases.propose_schedule import (
     NoSubscriptionError,
+    PlanFeatureError,
     QuotaExceededError,
 )
 from metanoia_ai.application.use_cases.record_task_completion import (
@@ -196,6 +197,11 @@ async def send_message(
         raise conflict("task_not_splittable", error.reason) from error
     except NoSubscriptionError as error:
         raise conflict("no_active_plan") from error
+    except PlanFeatureError as error:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "plan_feature_locked", "feature": error.feature},
+        ) from error
     except QuotaExceededError as error:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="AI quota exceeded"

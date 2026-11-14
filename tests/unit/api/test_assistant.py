@@ -166,7 +166,7 @@ def test_unknown_user_is_404() -> None:
     client, quota, *_ = make_client(pick("ai_quota"))
     other = uuid4()  # has a plan, but no user row
     quota.add_subscription(
-        other, Subscription(uuid4(), 0, 30, 0), NOW - timedelta(days=1)
+        other, Subscription(uuid4(), 149000, 30, 0, "Premium"), NOW - timedelta(days=1)
     )
 
     response = client.post(URL, json={"text": "hi"}, headers=auth(sub=str(other)))

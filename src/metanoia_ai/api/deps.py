@@ -707,6 +707,7 @@ def assistant_settings(settings: Settings) -> AssistantSettings:
         match_min_score=settings.assistant_match_min_score,
         match_min_gap=settings.assistant_match_min_gap,
         local=local,
+        plans=frozenset(settings.assistant_plans),
     )
 
 

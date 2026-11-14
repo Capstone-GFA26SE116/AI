@@ -188,7 +188,7 @@ class SendTaskChatMessage:
             raise QuotaExceededError("plan limit reached") from None
 
     async def _check_quota(self, user_id: UUID) -> Subscription:
-        return await self.chat_quota.check(user_id)
+        return await self.chat_quota.check_paid(user_id, "chat")
 
     async def _similar(self, user_id: UUID, task_id: UUID) -> SimilarTasksResult | None:
         """FR-09 results; any error → None, the chat goes on (plan #23)."""

@@ -8,6 +8,9 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 
 | Việc | Liên quan | Ghi chú |
 |---|---|---|
+| ⚠️ Sửa 3 dòng `SubscriptionPlan` theo Model Business (Hiếu chốt 2026-11-14): Free 0đ · 15 lượt AI · 3 dự án · 500 MB; Pro 99.000đ · 500 lượt · không giới hạn dự án · 5 GB (5120 MB); Premium 199.000đ · 1000 lượt · không giới hạn · 20 GB (20480 MB). Giữ tên tiếng Anh | `plans/plan-gates.md` | DB hiện: 0/79k/149k, AI 30/300/300, dự án 3/5/∞, 100/512/1024 MB. AI không được ghi bảng này |
+| ⚠️ Azure App Service (AI): đặt `PRODUCTIVE_LEARNING_PLANS=Premium` (nếu đang là `Cao cấp`) và `ASSISTANT_PLANS=Premium` | `plans/plan-gates.md` | Tên cũ `Cao cấp` không khớp DB nên chưa ai được học giờ hiệu quả |
+| ⚠️ Web/Mobile: AI trả 403 `{"code": "plan_feature_locked", "feature": "chat" \| "assistant"}` → hiện "Tính năng này có ở gói cao hơn" + nút nâng cấp; ẩn nút chat AI với gói Free, ẩn trợ lý 3D với gói không phải Premium | `plans/plan-gates.md` | Khác 429 (hết lượt) |
 | Gọi `POST /learning/task-completed` sau khi lưu task `Done` | FR-17 | Đã thống nhất đường gọi, Backend chưa code |
 | Đồng ý AI ghi `UserDomainProfile`, `KBiasUpdateLog` | FR-17, #9 | |
 | Đồng ý AI ghi `ScheduleProposal`, `ScheduleSlot` (chỉ `Proposed`), `UserSubscription.AiCallsUsed`, `AIUsageLog` | FR-10, #9 | |
@@ -22,7 +25,6 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 | Ý định của cột `ConfidenceTier` (AI đang tính theo nguồn T_act) | FR-17 | Hỏi người thiết kế ERD |
 | Cập nhật script/ERD cho 2 cột Hiếu đã thêm: `ScheduleProposal.Warnings`, `FocusSession.RemainingMinutes`; ghi `RemainingMinutes` ở FR-16 | FR-10 | |
 | Ai đổi slot `Proposed` → đã duyệt và ghi `ScheduleChangeLog`? | FR-11 | Giả định: Backend |
-| Quota: DB chỉ có 1 bộ đếm `AiCallsUsed`, luật cần đếm riêng 3 loại | Quota, #13 | |
 | ⚠️ Gói trả phí hết `EndAt` mà không gia hạn: đổi `Status` → `Expired` và tạo gói Free mới | FR-02, Quota | AI đã tự bỏ qua gói quá `EndAt` (2026-10-28) |
 | ⚠️ Gói `Status = 'Active'` nhưng `StartAt` ở tương lai (gặp 2026-10-28, gói `60c9384b…`) — nên là `Scheduled`? | Quota | AI không bị ảnh hưởng (lọc `StartAt <= now`) |
 | Đồng ý cách hiểu buffer (khoảng nghỉ riêng, không ghi lên lịch) | FR-10 | |

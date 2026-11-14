@@ -21,6 +21,7 @@ from metanoia_ai.application.use_cases.find_similar_tasks import (
 )
 from metanoia_ai.application.use_cases.propose_schedule import (
     NoSubscriptionError,
+    PlanFeatureError,
     QuotaExceededError,
 )
 from metanoia_ai.application.use_cases.record_task_completion import (
@@ -431,10 +432,13 @@ def test_learned_k_is_used():
     assert s.messages()[1].draft.numbers.adjusted_minutes == 360
 
 
-def test_free_plan_numbers_are_a_hint():
+def test_free_plan_cannot_chat():
     s = Setup(DRAFT, price=0)
-    s.send()
-    assert s.messages()[1].draft.numbers.adjusted_is_hint is True
+    with pytest.raises(PlanFeatureError) as raised:
+        s.send()
+    assert raised.value.feature == "chat"
+    assert s.llm.prompts == []  # refused before the LLM
+    assert s.messages() == []
 
 
 def test_warning_follows_the_reply_language():

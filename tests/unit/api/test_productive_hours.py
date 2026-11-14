@@ -221,7 +221,7 @@ def test_recompute_for_unknown_user_returns_404(client):
 def test_real_wiring_builds_the_use_cases():
     settings = make_settings()
     recompute = get_recompute_productive_hours(session=None, settings=settings)
-    assert recompute.learning_plans == frozenset({"Cao cấp"})
+    assert recompute.learning_plans == frozenset({"Premium"})
     assert recompute.prior_weight == Decimal(5)
     onboarding = get_set_onboarding_hours(recompute, settings)
     assert onboarding.selected_score == Decimal("0.8")

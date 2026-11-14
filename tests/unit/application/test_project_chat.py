@@ -19,6 +19,7 @@ from metanoia_ai.application.ports.quota_repository import Subscription
 from metanoia_ai.application.project_chat_writer import ProjectChatWriter
 from metanoia_ai.application.use_cases.propose_schedule import (
     NoSubscriptionError,
+    PlanFeatureError,
     QuotaExceededError,
 )
 from metanoia_ai.application.use_cases.send_project_chat_message import (
@@ -220,13 +221,15 @@ def test_t11_draft_is_saved_with_keys_deadlines_and_numbers():
     assert len(world.quota.logs) == 1
 
 
-def test_free_plan_numbers_are_a_hint():
+def test_free_plan_cannot_chat():
     world = World()
     world.quota.subscriptions[USER] = []
     free = Subscription(uuid4(), price=0, ai_call_limit=50, ai_calls_used=0)
     world.quota.add_subscription(USER, free, start_at=NOW)
-    turn = world.send(FakeLLMClient(draft_answer()))
-    assert turn.ai_message.draft.numbers.adjusted_is_hint is True
+    llm = FakeLLMClient(draft_answer())
+    with pytest.raises(PlanFeatureError):
+        world.send(llm)
+    assert llm.prompts == []
 
 
 def test_overload_warning_is_added_to_the_draft_warnings():

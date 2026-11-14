@@ -204,6 +204,18 @@ def test_t23_out_of_quota_returns_429(client, world):
     assert send(client, world).status_code == 429
 
 
+def test_free_plan_chat_returns_403(client, world):
+    world.quota.subscriptions[USER_ID] = [
+        (NOW, Subscription(world.subscription.subscription_id, 0, 30, 0))
+    ]
+    response = send(client, world)
+    assert response.status_code == 403
+    assert response.json()["detail"] == {
+        "code": "plan_feature_locked",
+        "feature": "chat",
+    }
+
+
 def test_t23_ai_failure_returns_502(client, world):
     world.llm.answers = ["bad", "bad", "bad"]
     response = send(client, world)

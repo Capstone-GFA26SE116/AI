@@ -27,6 +27,7 @@ from metanoia_ai.application.reason_writer import (
 )
 from metanoia_ai.application.use_cases.propose_schedule import (
     NoSubscriptionError,
+    PlanFeatureError,
     QuotaExceededError,
 )
 
@@ -149,6 +150,13 @@ class ChatQuota:
             raise NoSubscriptionError(str(user_id))
         if not subscription.has_calls_left:
             raise QuotaExceededError("plan limit reached")
+        return subscription
+
+    async def check_paid(self, user_id: UUID, feature: str) -> Subscription:
+        """Like check, but the Free plan does not include this feature."""
+        subscription = await self.check(user_id)
+        if subscription.is_free:
+            raise PlanFeatureError(feature)
         return subscription
 
     async def log(

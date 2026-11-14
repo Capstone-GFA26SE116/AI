@@ -93,6 +93,7 @@ USER_ROW = SimpleNamespace(
     WorksOnWeekend=False,
     DefaultBufferMinutes=15,
     ProductiveBlocks=None,
+    PlanPrice=79000,
 )
 
 
@@ -120,10 +121,10 @@ def test_events_filter_by_connection_owner():
     assert 'c."UserId" = :user_id' in text
 
 
-def test_user_query_skips_deleted_users():
+def test_user_query_skips_deleted_users_and_reads_the_active_plan():
     text = sql(GET_USER)
     assert '"DeletedAt" IS NULL' in text
-    assert "SubscriptionPlan" not in text  # the plan no longer changes the briefing
+    assert "us.\"Status\" = 'Active'" in text
 
 
 def test_candidate_filter():
@@ -243,6 +244,7 @@ def test_maps_rows():
     data = load(RecordingSession(rows))
 
     assert data.hours.time_zone == ZoneInfo("Asia/Ho_Chi_Minh")
+    assert data.is_free_plan is False
     [task] = data.tasks
     assert task.status is TaskStatus.IN_PROGRESS
     assert task.has_subtasks is True
@@ -273,6 +275,12 @@ def test_params_carry_the_user_and_the_windows():
         "window_end": WINDOW_END,
     }
     assert all(p is None or p["user_id"] == USER for _, p in session.calls[1:])
+
+
+@pytest.mark.parametrize(("price", "free"), [(None, True), (0, True), (79000, False)])
+def test_no_active_plan_counts_as_free(price, free):
+    row = SimpleNamespace(**{**vars(USER_ROW), "PlanPrice": price})
+    assert load(RecordingSession({str(GET_USER): [row]})).is_free_plan is free
 
 
 @pytest.mark.parametrize(

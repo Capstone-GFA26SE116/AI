@@ -37,7 +37,7 @@ Ký hiệu: **AI ghi** = AI service được INSERT/UPDATE · **Chỉ đọc** =
 - `TaskId` NOT NULL · `SubTaskId?` · `ScheduleProposalId?` · `StartTime`, `EndTime` timestamptz, `EndTime > StartTime`.
 - `Status` ∈ {`Proposed`, `Approved`, `Due`, `InProgress`, `Overrun`, `Done`, `Skipped`, `Missed`, `Postponed`, `Cancelled`}, mặc định `Proposed` (CHECK đọc 2026-11-10).
   Backend chạy slot đã duyệt qua `Approved → Due → InProgress → Overrun`: cả 4 vẫn nằm trên lịch (giờ bận FR-10, hiện ở FR-12 / trợ lý).
-- `ProposedMinutes` > 0 (phần làm việc) · `KBiasUsed` numeric (mọi gói đều có, kể cả Free — `plans/free-plan-k.md`) · `Explanation` varchar.
+- `ProposedMinutes` > 0 (phần làm việc) · `KBiasUsed` numeric (gói Free: trống) · `Explanation` varchar.
 - `OriginalStartTime`, `IsManualOverride`, `GoogleEventId`, `SyncFailed`: của Backend (FR-11), AI không ghi.
 - Đổi sang đã duyệt: việc của Backend (FR-11).
 

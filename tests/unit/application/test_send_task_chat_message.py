@@ -431,10 +431,10 @@ def test_learned_k_is_used():
     assert s.messages()[1].draft.numbers.adjusted_minutes == 360
 
 
-def test_free_plan_numbers_are_not_a_hint():
+def test_free_plan_numbers_are_a_hint():
     s = Setup(DRAFT, price=0)
     s.send()
-    assert s.messages()[1].draft.numbers.adjusted_is_hint is False
+    assert s.messages()[1].draft.numbers.adjusted_is_hint is True
 
 
 def test_warning_follows_the_reply_language():

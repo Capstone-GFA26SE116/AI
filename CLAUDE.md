@@ -115,7 +115,7 @@ domain rules → port → use case (+ fake repo tests) → SQL repository → ro
   re-plan of the rest of the day. No LLM, no quota.
 
 **Plan rules**
-- Every plan (Free too) adds K_bias to the schedule (`plans/free-plan-k.md`, 2026-11-14).
+- Free plan: K_bias is learned but only shown as a hint, not added to the schedule.
 - Productive hours: all plans use onboarding answers; only the top plan also learns from timer data.
 
 ## 6. AI features this repo owns
@@ -143,7 +143,6 @@ Full text in `docs/functional-requirements.md`. Status: first line of each `plan
 | FR-22b | Assistant: familiar questions picked by a local router (no LLM, no quota); unclear ones go to the LLM | `plans/FR-22b.md` |
 | FR-22c | Assistant phase 2: 5 voice commands (start / stop / finish / extend timer, approve proposal) returned as "confirm" + action; the app runs them after a yes | `plans/FR-22c.md` |
 | — | Second LLM provider (OpenAI-style API, Groq) when Gemini fails; off until `FALLBACK_LLM_*` are set | `plans/LLM-fallback.md` |
-| — | Free plan also uses K_bias in schedules, briefing and chat numbers | `plans/free-plan-k.md` |
 | FR-16b | A slot runs over: propose to extend it or move the slots after it (no LLM, writes nothing) | `plans/FR-16b.md` |
 
 **Not this repo:** FR-11 schedule approval + writing to Google Calendar (Backend).

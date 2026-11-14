@@ -45,9 +45,16 @@ SLOT_STATUS_FROM_DB = {
 CONNECTED = "Active"
 LEARNED = "Learned"
 
+# The Active plan: at most one per user (UX_UserSubscription_OneActivePerUser).
 GET_USER = text("""
     SELECT u."TimeZone", u."WorkDayStart", u."WorkDayEnd", u."WorksOnWeekend",
-           u."DefaultBufferMinutes", u."ProductiveBlocks"
+           u."DefaultBufferMinutes", u."ProductiveBlocks",
+           (SELECT sp."Price"
+            FROM "UserSubscription" us
+            JOIN "SubscriptionPlan" sp ON sp."Id" = us."PlanId"
+            WHERE us."UserId" = u."Id" AND us."Status" = 'Active'
+            ORDER BY us."StartAt" DESC
+            LIMIT 1) AS "PlanPrice"
     FROM "User" u
     WHERE u."Id" = :user_id AND u."DeletedAt" IS NULL
 """)
@@ -237,6 +244,8 @@ class SqlBriefingRepository:
         connection = (await execute(GET_CONNECTION_STATUS, user)).scalar_one_or_none()
         return BriefingData(
             hours=hours,
+            # No Active plan (bad data) runs like Free (#7).
+            is_free_plan=row.PlanPrice is None or row.PlanPrice == 0,
             tasks=tasks,
             k_by_domain={
                 r.DomainId: DomainK(r.KBias, r.SampleCount)

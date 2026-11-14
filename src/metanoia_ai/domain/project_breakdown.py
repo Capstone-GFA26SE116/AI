@@ -393,7 +393,7 @@ class ProjectNumbers:
     total_estimated_minutes: int
     total_adjusted_minutes: int
     days_left: int | None  # None: no deadline to count to
-    adjusted_is_hint: bool  # Always False: every plan uses K (kept for the API)
+    adjusted_is_hint: bool  # Free plan: the adjusted time is only a hint
     warning: str | None  # set when the work does not fit in the days left
 
 
@@ -420,6 +420,7 @@ def project_numbers(
     initial_k: Decimal,
     project_deadline: date | None,
     today: date,
+    is_free_plan: bool,
     daily_work_hours: float,
     language: Language = Language.VI,
 ) -> ProjectNumbers:
@@ -465,7 +466,7 @@ def project_numbers(
         total_estimated_minutes=sum(d.estimated_minutes for d in by_domain),
         total_adjusted_minutes=total_adjusted,
         days_left=days_left,
-        adjusted_is_hint=False,
+        adjusted_is_hint=is_free_plan,
         warning=warning,
     )
 

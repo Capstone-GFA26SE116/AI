@@ -73,6 +73,7 @@ def task(title: str) -> BriefingTask:
 def user_data(title: str, **changes) -> BriefingData:
     base = BriefingData(
         hours=WorkingHours(SAIGON, clock(8), clock(18), True, 10),
+        is_free_plan=True,
         tasks=(task(title),),
         k_by_domain={},
         productive_scores={},
@@ -143,7 +144,7 @@ def test_briefing_shape(client):
     [top] = body["top_tasks"]
     assert top["title"] == "Việc của A"
     assert top["deadline"] == "2026-10-18T17:00:00+07:00"
-    assert top["remaining_minutes"] == 78  # 60 × initial K 1.3, on every plan
+    assert top["remaining_minutes"] == 60  # Free plan: no × K
     assert top["reasons"] == [{"code": "deadline_soon", "text": "Hạn ngày mai."}]
     assert top["similar_warning"] == {
         "text": "Các việc tương tự trước đây thường mất gấp 1,5 lần dự kiến."

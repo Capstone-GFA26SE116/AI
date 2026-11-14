@@ -164,12 +164,13 @@ def test_t21_normal_run():
     )
 
 
-def test_free_plan_also_uses_k():
+def test_free_plan_uses_the_estimate_and_no_k():
     world = World(price=0)
     result = world.run(planning(task(minutes=60)))
-    assert result.slots[0].proposed_minutes == 78
-    assert world.repo.pending(USER)[0].slots[0].k_bias_used == Decimal("1.3")
-    assert '"extra_applied": true' in world.llm.prompts[0]
+    assert result.slots[0].proposed_minutes == 60
+    assert world.repo.pending(USER)[0].slots[0].k_bias_used is None
+    assert "1.3" not in world.llm.prompts[0]  # facts carry a percent, not K
+    assert '"extra_applied": false' in world.llm.prompts[0]
 
 
 def test_missing_domain_profile_uses_initial_k():

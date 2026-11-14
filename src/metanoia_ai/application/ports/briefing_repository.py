@@ -42,6 +42,7 @@ class BriefingData:
     """Everything the briefing reads, loaded once per request."""
 
     hours: WorkingHours
+    is_free_plan: bool  # no Active plan counts as Free (#7)
     tasks: tuple[BriefingTask, ...]
     k_by_domain: dict[UUID, DomainK]  # missing domain → no profile yet
     productive_scores: dict[int, Decimal]  # hour of day → score

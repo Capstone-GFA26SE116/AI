@@ -54,6 +54,7 @@ from metanoia_ai.application.use_cases.apply_task_breakdown import (
 from metanoia_ai.application.use_cases.get_project_chat import GetProjectChat
 from metanoia_ai.application.use_cases.propose_schedule import (
     NoSubscriptionError,
+    PlanFeatureError,
     QuotaExceededError,
 )
 from metanoia_ai.application.use_cases.send_project_chat_message import (
@@ -401,6 +402,11 @@ async def send(
         raise conflict("project_closed") from error
     except NoSubscriptionError as error:
         raise conflict("no_active_plan") from error
+    except PlanFeatureError as error:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "plan_feature_locked", "feature": error.feature},
+        ) from error
     except QuotaExceededError as error:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="AI quota exceeded"

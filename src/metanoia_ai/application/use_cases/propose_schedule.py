@@ -75,6 +75,14 @@ class QuotaExceededError(Exception):
     """No AI calls left in the plan for this period (BR-86)."""
 
 
+class PlanFeatureError(Exception):
+    """The user's plan does not include this AI feature (Model Business)."""
+
+    def __init__(self, feature: str) -> None:
+        super().__init__(feature)
+        self.feature = feature
+
+
 class _LostLastCallError(Exception):
     """Another request used the last call while this one was running."""
 

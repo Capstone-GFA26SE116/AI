@@ -530,7 +530,8 @@ def test_productive_defaults(env):
     assert s.productive_prior_weight == 5
     assert s.productive_min_session_minutes == 25
     assert s.productive_hours_window_days == 90
-    assert s.productive_learning_plans == ("Cao cấp",)
+    assert s.productive_learning_plans == ("Premium",)
+    assert s.assistant_plans == ("Premium",)
 
 
 def test_productive_values_can_be_changed(env):

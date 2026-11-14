@@ -23,6 +23,7 @@ from metanoia_ai.application.use_cases.assistant_turn import (
 )
 from metanoia_ai.application.use_cases.propose_schedule import (
     NoSubscriptionError,
+    PlanFeatureError,
     QuotaExceededError,
 )
 from metanoia_ai.application.use_cases.recompute_productive_hours import (
@@ -140,6 +141,11 @@ async def post_turn(
     except NoSubscriptionError as error:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail={"code": "no_active_plan"}
+        ) from error
+    except PlanFeatureError as error:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "plan_feature_locked", "feature": error.feature},
         ) from error
     except QuotaExceededError as error:
         raise HTTPException(

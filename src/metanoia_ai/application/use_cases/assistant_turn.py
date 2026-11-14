@@ -41,7 +41,11 @@ from metanoia_ai.application.ports.quota_repository import (
 from metanoia_ai.application.reason_writer import BadAnswerError, LLMCall
 from metanoia_ai.application.use_cases.find_similar_tasks import SimilarTasksResult
 from metanoia_ai.application.use_cases.get_daily_briefing import Briefing
-from metanoia_ai.application.use_cases.propose_schedule import QuotaExceededError
+from metanoia_ai.application.use_cases.propose_schedule import (
+    NoSubscriptionError,
+    PlanFeatureError,
+    QuotaExceededError,
+)
 from metanoia_ai.application.use_cases.recompute_productive_hours import (
     UserNotFoundError,
 )
@@ -160,6 +164,7 @@ class AssistantSettings:
     match_min_score: float
     match_min_gap: float
     local: LocalSettings | None = None  # FR-22b; None: always ask the LLM
+    plans: frozenset[str] = frozenset({"Premium"})  # plans that include the assistant
 
 
 @dataclass(frozen=True)
@@ -238,12 +243,11 @@ class AssistantTurn:
         if zone is None:
             raise UserNotFoundError(str(request.user_id))
         now = self.now().astimezone(zone)
+        plan = await self._plan(request.user_id)
 
         local = await self._local_choice(request)
         if local is not None:
-            return await self._run(
-                local, request, now, zone, await self._calls_left(request.user_id)
-            )
+            return await self._run(local, request, now, zone, self._calls_left(plan))
 
         subscription = await self.quota.check(request.user_id)
 
@@ -290,11 +294,18 @@ class AssistantTurn:
             return None  # the leftover words may not be a name: the LLM decides
         return ToolChoice(choice.tool, choice.confidence, name=match.found.name)
 
-    async def _calls_left(self, user_id: UUID) -> int | None:
-        """For ai_quota on a local turn: nothing is charged, so this is what is left now."""
+    async def _plan(self, user_id: UUID) -> Subscription:
+        """The active plan; only some plans include the assistant, even local turns."""
         subscription = await self.quota_repo.get_subscription(user_id, self.now())
         if subscription is None:
-            return 0  # no plan: no AI use at all, not "unlimited"
+            raise NoSubscriptionError(str(user_id))
+        if subscription.plan_name not in self.settings.plans:
+            raise PlanFeatureError("assistant")
+        return subscription
+
+    @staticmethod
+    def _calls_left(subscription: Subscription) -> int | None:
+        """For ai_quota on a local turn: nothing is charged, so this is what is left now."""
         if subscription.ai_call_limit is None:
             return None
         return max(subscription.ai_call_limit - subscription.ai_calls_used, 0)

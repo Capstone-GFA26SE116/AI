@@ -296,7 +296,7 @@ class SendProjectChatMessage:
         project = await open_project(self.repo, user_id, conversation.project_id)
         # FR-08b-2 step 3: library documents are checked before the quota (AC1, AC2).
         library = await self._library_documents(user_id, project, attached)
-        subscription = await self.quota.check(user_id)
+        subscription = await self.quota.check_paid(user_id, "chat")
         messages = await self.repo.list_messages(user_id, conversation_id)
         return _Prepared(
             project=project,

@@ -141,8 +141,8 @@ class Settings(BaseSettings):
     productive_min_session_minutes: int = Field(default=25, gt=0)
     productive_hours_window_days: int = Field(default=90, gt=0)
     # Plan names (SubscriptionPlan.Name) that learn from timer data (#16).
-    # In .env: comma-separated, e.g. "Cao cấp,Doanh nghiệp".
-    productive_learning_plans: Annotated[tuple[str, ...], NoDecode] = ("Cao cấp",)
+    # In .env: comma-separated, e.g. "Premium,Business".
+    productive_learning_plans: Annotated[tuple[str, ...], NoDecode] = ("Premium",)
 
     # Daily "Today" briefing (FR-12). No LLM; only FR-09 embeddings.
     briefing_top_count: int = Field(default=3, ge=1, le=10)
@@ -183,6 +183,8 @@ class Settings(BaseSettings):
     assistant_text_max_chars: int = Field(default=500, ge=1)
     assistant_history_max_turns: int = Field(default=6, ge=0)
     assistant_history_max_chars: int = Field(default=2000, ge=0)
+    # Plan names (SubscriptionPlan.Name) that may use the 3D assistant (Model Business).
+    assistant_plans: Annotated[tuple[str, ...], NoDecode] = ("Premium",)
     # Below this the tool choice is not trusted → "not supported yet" (#12).
     assistant_min_confidence: float = Field(default=0.5, ge=0, le=1)
     # Spoken name matching (#6): best score and lead over the second best.
@@ -220,13 +222,13 @@ class Settings(BaseSettings):
         parsed = self.parse_break(self.schedule_lunch_break)
         return () if parsed is None else (DailyBreak(*parsed),)
 
-    @field_validator("productive_learning_plans", mode="before")
+    @field_validator("productive_learning_plans", "assistant_plans", mode="before")
     @classmethod
     def split_plan_names(cls, value: object) -> object:
         if isinstance(value, str):
             value = tuple(name.strip() for name in value.split(","))
         if isinstance(value, tuple | list) and not all(value):
-            raise ValueError("PRODUCTIVE_LEARNING_PLANS has an empty name")
+            raise ValueError("a plan list has an empty name")
         return value
 
     @model_validator(mode="after")

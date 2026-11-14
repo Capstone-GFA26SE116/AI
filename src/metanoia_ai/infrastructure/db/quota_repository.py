@@ -22,7 +22,7 @@ FEATURE_TO_DB = {
 # Several Active rows would be a Backend bug; take the newest (FR-10 #18).
 # Past EndAt = not active, even if the Backend has not set Expired yet.
 GET_SUBSCRIPTION = text("""
-    SELECT us."Id", sp."Price", sp."AiCallLimit", us."AiCallsUsed"
+    SELECT us."Id", sp."Price", sp."AiCallLimit", us."AiCallsUsed", sp."Name"
     FROM "UserSubscription" us
     JOIN "SubscriptionPlan" sp ON sp."Id" = us."PlanId"
     WHERE us."UserId" = :user_id
@@ -73,6 +73,7 @@ class SqlQuotaRepository:
             price=row.Price,
             ai_call_limit=row.AiCallLimit,
             ai_calls_used=row.AiCallsUsed,
+            plan_name=row.Name,
         )
 
     async def try_charge(self, subscription: Subscription) -> bool:

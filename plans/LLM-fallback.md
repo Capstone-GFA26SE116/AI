@@ -1,6 +1,6 @@
 # LLM-fallback — Nhà cung cấp LLM dự phòng (Groq) khi Gemini lỗi
 
-Trạng thái: Xong (code) · chờ key · Branch: `feature/llm-fallback` · Cập nhật: 2026-11-12
+Trạng thái: Xong · chờ Hiếu thêm 3 biến lên Azure · Branch: `feature/llm-fallback` · Cập nhật: 2026-11-18
 
 <!-- Hiếu chốt 2026-11-11: Groq; Hiếu tự tạo key ở console.groq.com và điền vào .env / Azure.
 Claude Code soạn plan rồi làm liền. -->
@@ -13,7 +13,7 @@ Claude Code soạn plan rồi làm liền. -->
   - [x] AC2 — Gemini lỗi → câu trả lời của Groq; `AIUsageLog` ghi tên model thật đã trả lời.
   - [x] AC3 — Cả hai lỗi → một `LLMError` như cũ (người gọi vẫn retry / báo lỗi như trước).
   - [x] AC4 — Không thêm thư viện (dùng `httpx` có sẵn); key không xuất hiện trong log / lỗi.
-  - [ ] AC5 — Chạy thật với key Groq (chờ Hiếu điền key).
+  - [x] AC5 — Chạy thật với key Groq (2026-11-18, xem mục 5).
 - **Ngoài phạm vi:** chọn model theo gói (Free / trả phí), embedding dự phòng (FR-19 vẫn chỉ Gemini).
 
 ## 1. Bên ngoài
@@ -43,9 +43,12 @@ Claude Code soạn plan rồi làm liền. -->
 
 ## 4. Các bước code
 - [x] **1.** Client + wrapper + config + deps — T1–T4.
-- [ ] **2.** Hiếu tạo key Groq, điền `.env` + Azure App Settings, thử 1 tin nhắn chat khi tắt Gemini key.
+- [x] **2.** Hiếu tạo key Groq, điền `.env` + Azure App Settings, thử 1 tin nhắn chat khi tắt Gemini key. (`.env` máy dev xong, chạy thật đạt; Azure: Hiếu thêm tay vì máy dev không có Azure CLI.)
 
 ## 5. Nhật ký thay đổi
 | Ngày | Thay đổi | Lý do |
 |---|---|---|
 | 2026-11-12 | Tạo plan + code; `pytest` 1913 | Mục 4 trong danh sách của Hiếu |
+| 2026-11-18 | Hiếu điền key Groq ở `.env`. `llama-3.3-70b-versatile` (gợi ý cũ) Groq **không còn phục vụ** → 404. Model chat còn lại: `openai/gpt-oss-120b`, `openai/gpt-oss-20b`, `qwen/qwen3.8-27b`, `allam-2-7b` (ngữ cảnh 4k, bỏ). | Chạy thật bước 2 |
+| 2026-11-18 | Đo 56 câu mẫu (router 20, lý do lịch 10, chia task 12, chat dự án 14), 1 lần gọi / câu, không thử lại, gặp 429 thì chờ 30 s rồi gọi lại. **Gemini** (`gemini-3.5-flash-lite`): đúng 41/56, 14 lỗi 503/504 (Gemini quá tải lúc đo), 1 sai luật; trung vị ~7,5 s. **gpt-oss-120b**: đúng 48/56 (router 20/20, lý do 7/10, chia task 11/12, dự án 10/14 — 3 lần không ra JSON); ~1,4–5 s. **qwen3.8-27b**: đúng 53/56 (router 20/20, lý do 10/10, chia task 12/12, dự án 11/14 — 2 lần vẫn 429 sau 3 lần chờ, 1 domain lạ); ~1–3 s. → Chọn **`qwen/qwen3.8-27b`**. Gói free Groq giới hạn token/phút chặt: 22 lần phải chờ 429 khi gọi liên tục; prompt dài (chat dự án, tài liệu đến ~20.000 token) dễ bị 429 khi nhiều người dùng cùng lúc ⚠️ | Hiếu hỏi "AI dự phòng có đủ mạnh không" |
+| 2026-11-18 | AC5: Gemini key sai → `FallbackLLMClient` → `qwen/qwen3.8-27b` trả lời tiếng Việt trong 1,3 s. `.env` máy dev đổi `FALLBACK_LLM_MODEL=qwen/qwen3.8-27b`. | Chạy thật bước 2 |

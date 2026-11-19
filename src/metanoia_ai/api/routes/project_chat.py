@@ -6,6 +6,7 @@ uploaded files). Document errors carry {"code": …, "file": …} where useful.
 """
 
 from datetime import date, datetime
+from enum import StrEnum
 from typing import Annotated
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -83,7 +84,8 @@ from metanoia_ai.domain.project_breakdown import (
     MilestoneInput,
     TaskInput,
 )
-from metanoia_ai.domain.task_breakdown import BadDraftError, ReplyKind
+from metanoia_ai.domain.project_discussion import ChatMode
+from metanoia_ai.domain.task_breakdown import BadDraftError
 
 router = APIRouter(prefix="/chat", tags=["project chat"])
 
@@ -98,11 +100,31 @@ class ConversationResponse(BaseModel):
     created_at: datetime
 
 
+class MessageKind(StrEnum):
+    """What an AI message holds (FR-08b-1, FR-08b-3)."""
+
+    QUESTION = "question"
+    DRAFT = "draft"
+    DISCUSS = "discuss"  # a discussion answer with a checklist
+
+
+class NotesResponse(BaseModel):
+    """FR-08b-3: the checklist of a discussion answer."""
+
+    clear: list[str]
+    missing: list[str]  # blocks the plan (deliverables, deadline)
+    questions: list[str]  # worth asking, does not block the plan
+    risks: list[str]
+    ready_to_plan: bool
+
+
 class SendRequest(BaseModel):
     # Up to CHAT_PROJECT_MESSAGE_MAX_CHARS, checked by the use case. May be empty
     # only when documents are attached.
     message: str
     document_ids: list[UUID] = []  # FR-08b-2: library files, 0-3 (AC1, AC4)
+    # FR-08b-3: "discuss" = talk it through (checklist, no plan); "plan" = as before.
+    mode: ChatMode = ChatMode.PLAN
 
 
 class AttachmentResponse(BaseModel):
@@ -160,10 +182,11 @@ class ProjectDraftResponse(BaseModel):
 class MessageResponse(BaseModel):
     id: UUID
     role: ChatRole
-    kind: ReplyKind | None = None  # AI messages only
+    kind: MessageKind | None = None  # AI messages only
     content: str
     created_at: datetime  # ISO 8601 in the user's time zone
     draft: ProjectDraftResponse | None = None
+    notes: NotesResponse | None = None  # FR-08b-3: discussion answers only
     attachments: list[AttachmentResponse] = []  # user messages only (FR-08b-2)
 
 
@@ -295,7 +318,21 @@ def to_message(
 ) -> MessageResponse:
     kind = None
     if message.role is ChatRole.ASSISTANT:
-        kind = ReplyKind.DRAFT if message.draft else ReplyKind.QUESTION
+        if message.draft:
+            kind = MessageKind.DRAFT
+        elif message.notes:
+            kind = MessageKind.DISCUSS
+        else:
+            kind = MessageKind.QUESTION
+    notes = None
+    if message.notes:
+        notes = NotesResponse(
+            clear=list(message.notes.clear),
+            missing=list(message.notes.missing),
+            questions=list(message.notes.questions),
+            risks=list(message.notes.risks),
+            ready_to_plan=message.notes.ready_to_plan,
+        )
     return MessageResponse(
         id=message.message_id,
         role=message.role,
@@ -303,6 +340,7 @@ def to_message(
         content=message.content,
         created_at=message.created_at.astimezone(zone),
         draft=to_draft(message),
+        notes=notes,
         attachments=[to_attachment(a) for a in attachments],
     )
 
@@ -377,10 +415,11 @@ async def send(
     conversation_id: UUID,
     message: str,
     attached: AttachedDocuments,
+    mode: ChatMode = ChatMode.PLAN,
 ) -> ProjectChatTurnResponse:
     """Run the use case and turn its errors into HTTP answers (both endpoints)."""
     try:
-        turn = await use_case.execute(user_id, conversation_id, message, attached)
+        turn = await use_case.execute(user_id, conversation_id, message, attached, mode)
     except DocumentError as error:
         raise document_problem(error.code, error.name) from error
     except DocumentNotFoundError as error:
@@ -436,12 +475,14 @@ async def send_message(
     use_case: Annotated[SendProjectChatMessage, Depends(get_send_project_chat_message)],
 ) -> ProjectChatTurnResponse:
     """Send one message (usually the brief), with up to 3 library documents.
-    Uses 1 AI call when the AI answers."""
+    mode "discuss" (FR-08b-3): a checklist, no plan. Uses 1 AI call when the AI answers."""
     attached = AttachedDocuments(
         document_ids=tuple(body.document_ids),
         auth_header=request.headers.get("Authorization", ""),  # #18: passed on only
     )
-    return await send(use_case, user_id, conversation_id, body.message, attached)
+    return await send(
+        use_case, user_id, conversation_id, body.message, attached, body.mode
+    )
 
 
 @router.post("/conversations/{conversation_id}/messages/files")
@@ -453,6 +494,7 @@ async def send_message_with_files(
     message: Annotated[str, Form()] = "",
     document_ids: Annotated[list[UUID], Form()] = [],  # noqa: B006 (FastAPI form)
     files: Annotated[list[UploadFile], File()] = [],  # noqa: B006 (FastAPI form)
+    mode: Annotated[ChatMode, Form()] = ChatMode.PLAN,  # FR-08b-3
 ) -> ProjectChatTurnResponse:
     """Like /messages, plus files uploaded straight into the chat (FR-08b-2).
     Uploads do not need the project's document switch (AC1)."""
@@ -474,7 +516,7 @@ async def send_message_with_files(
         uploads=tuple(uploads),
         auth_header=request.headers.get("Authorization", ""),
     )
-    return await send(use_case, user_id, conversation_id, message, attached)
+    return await send(use_case, user_id, conversation_id, message, attached, mode)
 
 
 @router.get("/conversations/{conversation_id}")

@@ -4,6 +4,9 @@ the AI asks back or answers with a draft of milestones + tasks.
 1 message = 1 AI call from the quota, charged only for a valid answer (#12).
 The LLM call runs outside any transaction; everything is saved in one at the end.
 
+FR-08b-3: a message in "discuss" mode gets a checklist instead (no plan); it is
+charged, logged and saved the same way.
+
 FR-08b-2: a message may carry up to 3 documents (picked from the project's
 library, only when the project allows it, or uploaded). Their text is read
 before the LLM call; any document problem stops the message before it, so
@@ -78,6 +81,7 @@ from metanoia_ai.domain.project_breakdown import (
     reply_language,
     restore_client_in_notes,
 )
+from metanoia_ai.domain.project_discussion import ChatMode
 
 
 class _LostLastCallError(Exception):
@@ -204,6 +208,7 @@ class SendProjectChatMessage:
         conversation_id: UUID,
         message: str,
         attached: AttachedDocuments = NO_DOCUMENTS,
+        mode: ChatMode = ChatMode.PLAN,
     ) -> ProjectChatTurn:
         text = message.strip()
         self._check_input(text, attached)
@@ -236,19 +241,25 @@ class SendProjectChatMessage:
             client,
             today,
             language,
+            mode,
         )
-        context = DraftContext(
-            domains=prepared.domains,
-            project_deadline=project.deadline,
-            today=today,
-            existing_titles=tuple(
-                mask_contact(t, client) for t in prepared.work.task_titles
-            ),
-            language=language,
-        )
-        result = await self.writer.write(
-            prompt_project, domains, history, masked_text, context, documents
-        )
+        if mode is ChatMode.DISCUSS:
+            result = await self.writer.discuss(
+                prompt_project, history, masked_text, today, language, documents
+            )
+        else:
+            context = DraftContext(
+                domains=prepared.domains,
+                project_deadline=project.deadline,
+                today=today,
+                existing_titles=tuple(
+                    mask_contact(t, client) for t in prepared.work.task_titles
+                ),
+                language=language,
+            )
+            result = await self.writer.write(
+                prompt_project, domains, history, masked_text, context, documents
+            )
         if result.reply is None:
             async with self.repo.transaction():
                 await self.quota.log(prepared.subscription, result.calls, charged=False)
@@ -471,7 +482,7 @@ class SendProjectChatMessage:
         if message.role is ChatRole.USER:
             return ProjectChatLine("user", mask_contact(message.content, client))
         draft = message.draft.draft.milestones if message.draft else ()
-        return ProjectChatLine("assistant", message.content, draft)
+        return ProjectChatLine("assistant", message.content, draft, message.notes)
 
     def _fit_history(
         self,
@@ -482,13 +493,19 @@ class SendProjectChatMessage:
         client: str | None,
         today: date,
         language: Language,
+        mode: ChatMode = ChatMode.PLAN,
     ) -> list[ProjectChatLine]:
         """Keep the brief; drop the oldest of the others until the prompt fits (#18)."""
         lines = [self._line(m, client) for m in history]
         while len(lines) > 1:
-            prompt = self.writer.render(
-                project, domains, lines, message, today, language
-            )
+            if mode is ChatMode.DISCUSS:
+                prompt = self.writer.render_discuss(
+                    project, lines, message, today, language
+                )
+            else:
+                prompt = self.writer.render(
+                    project, domains, lines, message, today, language
+                )
             if len(prompt) <= self.max_prompt_chars:
                 break
             del lines[1]  # lines[0] is the brief
@@ -543,7 +560,12 @@ class SendProjectChatMessage:
                 for a in new_attachments
             ]
             ai_message = await self.repo.add_message(
-                user_id, conversation_id, ChatRole.ASSISTANT, reply.text, saved_draft
+                user_id,
+                conversation_id,
+                ChatRole.ASSISTANT,
+                reply.text,
+                saved_draft,
+                reply.notes,
             )
             if not await self.quota_repo.try_charge(prepared.subscription):
                 raise _LostLastCallError

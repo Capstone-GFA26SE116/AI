@@ -102,6 +102,9 @@ class Placement(StrEnum):
 
     EARLIEST_FREE = "earliest_free"
     WAITED_FOR_FOCUS_HOUR = "waited_for_focus_hour"  # earlier free time that day
+    # FR-10c: earlier free time existed, but work was spread over the days or
+    # switched to another job so the user does not do one thing for too long.
+    SPREAD_OUT = "spread_out"
 
 
 class BusyKind(StrEnum):
@@ -182,6 +185,8 @@ class ScheduleUnit:
     k_bias_used: Decimal | None  # None on the Free plan
     order_index: int | None = None  # subtask order inside its task
     estimate_minutes: int | None = None
+    project_id: UUID | None = None  # FR-10c: switch work between projects
+    domain_id: UUID | None = None  # FR-10c: ... or between kinds of work
 
     def __post_init__(self) -> None:
         _require_aware(self.deadline)

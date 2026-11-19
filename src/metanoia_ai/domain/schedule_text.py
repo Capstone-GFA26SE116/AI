@@ -175,8 +175,8 @@ def earlier_blocked_by(
       when that is on a later day (the work day was over);
     - otherwise → the kind of the busy block that ends last before the slot.
     """
-    if slot.placement is Placement.WAITED_FOR_FOCUS_HOUR:
-        return BlockedBy.NONE
+    if slot.placement in (Placement.WAITED_FOR_FOCUS_HOUR, Placement.SPREAD_OUT):
+        return BlockedBy.NONE  # the earlier time was free
     first = first_work_time(earliest, hours, round_minutes)
     zone = hours.time_zone
     if slot.start <= first:

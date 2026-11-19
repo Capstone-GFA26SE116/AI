@@ -9,10 +9,17 @@ Units of one task (its subtasks) are placed one after another, in OrderIndex ord
 
 Cannot finish before the deadline → nothing is placed for that task, and a warning
 is added. Deadline after the window → the part that fits is placed, no warning.
+
+FR-10c (both off by default, turned on by the use case from config):
+- max_block_minutes: a unit longer than this is cut into even blocks first.
+- spread: each block goes to the day with the least work so far (the deadline
+  day last), and two back-to-back slots avoid the same task, then the same
+  project, then the same kind of work. Inside the chosen day the old rules apply.
 """
 
+import math
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from itertools import groupby
@@ -39,6 +46,58 @@ class PlanResult:
     warnings: tuple[ScheduleWarning, ...]
 
 
+@dataclass
+class Spread:
+    """FR-10c state while planning: work minutes per day and the slots placed so far."""
+
+    load: dict[date, int] = field(default_factory=dict)
+    placed: list[tuple[PlannedSlot, ScheduleUnit]] = field(default_factory=list)
+    back_to_back_minutes: int = 0  # closer than this = no real break between two slots
+
+    def copy(self) -> "Spread":
+        return Spread(dict(self.load), list(self.placed), self.back_to_back_minutes)
+
+    def add(self, slot: PlannedSlot, unit: ScheduleUnit, time_zone: ZoneInfo) -> None:
+        day = local_date(slot.start, time_zone)
+        self.load[day] = self.load.get(day, 0) + minutes_between(slot.start, slot.end)
+        self.placed.append((slot, unit))
+
+    def clash(self, start: datetime, end: datetime, unit: ScheduleUnit) -> int:
+        """How bad it is to put `unit` here next to the slots already placed.
+
+        3 = right next to the same task, 2 = same project, 1 = same kind of work, 0 = fine.
+        """
+        gap = timedelta(minutes=self.back_to_back_minutes)
+        worst = 0
+        for slot, other in self.placed:
+            touching = timedelta(0) <= start - slot.end <= gap or (
+                timedelta(0) <= slot.start - end <= gap
+            )
+            if not touching:
+                continue
+            if other.task_id == unit.task_id:
+                worst = max(worst, 3)
+            elif unit.project_id and other.project_id == unit.project_id:
+                worst = max(worst, 2)
+            elif unit.domain_id and other.domain_id == unit.domain_id:
+                worst = max(worst, 1)
+        return worst
+
+
+def block_sizes(minutes: int, max_block: int | None, min_chunk: int) -> list[int]:
+    """FR-10c: cut long work into even blocks of at most `max_block` minutes.
+
+    300 → [150, 150]; 400 → [134, 133, 133]. Off (None / 0) or short enough → [minutes].
+    """
+    if not max_block or minutes <= max_block:
+        return [minutes]
+    count = math.ceil(minutes / max_block)
+    while count > 1 and minutes // count < min_chunk:
+        count -= 1
+    base, extra = divmod(minutes, count)
+    return [base + 1] * extra + [base] * (count - extra)
+
+
 def top_productive_hours(scores: Mapping[int, Decimal], count: int) -> frozenset[int]:
     """The `count` hours of the day with the highest score (tie: earlier hour)."""
     ranked = sorted(scores, key=lambda hour: (-scores[hour], hour))
@@ -63,6 +122,44 @@ def order_units(units: Iterable[ScheduleUnit]) -> list[ScheduleUnit]:
     )
 
 
+def interleave_projects(
+    units: Sequence[ScheduleUnit], time_zone: ZoneInfo
+) -> list[ScheduleUnit]:
+    """FR-10c: among tasks due the same day, alternate projects (then kinds of work),
+    so the day switches between jobs: A, B, A instead of A, A, B.
+
+    Input is in `order_units` order; tasks due on an earlier day stay first and
+    the units of one task stay together.
+    """
+    tasks = [list(group) for _, group in groupby(units, key=lambda u: u.task_id)]
+    result: list[ScheduleUnit] = []
+    previous: ScheduleUnit | None = None  # carried over: the last task placed
+    for _, same_day in groupby(
+        tasks, key=lambda t: local_date(t[0].deadline, time_zone)
+    ):
+        waiting = list(same_day)
+        while waiting:
+            chosen = waiting[0]
+            if previous is not None:
+                chosen = next(
+                    (t for t in waiting if differs(t[0], previous, "project_id")),
+                    next(
+                        (t for t in waiting if differs(t[0], previous, "domain_id")),
+                        waiting[0],
+                    ),
+                )
+            waiting.remove(chosen)
+            result += chosen
+            previous = chosen[0]
+    return result
+
+
+def differs(unit: ScheduleUnit, other: ScheduleUnit, name: str) -> bool:
+    """True when both have the value and it is not the same."""
+    mine, theirs = getattr(unit, name), getattr(other, name)
+    return mine is not None and theirs is not None and mine != theirs
+
+
 def plan_schedule(
     units: Iterable[ScheduleUnit],
     free: Sequence[TimeRange],
@@ -73,23 +170,36 @@ def plan_schedule(
     window_end: datetime,
     round_minutes: int,
     min_chunk_minutes: int,
+    spread: bool = False,
+    max_block_minutes: int | None = None,
+    existing_load: Mapping[date, int] | None = None,
 ) -> PlanResult:
     """Place each task (all its units), in order, into the free time that is left.
 
     A task is all-or-nothing when its deadline is inside the window: if one of
     its units cannot be placed, none are, and a warning is added.
+    existing_load (FR-10c): approved work minutes per local day, counted when spreading.
     """
     gaps = sorted(free, key=lambda g: g.start)
     slots: list[PlannedSlot] = []
     warnings: list[ScheduleWarning] = []
+    state = (
+        Spread(dict(existing_load or {}), [], hours.buffer_minutes + round_minutes)
+        if spread
+        else None
+    )
 
-    for task_id, task_units in groupby(order_units(units), key=lambda u: u.task_id):
+    ordered = order_units(units)
+    if spread:
+        ordered = interleave_projects(ordered, hours.time_zone)
+    for task_id, task_units in groupby(ordered, key=lambda u: u.task_id):
         task_units = list(task_units)
         deadline = task_units[0].deadline
         if deadline <= now:
             warnings.append(ScheduleWarning(WarningType.OVERDUE, task_id))
             continue
 
+        task_state = state.copy() if state else None
         task_slots, gaps_left, complete = place_task(
             task_units,
             gaps,
@@ -98,6 +208,8 @@ def plan_schedule(
             now=now,
             round_minutes=round_minutes,
             min_chunk_minutes=min_chunk_minutes,
+            max_block_minutes=max_block_minutes,
+            spread=task_state,
         )
         if not complete and deadline <= window_end:
             warnings.append(
@@ -111,6 +223,7 @@ def plan_schedule(
             continue
         slots += task_slots
         gaps = gaps_left
+        state = task_state  # keep the load only when the task was kept
 
     return PlanResult(
         slots=tuple(sorted(slots, key=lambda s: s.start)), warnings=tuple(warnings)
@@ -126,41 +239,64 @@ def place_task(
     now: datetime,
     round_minutes: int,
     min_chunk_minutes: int,
+    max_block_minutes: int | None = None,
+    spread: Spread | None = None,
 ) -> tuple[list[PlannedSlot], list[TimeRange], bool]:
     """Try to place every unit of one task, one after another.
 
     Returns the slots, the free time left after them, and whether all minutes fit.
-    Works on a copy: the caller decides whether to keep the result.
+    Works on a copy: the caller decides whether to keep the result (and `spread`,
+    which this updates, is the caller's copy too).
     """
     gaps = list(gaps)
     slots: list[PlannedSlot] = []
     earliest = now  # a subtask never starts before the previous one ends
     for unit in task_units:
-        usable = after(gaps, earliest)
-        found = whole(unit, usable, hours.time_zone, productive_hours)
+        parts: list[tuple[TimeRange, Placement]] = []
         missing = 0
-        if found is None:
-            pieces, missing = split(unit, usable, min_chunk_minutes)
-            placement = Placement.EARLIEST_FREE  # parts fill free time in time order
-        else:
-            pieces, placement = found
-        for index, piece in enumerate(pieces, start=1):
-            slot = PlannedSlot(
-                task_id=unit.task_id,
-                subtask_id=unit.subtask_id,
-                start=piece.start,
-                end=piece.end,
-                k_bias_used=unit.k_bias_used,
-                part_index=index,
-                part_count=len(pieces),
-                placement=placement,
-            )
-            slots.append(slot)
-            gaps = take(gaps, slot, hours, round_minutes)
+        for size in block_sizes(unit.minutes, max_block_minutes, min_chunk_minutes):
+            block = replace(unit, minutes=size)
+            usable = after(gaps, earliest)
+            found = whole(block, usable, hours.time_zone, productive_hours, spread)
+            if found is None:
+                pieces, missing = split(block, usable, min_chunk_minutes)
+                placement = Placement.EARLIEST_FREE  # parts fill free time in order
+            else:
+                pieces, placement = found
+            for piece in pieces:
+                parts.append((piece, placement))
+                gaps = take_range(gaps, piece, hours, round_minutes)
+                if spread is not None:
+                    spread.add(to_slot(unit, piece, placement), unit, hours.time_zone)
+            if missing:
+                break
+            earliest = pieces[-1].end
+        slots += [
+            to_slot(unit, piece, placement, index, len(parts))
+            for index, (piece, placement) in enumerate(parts, start=1)
+        ]
         if missing:
             return slots, gaps, False
-        earliest = pieces[-1].end
     return slots, gaps, True
+
+
+def to_slot(
+    unit: ScheduleUnit,
+    piece: TimeRange,
+    placement: Placement,
+    part_index: int = 1,
+    part_count: int = 1,
+) -> PlannedSlot:
+    return PlannedSlot(
+        task_id=unit.task_id,
+        subtask_id=unit.subtask_id,
+        start=piece.start,
+        end=piece.end,
+        k_bias_used=unit.k_bias_used,
+        part_index=part_index,
+        part_count=part_count,
+        placement=placement,
+    )
 
 
 def whole(
@@ -168,9 +304,13 @@ def whole(
     gaps: Sequence[TimeRange],
     time_zone: ZoneInfo,
     productive_hours: frozenset[int],
+    spread: Spread | None = None,
 ) -> tuple[list[TimeRange], Placement] | None:
     """The unit in one piece and how its start was chosen, or None if it fits nowhere."""
-    found = find_start(unit, gaps, time_zone, productive_hours)
+    if spread is None:
+        found = find_start(unit, gaps, time_zone, productive_hours)
+    else:
+        found = find_spread_start(unit, gaps, time_zone, productive_hours, spread)
     if found is None:
         return None
     start, placement = found
@@ -238,6 +378,52 @@ def find_start(
     return None
 
 
+def find_spread_start(
+    unit: ScheduleUnit,
+    gaps: Sequence[TimeRange],
+    time_zone: ZoneInfo,
+    productive_hours: frozenset[int],
+    spread: Spread,
+) -> tuple[datetime, Placement] | None:
+    """FR-10c: like `find_start`, but pick the day with the least work first.
+
+    Order: not the deadline day → least work that day → no clash with the slot
+    next to it → inside a focus hour → earliest. SPREAD_OUT when the old rules
+    (`find_start`) would have picked another time.
+    """
+    length = timedelta(minutes=unit.minutes)
+    deadline_day = local_date(unit.deadline, time_zone)
+    candidates = []
+    for gap in gaps:
+        for start in {gap.start, *productive_starts(gap, time_zone, productive_hours)}:
+            if start + length <= min(gap.end, unit.deadline):
+                candidates.append(start)
+    if not candidates:
+        return None
+
+    def rank(start: datetime) -> tuple[bool, int, int, bool, datetime]:
+        day = local_date(start, time_zone)
+        return (
+            day == deadline_day,
+            spread.load.get(day, 0),
+            spread.clash(start, start + length, unit),
+            start.astimezone(time_zone).hour not in productive_hours,
+            start,
+        )
+
+    chosen = min(candidates, key=rank)
+    old = find_start(unit, gaps, time_zone, productive_hours)
+    if old is not None and old[0] == chosen:
+        return old
+    same_day = old is not None and local_date(old[0], time_zone) == local_date(
+        chosen, time_zone
+    )
+    in_focus_hour = chosen.astimezone(time_zone).hour in productive_hours
+    if same_day and in_focus_hour and spread.clash(chosen, chosen + length, unit) == 0:
+        return chosen, Placement.WAITED_FOR_FOCUS_HOUR
+    return chosen, Placement.SPREAD_OUT
+
+
 def productive_starts(
     gap: TimeRange, time_zone: ZoneInfo, productive_hours: frozenset[int]
 ) -> list[datetime]:
@@ -250,6 +436,21 @@ def productive_starts(
         if start < min(gap.end, hour_start + timedelta(hours=1)):
             starts.append(start)
     return starts
+
+
+def take_range(
+    gaps: Sequence[TimeRange],
+    piece: TimeRange,
+    hours: WorkingHours,
+    round_minutes: int,
+) -> list[TimeRange]:
+    """`take` for a piece that is not a slot yet."""
+    return take(
+        gaps,
+        PlannedSlot(UUID(int=0), None, piece.start, piece.end, None),
+        hours,
+        round_minutes,
+    )
 
 
 def take(

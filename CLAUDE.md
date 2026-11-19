@@ -110,6 +110,9 @@ domain rules → port → use case (+ fake repo tests) → SQL repository → ro
 - **Code places the slots; the LLM only writes the one-line reason.**
 - Order: keep Fixed → Flexible by nearest deadline (tie: longer first) → size with
   T_proposed → prefer productive hours → warn if a deadline can't be met.
+- FR-10c (no daily hour cap: freelancers may work 12–14 h): work goes to the least-loaded
+  day before its deadline (deadline day last), blocks ≤ `SCHEDULE_MAX_BLOCK_MINUTES` (180),
+  and back-to-back slots switch project, then kind of work.
 - Nothing reaches the calendar until the user approves.
 - Task runs over its slot: never auto-move; extend if the next gap fits, else propose a
   re-plan of the rest of the day. No LLM, no quota.
@@ -133,6 +136,7 @@ Full text in `docs/functional-requirements.md`. Status: first line of each `plan
 | FR-17b | Do not learn K_bias from estimates set by the AI | `plans/FR-17b.md` |
 | FR-10 | Schedule proposal (planner + one-line reason per slot) | `plans/FR-10.md` |
 | FR-10b | Keep the lunch break free when scheduling and moving slots (config, same for all users) | `plans/FR-10b.md` |
+| FR-10c | Do not pile work up: spread over the days, blocks ≤ 3 h, switch projects / kinds of work | `plans/FR-10c.md` |
 | — | Quota check + `AIUsageLog` (before every LLM call) | — |
 | FR-08a | AI chat, task level: split a big task into subtasks, then Apply | `plans/FR-08a.md` |
 | FR-08b-1 | AI chat, project level: text brief → milestones + Flexible tasks, then Apply | `plans/FR-08b-1.md` |

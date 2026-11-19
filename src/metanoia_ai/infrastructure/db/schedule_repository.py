@@ -50,7 +50,7 @@ GET_USER = text("""
 GET_TASKS = text(
     """
     SELECT t."Id", t."Title", t."DomainId", t."Status", t."Deadline",
-           t."EstimatedMinutes",
+           t."EstimatedMinutes", t."ProjectId",
            EXISTS (
                SELECT 1 FROM "ScheduleSlot" s
                WHERE s."TaskId" = t."Id" AND s."Status" IN """
@@ -248,6 +248,7 @@ class SqlScheduleRepository:
                 has_approved_slot=t.HasApprovedSlot,
                 subtasks=tuple(subtasks.get(t.Id, ())),
                 sessions=tuple(sessions.get(t.Id, ())),
+                project_id=t.ProjectId,
             )
             for t in await execute(GET_TASKS, user)
         )

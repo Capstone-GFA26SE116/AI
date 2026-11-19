@@ -204,6 +204,8 @@ def get_propose_schedule(
         top_productive_hours=settings.schedule_top_productive_hours,
         clock=lambda: datetime.now(UTC),
         breaks=settings.lunch_breaks(),
+        spread=settings.schedule_spread,
+        max_block_minutes=settings.schedule_max_block_minutes,
     )
 
 

@@ -223,8 +223,9 @@ def test_vietnamese_titles_are_sent_as_text():
 
 
 def test_prompt_version_file_exists():
-    assert PROMPT_VERSION == "schedule_reason_v2"
+    assert PROMPT_VERSION == "schedule_reason_v3"
     assert "slot_id" in load_prompt(PROMPT_VERSION)
+    assert "spread_out" in load_prompt(PROMPT_VERSION)  # FR-10c
 
 
 FACT_KEYS = [
@@ -312,7 +313,8 @@ def facts_from_sample(s: dict) -> SlotFacts:
 
 def test_samples_are_valid_and_fill_the_prompt():
     samples = json.loads(load_samples("schedule_reason"))
-    assert len(samples) == 10
+    assert 10 <= len(samples) <= 20
+    assert any(s["placement"] == "spread_out" for x in samples for s in x["slots"])
     w = writer(FakeLLMClient())
     for sample in samples:
         assert all(set(s) == {"slot_id", *FACT_KEYS} for s in sample["slots"])

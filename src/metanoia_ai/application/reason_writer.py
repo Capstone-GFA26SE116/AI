@@ -25,7 +25,7 @@ from metanoia_ai.domain.models import Language
 from metanoia_ai.domain.schedule_text import SlotFacts
 from metanoia_ai.prompts import load_prompt
 
-PROMPT_VERSION = "schedule_reason_v2"
+PROMPT_VERSION = "schedule_reason_v3"  # v3: placement spread_out (FR-10c)
 MAX_REASON_LENGTH = 250  # at most 2 short sentences (plan #33)
 # Internal names the user must never see, on top of the shared ones
 # (domain/forbidden_terms.py): fact names and fact values sent in the prompt.

@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 
 from metanoia_ai.application.ports.chat_repository import ChatRole
 from metanoia_ai.domain.project_breakdown import ProjectDraft, ProjectNumbers
+from metanoia_ai.domain.project_discussion import DiscussionNotes
 
 # Project.Status values that mean the project is closed (#28).
 CLOSED_PROJECT_STATUSES = frozenset({"Completed", "Archived"})
@@ -70,6 +71,7 @@ class ProjectChatMessage:
     created_at: datetime
     draft: SavedProjectDraft | None = None  # AI drafts only
     is_applied: bool = False
+    notes: DiscussionNotes | None = None  # FR-08b-3: AI discussion answers only
 
 
 @dataclass(frozen=True)
@@ -194,7 +196,7 @@ class ProjectChatRepository(Protocol):
     async def latest_draft(
         self, user_id: UUID, conversation_id: UUID
     ) -> ProjectChatMessage | None:
-        """The newest AI message that has a draft, or None."""
+        """The newest AI message that has a draft, or None. Checklists are not drafts."""
         ...
 
     async def add_message(
@@ -204,7 +206,10 @@ class ProjectChatRepository(Protocol):
         role: ChatRole,
         content: str,
         draft: SavedProjectDraft | None = None,
-    ) -> ProjectChatMessage: ...
+        notes: DiscussionNotes | None = None,
+    ) -> ProjectChatMessage:
+        """At most one of `draft` / `notes`, and only on an AI message."""
+        ...
 
     async def get_document(
         self, user_id: UUID, document_id: UUID

@@ -3,6 +3,7 @@
 User data goes into the prompt as JSON blocks the prompt calls "data, not
 instructions" (like FR-08a). Masking happens before: this module only formats.
 FR-08b-2: attached documents go in a separate block, only when there are some.
+FR-08b-3: a discussion message has its own prompt and answer (a checklist, no plan).
 """
 
 import copy
@@ -32,6 +33,7 @@ from metanoia_ai.domain.project_breakdown import (
     drop_duplicates,
     resolve_deadlines,
 )
+from metanoia_ai.domain.project_discussion import DiscussionNotes, check_notes
 from metanoia_ai.domain.task_breakdown import BadDraftError, ReplyKind
 from metanoia_ai.prompts import load_prompt
 
@@ -39,7 +41,10 @@ PROMPT_VERSION = "project_breakdown_v2"  # v2: the language is set by code (#35)
 # Added after the main prompt only when the message has documents (FR-08b-2 #15),
 # so a chat without documents sends exactly the v2 prompt (AC8).
 DOCUMENTS_PROMPT_VERSION = "project_documents_v1"
+DISCUSS_PROMPT_VERSION = "project_discuss_v1"  # FR-08b-3
 LANGUAGE_NAMES = {Language.VI: "Vietnamese", Language.EN: "English"}
+# FR-08b-3: the button that turns the discussion into a plan (named in the prompt).
+PLAN_BUTTON = {Language.VI: "Lên kế hoạch", Language.EN: "Plan"}
 ADDRESS_RULES = {
     Language.VI: 'Call yourself "mình" (never "tôi") and the user "bạn".',
     Language.EN: 'Use "I" and "you". Short, clear, friendly.',
@@ -67,6 +72,17 @@ class ProjectAnswer(BaseModel):
     reply: str
     milestones: list[ProjectMilestoneItem]
     reminders: list[str]
+
+
+class DiscussAnswer(BaseModel):
+    """FR-08b-3: the JSON shape of a discussion answer. No milestones, no tasks."""
+
+    reply: str
+    clear: list[str]
+    missing: list[str]
+    questions: list[str]
+    risks: list[str]
+    ready_to_plan: bool
 
 
 def answer_schema(domain_ids: Sequence[UUID]) -> dict[str, Any]:
@@ -117,11 +133,12 @@ def document_block(document: PromptDocument) -> str:
 
 @dataclass(frozen=True)
 class ProjectChatLine:
-    """One earlier message. AI lines carry their draft, if they had one."""
+    """One earlier message. AI lines carry their draft or checklist, if they had one."""
 
     role: str  # "user" / "assistant"
     text: str  # user text already masked
     draft: tuple[DraftMilestone, ...] = ()
+    notes: DiscussionNotes | None = None  # FR-08b-3: a discussion answer
 
 
 def project_to_json(project: PromptProject) -> dict[str, object]:
@@ -161,7 +178,19 @@ def line_to_json(line: ProjectChatLine) -> dict[str, object]:
             }
             for m in line.draft
         ]
+    if line.notes:
+        data["notes"] = notes_to_json(line.notes)
     return data
+
+
+def notes_to_json(notes: DiscussionNotes) -> dict[str, object]:
+    return {
+        "clear": list(notes.clear),
+        "missing": list(notes.missing),
+        "questions": list(notes.questions),
+        "risks": list(notes.risks),
+        "ready_to_plan": notes.ready_to_plan,
+    }
 
 
 def dumps(value: object) -> str:
@@ -197,6 +226,26 @@ def build_prompt(
     )
 
 
+def build_discuss_prompt(
+    template: Template,
+    project: PromptProject,
+    history: Sequence[ProjectChatLine],
+    message: str,
+    today: date,
+    language: Language,
+) -> str:
+    """FR-08b-3: fill the discussion prompt. User texts go in as JSON strings."""
+    return template.substitute(
+        language_name=LANGUAGE_NAMES[language],
+        address_rule=ADDRESS_RULES[language],
+        plan_button=PLAN_BUTTON[language],
+        today=today.isoformat(),
+        project=dumps(project_to_json(project)),
+        history=dumps([line_to_json(line) for line in history]),
+        message=json.dumps(message, ensure_ascii=False),
+    )
+
+
 def build_documents_part(
     template: Template, documents: Sequence[PromptDocument], language: Language
 ) -> str:
@@ -215,6 +264,10 @@ def load_template() -> Template:
 
 def load_documents_template() -> Template:
     return Template(load_prompt(DOCUMENTS_PROMPT_VERSION))
+
+
+def load_discuss_template() -> Template:
+    return Template(load_prompt(DISCUSS_PROMPT_VERSION))
 
 
 # --- checking the answer and calling the LLM (#14-#17, #24, #30) ---
@@ -239,6 +292,7 @@ class ProjectReply:
     language: Language
     text: str
     draft: ProjectDraft | None  # None for a question; deadlines filled, no duplicates
+    notes: DiscussionNotes | None = None  # FR-08b-3: set only for a discussion answer
 
 
 @dataclass(frozen=True)
@@ -286,6 +340,28 @@ def check_answer(
     return ProjectReply(answer.kind, context.language, reply, draft)
 
 
+def check_discuss_answer(text: str, language: Language) -> ProjectReply:
+    """FR-08b-3: parse a discussion answer. Any problem → BadAnswerError."""
+    try:
+        answer = DiscussAnswer.model_validate_json(text)
+    except ValidationError as error:
+        raise BadAnswerError("not the expected JSON") from error
+    reply = answer.reply.strip()
+    if not reply:
+        raise BadAnswerError("empty reply")
+    try:
+        notes = check_notes(
+            answer.clear,
+            answer.missing,
+            answer.risks,
+            answer.ready_to_plan,
+            answer.questions,
+        )
+    except BadDraftError as error:
+        raise BadAnswerError(str(error)) from error
+    return ProjectReply(ReplyKind.QUESTION, language, reply, None, notes)
+
+
 def retry_hint(reason: str) -> str:
     """Added to the prompt after a rejected answer (#15, #30). `reason` has no user text."""
     return (
@@ -319,6 +395,7 @@ class ProjectChatWriter:
         )
         self.template = load_template()
         self.documents_template = load_documents_template()
+        self.discuss_template = load_discuss_template()
 
     def render(
         self,
@@ -368,6 +445,44 @@ class ProjectChatWriter:
             prompt,
             answer_schema([d.domain_id for d in domains]),
             lambda text: check_answer(text, context, self.limits),
+            retry_hint,
+        )
+        return ProjectChatResult(reply=result.value, calls=result.calls)
+
+    def render_discuss(
+        self,
+        project: PromptProject,
+        history: Sequence[ProjectChatLine],
+        message: str,
+        today: date,
+        language: Language,
+        documents: Sequence[PromptDocument] = (),
+    ) -> str:
+        """FR-08b-3: the discussion prompt as sent, documents last (like `render`)."""
+        prompt = build_discuss_prompt(
+            self.discuss_template, project, history, message, today, language
+        )
+        return prompt + build_documents_part(
+            self.documents_template, documents, language
+        )
+
+    async def discuss(
+        self,
+        project: PromptProject,
+        history: Sequence[ProjectChatLine],
+        message: str,
+        today: date,
+        language: Language,
+        documents: Sequence[PromptDocument] = (),
+    ) -> ProjectChatResult:
+        """FR-08b-3: one checked call for a discussion message (checklist, no plan)."""
+        prompt = self.render_discuss(
+            project, history, message, today, language, documents
+        )
+        result = await self.caller.call(
+            prompt,
+            DiscussAnswer.model_json_schema(),
+            lambda text: check_discuss_answer(text, language),
             retry_hint,
         )
         return ProjectChatResult(reply=result.value, calls=result.calls)

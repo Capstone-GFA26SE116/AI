@@ -211,6 +211,30 @@ def plan_schedule(
             max_block_minutes=max_block_minutes,
             spread=task_state,
         )
+        if not complete and (productive_hours or task_state is not None):
+            # Waiting for a focus hour or spreading can leave no room for the next
+            # part before the deadline. Try again: earliest free time only (FR-10c).
+            task_state = state.copy() if state else None
+            plain = (
+                Spread(task_state.load, task_state.placed, 0) if task_state else None
+            )
+            task_slots, gaps_left, complete = place_task(
+                task_units,
+                gaps,
+                hours,
+                frozenset(),
+                now=now,
+                round_minutes=round_minutes,
+                min_chunk_minutes=min_chunk_minutes,
+                max_block_minutes=max_block_minutes,
+            )
+            if plain is not None:
+                for slot in task_slots:
+                    unit = next(
+                        u for u in task_units if u.subtask_id == slot.subtask_id
+                    )
+                    plain.add(slot, unit, hours.time_zone)
+                task_state = plain
         if not complete and deadline <= window_end:
             warnings.append(
                 ScheduleWarning(

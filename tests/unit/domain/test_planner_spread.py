@@ -3,6 +3,7 @@
 Same example as test_planner: 9:00-17:00, no weekends, buffer 10', now = Monday 08:00.
 """
 
+from dataclasses import replace
 from datetime import date, timedelta
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -209,3 +210,34 @@ def test_t9_rules_off_give_the_old_result():
             min_chunk_minutes=30,
         )
     )
+
+
+# --- bug found in the real run (2026-11-19): waiting for a focus hour left no room ---
+
+
+@pytest.mark.parametrize("spread", [False, True])
+def test_focus_hour_wait_does_not_lose_a_task(spread):
+    """Two subtasks of 131' due Monday 17:00, focus hours 14-16. Subtask 1 used to wait
+    for 14:00, leaving no room for subtask 2 → "not enough time" with 8 h free."""
+    due = at(19, 17)
+    units = [
+        replace(unit(2, 131, due), subtask_id=UUID(int=21), order_index=1),
+        replace(unit(2, 131, due), subtask_id=UUID(int=22), order_index=2),
+    ]
+    free = free_ranges(HOURS, NOW, 7, [], round_minutes=5)
+    result = plan_schedule(
+        units,
+        free,
+        HOURS,
+        frozenset({14, 15, 16}),
+        now=NOW,
+        window_end=NOW + timedelta(days=7),
+        round_minutes=5,
+        min_chunk_minutes=30,
+        spread=spread,
+        max_block_minutes=180 if spread else None,
+    )
+    assert result.warnings == ()
+    assert len(result.slots) == 2
+    assert all(s.end <= due for s in result.slots)
+    assert result.slots[1].start >= result.slots[0].end

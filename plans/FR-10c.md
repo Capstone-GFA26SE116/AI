@@ -1,6 +1,6 @@
 # FR-10c — Xếp lịch không dồn cục: rải đều tới deadline, không ngồi một việc quá lâu
 
-Trạng thái: Xong (chưa chạy thật với DB) · Branch: `feature/fr10c-spread-schedule` · Cập nhật: 2026-11-19
+Trạng thái: Xong · Branch: `feature/fr10c-spread-schedule` · Cập nhật: 2026-11-19
 
 <!-- Hiếu giao 2026-11-19: "đừng dồn nó 1 cục... sáng làm task này, tối làm task khác". Không giới hạn cứng
 giờ / ngày (freelancer có lúc làm 12–14 h). Đổi việc: ưu tiên khác dự án, không có thì khác loại việc.
@@ -63,7 +63,7 @@ Luật "học sức làm mỗi ngày" + cảnh báo quá tải là bước sau (
 - [x] **2.** Chọn ngày ít việc nhất — T1–T3, T8, T9.
 - [x] **3.** Đổi việc (dự án → loại việc) — T6, T7.
 - [x] **4.** Use case + repository + config — T10.
-- [ ] **5.** Chạy thật — T11; docs.
+- [x] **5.** Chạy thật — T11; docs.
 
 ## 5. Nhật ký thay đổi
 | Ngày | Thay đổi | Lý do (bug / quyết định mới) |
@@ -72,4 +72,5 @@ Luật "học sức làm mỗi ngày" + cảnh báo quá tải là bước sau (
 | 2026-11-19 | Luật "đổi việc" không làm được chỉ bằng chọn giờ (bộ xếp đặt lần lượt từng task, chỉ chọn ở đầu khoảng trống) → thêm `interleave_projects`: trong các task cùng ngày deadline, xếp thứ tự xen kẽ dự án rồi loại việc (A, B, A). Ưu tiên deadline giữ nguyên | Bước 3 |
 | 2026-11-19 | `Placement.SPREAD_OUT` + prompt lý do `schedule_reason_v3` (thêm 1 dòng giải thích) + 1 câu mẫu; `earlier_blocked_by` coi `SPREAD_OUT` như chờ giờ hiệu quả (giờ sớm hơn vẫn trống) | Lý do slot không được nói sai "hết giờ làm" |
 | 2026-11-19 | Demo bộ xếp thật (không DB), 8:00–22:00, nghỉ trưa, 6 task / 3 dự án (21,7 h). **Trước:** thứ 2 11,8 h (có khối viết blog 5 h liền), thứ 3 7,5 h, thứ 4 trở đi trống. **Sau:** thứ 2 5,0 h · thứ 3 4,5 h · thứ 4 4,8 h · thứ 5 5,0 h; mọi khối ≤ 3 h; thứ 4 xen A → B → A; không task nào xếp vào ngày deadline. `pytest` 2027 pass | Bước 5 |
-| 2026-11-19 | Chưa chạy `scripts/try_schedule.py` (ghi DB thật) — chờ Hiếu OK | Bước 5 |
+| 2026-11-19 | **Lỗi có từ FR-10** (lộ ra khi chạy thật, tắt FR-10c vẫn bị): subtask 1 chờ giờ hiệu quả (thứ 2 14:00) nên subtask 2 không còn chỗ trước deadline 17:00 → "không kịp" dù trống 680'. Sửa: task không xếp đủ thì thử lại riêng task đó bằng "chỗ trống sớm nhất" (bỏ ưu tiên giờ hiệu quả và rải đều). Thêm test hồi quy (fail khi bỏ bản sửa) | Chạy thật lần 1 |
+| 2026-11-19 | Chạy thật (Hiếu OK): dữ liệu của `scripts/try_schedule.py` qua use case thật (Supabase + Gemini, không bật API để không chạy embedding nền), rồi dọn bằng chính script. Lần 1 lỗi như trên; lần 2 sau khi sửa: báo cáo T6 14:00–15:18 (78'), landing page T2 09:00–11:11 và 13:00–15:11 (131' mỗi phần, K 1,45), né cuộc họp, "Gửi báo giá" cảnh báo quá hạn. Lý do tiếng Việt đúng. Dọn xong: 0 dòng. `pytest` 2029 pass | Bước 5 |

@@ -41,6 +41,7 @@ from metanoia_ai.domain.project_breakdown import (
     ProjectDraft,
     ProjectNumbers,
 )
+from metanoia_ai.domain.project_discussion import DiscussionNotes
 from metanoia_ai.infrastructure.db.chat_repository import (
     ROLE_FROM_DB,
     ROLE_TO_DB,
@@ -48,6 +49,7 @@ from metanoia_ai.infrastructure.db.chat_repository import (
 )
 
 PROPOSAL_VERSION = "project_v1"  # #31: not the task chat's 1
+DISCUSS_VERSION = "project_discuss_v1"  # FR-08b-3: a checklist, never a draft
 STATUS_FROM_DB = {
     "Open": ConversationStatus.OPEN,
     "Applied": ConversationStatus.APPLIED,
@@ -107,7 +109,11 @@ MESSAGE_COLUMNS = """
 LIST_MESSAGES = text(MESSAGE_COLUMNS + ' ORDER BY m."CreatedAt", m."Id"')
 LATEST_DRAFT = text(
     MESSAGE_COLUMNS
-    + ' AND m."ProposalJson" IS NOT NULL ORDER BY m."CreatedAt" DESC, m."Id" DESC LIMIT 1'
+    # FR-08b-3: checklists share the column, so match the draft version.
+    + " AND m.\"ProposalJson\"->>'version' = '"
+    + PROPOSAL_VERSION
+    + "'"
+    + ' ORDER BY m."CreatedAt" DESC, m."Id" DESC LIMIT 1'
 )
 
 # clock_timestamp(), not the default now(): now() is the same for every row of
@@ -288,6 +294,41 @@ def draft_to_json(saved: SavedProjectDraft) -> str:
     return json.dumps(data, ensure_ascii=False)
 
 
+def notes_to_json(notes: DiscussionNotes) -> str:
+    """FR-08b-3: a checklist in ChatMessage.ProposalJson."""
+    data = {
+        "version": DISCUSS_VERSION,
+        "clear": list(notes.clear),
+        "missing": list(notes.missing),
+        "questions": list(notes.questions),
+        "risks": list(notes.risks),
+        "ready_to_plan": notes.ready_to_plan,
+    }
+    return json.dumps(data, ensure_ascii=False)
+
+
+def notes_from_json(data: dict[str, Any]) -> DiscussionNotes:
+    return DiscussionNotes(
+        clear=tuple(data["clear"]),
+        missing=tuple(data["missing"]),
+        risks=tuple(data["risks"]),
+        ready_to_plan=bool(data["ready_to_plan"]),
+        questions=tuple(data.get("questions", [])),
+    )
+
+
+def proposal_from_json(
+    raw: str | None,
+) -> tuple[SavedProjectDraft | None, DiscussionNotes | None]:
+    """ProposalJson → (draft, None), (None, notes) or (None, None)."""
+    if not raw:
+        return None, None
+    data = json.loads(raw)
+    if data.get("version") == DISCUSS_VERSION:
+        return None, notes_from_json(data)
+    return draft_from_json(raw), None
+
+
 def draft_from_json(raw: str) -> SavedProjectDraft:
     data = json.loads(raw)
     if data.get("version") != PROPOSAL_VERSION:
@@ -382,13 +423,15 @@ def to_conversation(row: Row) -> ProjectConversation:
 
 
 def to_message(row: Row) -> ProjectChatMessage:
+    draft, notes = proposal_from_json(row.ProposalJson)
     return ProjectChatMessage(
         message_id=row.Id,
         role=ROLE_FROM_DB[row.Sender],
         content=row.Content,
         created_at=row.CreatedAt,
-        draft=draft_from_json(row.ProposalJson) if row.ProposalJson else None,
+        draft=draft,
         is_applied=row.IsApplied,
+        notes=notes,
     )
 
 
@@ -454,19 +497,27 @@ class SqlProjectChatRepository:
         role: ChatRole,
         content: str,
         draft: SavedProjectDraft | None = None,
+        notes: DiscussionNotes | None = None,
     ) -> ProjectChatMessage:
+        if draft is not None and notes is not None:
+            raise ValueError("a message has a draft or a checklist, not both")
+        proposal = None
+        if draft is not None:
+            proposal = draft_to_json(draft)
+        elif notes is not None:
+            proposal = notes_to_json(notes)
         params = {
             "conversation_id": conversation_id,
             "user_id": user_id,
             "sender": ROLE_TO_DB[role],
             "content": content,
-            "proposal": draft_to_json(draft) if draft else None,
+            "proposal": proposal,
         }
         row = (await self.session.execute(ADD_MESSAGE, params)).one_or_none()
         if row is None:
             raise NotOwnedError(str(conversation_id))
         return ProjectChatMessage(
-            row.Id, role, content, row.CreatedAt, draft, row.IsApplied
+            row.Id, role, content, row.CreatedAt, draft, row.IsApplied, notes
         )
 
     async def get_document(

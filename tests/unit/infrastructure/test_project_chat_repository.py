@@ -1,5 +1,6 @@
 """SqlProjectChatRepository conversions (T25). The SQL itself is checked with EXPLAIN (step 10)."""
 
+import asyncio
 import json
 from datetime import UTC, date, datetime
 from types import SimpleNamespace
@@ -23,6 +24,7 @@ from metanoia_ai.domain.project_breakdown import (
     ProjectDraft,
     ProjectNumbers,
 )
+from metanoia_ai.domain.project_discussion import DiscussionNotes
 from metanoia_ai.infrastructure.db import project_chat_repository as sql
 from metanoia_ai.infrastructure.db.project_chat_repository import (
     SOURCE_TO_DB,
@@ -30,6 +32,8 @@ from metanoia_ai.infrastructure.db.project_chat_repository import (
     SqlProjectChatRepository,
     draft_from_json,
     draft_to_json,
+    notes_to_json,
+    proposal_from_json,
     to_attachment,
     to_conversation,
     to_document,
@@ -270,3 +274,79 @@ def test_attachments_only_go_with_user_messages():
 
 def test_project_query_reads_the_document_switch():
     assert '"AllowAiDocumentAccess"' in sql.GET_PROJECT.text
+
+
+# --- FR-08b-3: discussion checklists share ProposalJson (T6) ---
+
+NOTES = DiscussionNotes(
+    ("Landing page 3 phần",), ("Hạn bàn giao",), ("Thiếu logo",), False
+)
+
+
+def test_notes_round_trip_and_have_their_own_version():
+    raw = notes_to_json(NOTES)
+    assert json.loads(raw)["version"] == "project_discuss_v1"
+    assert proposal_from_json(raw) == (None, NOTES)
+
+
+def test_notes_without_questions_still_read():
+    data = json.loads(notes_to_json(NOTES))
+    del data["questions"]
+    assert proposal_from_json(json.dumps(data)) == (None, NOTES)
+
+
+def test_draft_json_still_reads_as_a_draft():
+    assert proposal_from_json(draft_to_json(SAVED)) == (SAVED, None)
+
+
+def test_empty_proposal_reads_as_nothing():
+    assert proposal_from_json(None) == (None, None)
+
+
+def test_row_becomes_message_with_notes_and_no_draft():
+    row = SimpleNamespace(
+        Id=uuid4(),
+        Sender="AI",
+        Content="Mình đã nắm phần chính.",
+        ProposalJson=notes_to_json(NOTES),
+        IsApplied=False,
+        CreatedAt=NOW,
+    )
+    message = to_message(row)
+    assert message.draft is None
+    assert message.notes == NOTES
+
+
+def test_latest_draft_only_matches_the_draft_version():
+    sql_text = " ".join(str(sql.LATEST_DRAFT).split())
+    assert "\"ProposalJson\"->>'version' = 'project_v1'" in sql_text
+
+
+class AddMessageSession:
+    """Records the insert and returns a saved row."""
+
+    def __init__(self):
+        self.params = None
+
+    async def execute(self, statement, params):
+        self.params = params
+        row = SimpleNamespace(Id=uuid4(), IsApplied=False, CreatedAt=NOW)
+        return SimpleNamespace(one_or_none=lambda: row)
+
+
+def test_add_message_saves_notes_in_proposal_json():
+    session = AddMessageSession()
+    repo = sql.SqlProjectChatRepository(session)
+    message = asyncio.run(
+        repo.add_message(uuid4(), uuid4(), ChatRole.ASSISTANT, "Ok", notes=NOTES)
+    )
+    assert json.loads(session.params["proposal"])["version"] == "project_discuss_v1"
+    assert message.notes == NOTES and message.draft is None
+
+
+def test_add_message_refuses_a_draft_and_notes_together():
+    repo = sql.SqlProjectChatRepository(AddMessageSession())
+    with pytest.raises(ValueError):
+        asyncio.run(
+            repo.add_message(uuid4(), uuid4(), ChatRole.ASSISTANT, "Ok", SAVED, NOTES)
+        )

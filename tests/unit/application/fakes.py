@@ -88,6 +88,7 @@ from metanoia_ai.domain.productive_hours import (
     HourScore,
     OnboardingBlock,
 )
+from metanoia_ai.domain.project_discussion import DiscussionNotes
 from metanoia_ai.domain.similar_tasks import WORD, PastSession, PastTask
 from metanoia_ai.domain.task_breakdown import Subtask
 
@@ -854,12 +855,16 @@ class FakeProjectChatRepository:
         role: ChatRole,
         content: str,
         draft: SavedProjectDraft | None = None,
+        notes: DiscussionNotes | None = None,
     ) -> ProjectChatMessage:
         chat = self._own_chat(user_id, conversation_id)
         assert chat is not None, "message for a chat of another user"
-        if draft is not None and role is not ChatRole.ASSISTANT:
+        if (draft or notes) is not None and role is not ChatRole.ASSISTANT:
             raise ValueError("only AI messages have a draft (DB CHECK)")
-        message = ProjectChatMessage(uuid4(), role, content, self._tick(), draft)
+        assert draft is None or notes is None, "one ProposalJson per message"
+        message = ProjectChatMessage(
+            uuid4(), role, content, self._tick(), draft, notes=notes
+        )
         chat.messages.append(message)
         return message
 

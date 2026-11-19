@@ -92,6 +92,8 @@ Ký hiệu: **AI ghi** = AI service được INSERT/UPDATE · **Chỉ đọc** =
 ### `ChatConversation`, `ChatMessage` — cũng dùng cho chat dự án (FR-08b-1)
 - `Scope = 'Project'`, `TaskId` trống. Mọi truy vấn chat dự án lọc `Scope = 'Project'`.
 - `ProposalJson` của bản nháp dự án có `"version": "project_v1"` (bản nháp FR-08a: `version` = 1).
+- FR-08b-3: tin AI ở chế độ bàn bạc lưu checklist vào `ProposalJson` với `"version": "project_discuss_v1"`
+  (`clear`, `missing`, `questions`, `risks`, `ready_to_plan`). Không phải bản nháp: `latest_draft` và Apply chỉ nhận `project_v1`.
 
 ### `ChatAttachment` — AI ghi (FR-08b-2) ⚠️
 Bảng mới, **AI tạo 2026-10-28** (Hiếu cho phép, đã báo Backend; migration của Backend phải khớp).

@@ -12,9 +12,10 @@
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 from metanoia_ai.application.ports.quota_repository import (
     AIFeature,
@@ -133,6 +134,8 @@ class ProposeSchedule:
         top_productive_hours: int,
         clock: Callable[[], datetime],
         breaks: Sequence[DailyBreak] = (),
+        spread: bool = False,
+        max_block_minutes: int | None = None,
     ) -> None:
         self.repo = schedule_repo
         self.quota = quota_repo
@@ -144,6 +147,8 @@ class ProposeSchedule:
         self.top_hours = top_productive_hours
         self.clock = clock
         self.breaks = tuple(breaks)  # W3-01: kept free every working day (lunch)
+        self.spread = spread  # FR-10c
+        self.max_block_minutes = max_block_minutes or None
 
     async def execute(
         self, user_id: UUID, task_ids: Sequence[UUID] | None, language: Language
@@ -264,6 +269,8 @@ class ProposeSchedule:
                     estimate_minutes=remaining_estimate(
                         task.estimated_minutes, task.sessions, now
                     ),
+                    project_id=task.project_id,
+                    domain_id=task.domain_id,
                 )
             ]
         units = []
@@ -285,6 +292,8 @@ class ProposeSchedule:
                     estimate_minutes=remaining_estimate(
                         sub.estimated_minutes, sessions, now
                     ),
+                    project_id=task.project_id,
+                    domain_id=task.domain_id,
                 )
             )
         return units
@@ -335,6 +344,9 @@ class ProposeSchedule:
             window_end=window_end,
             round_minutes=self.round_minutes,
             min_chunk_minutes=self.min_chunk_minutes,
+            spread=self.spread,
+            max_block_minutes=self.max_block_minutes,
+            existing_load=work_by_day(data.approved_slots, data.hours.time_zone),
         )
 
     # --- 6. Facts for the LLM ---
@@ -492,3 +504,14 @@ def missing_minutes(
         elif warning.type is WarningType.OVERDUE and warning.task_id is not None:
             total += by_task.get(warning.task_id, 0)
     return total
+
+
+def work_by_day(slots: Sequence[TimeRange], time_zone: ZoneInfo) -> dict[date, int]:
+    """FR-10c: minutes of approved work per local day (a slot counts on its start day)."""
+    load: dict[date, int] = {}
+    for slot in slots:
+        day = slot.start.astimezone(time_zone).date()
+        load[day] = load.get(day, 0) + int(
+            (slot.end - slot.start).total_seconds() // 60
+        )
+    return load

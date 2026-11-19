@@ -47,6 +47,7 @@ class TaskToSchedule:
     has_approved_slot: bool
     subtasks: tuple[SubTaskToSchedule, ...]
     sessions: tuple[FocusSessionRecord, ...]
+    project_id: UUID | None = None  # FR-10c: to switch between projects
 
 
 @dataclass(frozen=True)

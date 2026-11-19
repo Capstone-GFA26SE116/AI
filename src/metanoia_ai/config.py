@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     schedule_top_productive_hours: int = Field(default=3, gt=0, le=24)
     # W3-01: kept free every working day, "HH:MM-HH:MM"; "none" = no break.
     schedule_lunch_break: str = "12:00-13:00"
+    # FR-10c: spread work over the days and switch jobs; cut work into blocks
+    # of at most this many minutes (0 = never cut).
+    schedule_spread: bool = True
+    schedule_max_block_minutes: int = Field(default=180, ge=0)
     # A slot runs over (FR-16b): the most extra minutes the user may ask for.
     overrun_extra_minutes_max: int = Field(default=480, gt=0)
 

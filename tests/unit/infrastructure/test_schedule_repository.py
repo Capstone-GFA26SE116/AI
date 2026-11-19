@@ -25,3 +25,10 @@ def test_busy_slots_are_limited_to_the_user_and_window() -> None:
     text = sql(GET_APPROVED_SLOTS)
     assert 'p."UserId" = :user_id' in text
     assert 's."EndTime" > :window_start AND s."StartTime" < :window_end' in text
+
+
+def test_tasks_query_reads_the_project():
+    """FR-10c: the planner switches between projects."""
+    from metanoia_ai.infrastructure.db.schedule_repository import GET_TASKS
+
+    assert 't."ProjectId"' in str(GET_TASKS)

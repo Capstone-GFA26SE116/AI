@@ -336,3 +336,19 @@ def test_slot_facts_v2_fields():
     assert (facts.estimate_minutes, facts.planned_minutes) == (60, 78)
     assert facts.spare_hours == 49  # Mon 15:18 → Wed 17:00
     assert facts.split_reason is None
+
+
+def test_spread_out_slot_was_not_blocked():
+    """FR-10c: Monday 10:00 was free, but the slot went to Tuesday 9:00 to spread
+    the work. Without SPREAD_OUT this reads as "the work day was over"."""
+    earliest = datetime(2026, 10, 19, 10, tzinfo=SAIGON)
+    start = datetime(2026, 10, 20, 9, tzinfo=SAIGON)
+    moved = slot(start, start + timedelta(hours=1))
+    assert (
+        earlier_blocked_by(moved, earliest, [], HOURS, 5)
+        is BlockedBy.OUTSIDE_WORK_HOURS
+    )
+    spread = PlannedSlot(
+        TASK, None, moved.start, moved.end, None, placement=Placement.SPREAD_OUT
+    )
+    assert earlier_blocked_by(spread, earliest, [], HOURS, 5) is BlockedBy.NONE

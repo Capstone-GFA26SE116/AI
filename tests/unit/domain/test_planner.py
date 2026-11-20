@@ -270,11 +270,20 @@ def test_t15_overdue_task_is_not_placed():
     assert result.warnings == (ScheduleWarning(WarningType.OVERDUE, TASK_A),)
 
 
-def test_t19_deadline_after_window_places_what_fits_without_warning():
+def test_t19_deadline_after_window_places_what_fits_and_says_the_rest_comes_later():
     # Window 2 days (Mon 08:00 → Wed 08:00): Monday 480' + Tuesday 240' = 720'.
     busy = busy_ranges([fixed(at(20, 9), at(20, 13))], [], [])
     result = plan([unit(minutes=1200, deadline=at(23, 17))], busy=busy, window_days=2)
     assert sum(s.proposed_minutes for s in result.slots) == 720
+    # FR-10e: not "not enough time", only "the rest is placed later".
+    [warning] = result.warnings
+    assert warning.type is WarningType.BEYOND_WINDOW
+    assert warning.needed_minutes == 480
+    assert warning.day == at(23, 17).date()
+
+
+def test_fr10e_task_due_after_the_window_that_fits_has_no_warning():
+    result = plan([unit(minutes=60, deadline=at(23, 17))], window_days=2)
     assert result.warnings == ()
 
 

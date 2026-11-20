@@ -352,3 +352,22 @@ def test_spread_out_slot_was_not_blocked():
         TASK, None, moved.start, moved.end, None, placement=Placement.SPREAD_OUT
     )
     assert earlier_blocked_by(spread, earliest, [], HOURS, 5) is BlockedBy.NONE
+
+
+# --- FR-10e: due after the window ---
+
+
+def test_beyond_window_message_and_summary():
+    from datetime import date
+    from uuid import uuid4
+
+    from metanoia_ai.domain.models import ScheduleWarning, WarningType
+
+    later = ScheduleWarning(
+        WarningType.BEYOND_WINDOW, uuid4(), needed_minutes=150, day=date(2026, 12, 15)
+    )
+    vi = warning_message(later, Language.VI)
+    assert vi.startswith("Hạn 15/12: còn khoảng 2 giờ 30 phút chưa xếp")
+    assert "Press Schedule again" in warning_message(later, Language.EN)
+    assert "1 task hạn xa chưa xếp hết" in summary(3, 3, [later], Language.VI)
+    assert "1 task due later is not fully placed" in summary(3, 3, [later], Language.EN)

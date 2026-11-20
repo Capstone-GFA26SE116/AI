@@ -43,6 +43,7 @@ def summary(
     late = count(warnings, WarningType.NOT_ENOUGH_TIME)
     overdue = count(warnings, WarningType.OVERDUE)
     heavy = count(warnings, WarningType.DAY_OVERLOADED)  # FR-10d
+    later = count(warnings, WarningType.BEYOND_WINDOW)  # FR-10e
     if lang is Language.EN:
         if task_count == 0:
             return "Nothing to schedule."
@@ -59,6 +60,12 @@ def summary(
                 f"{heavy} {plural(heavy, 'day')} {'has' if heavy == 1 else 'have'} "
                 "more work than you usually manage."
             )
+        if later:
+            parts.append(
+                f"{later} {plural(later, 'task')} due later "
+                f"{'is' if later == 1 else 'are'} not fully placed yet: "
+                "press Schedule again next week."
+            )
         return " ".join(parts)
 
     if task_count == 0:
@@ -70,6 +77,10 @@ def summary(
         parts.append(f"{overdue} task đã quá hạn.")
     if heavy:
         parts.append(f"{heavy} ngày nhiều việc hơn mức bạn thường làm.")
+    if later:
+        parts.append(
+            f"{later} task hạn xa chưa xếp hết, bấm Xếp lịch lại vào tuần sau nhé."
+        )
     return " ".join(parts)
 
 
@@ -104,6 +115,18 @@ def warning_message(warning: ScheduleWarning, lang: Language) -> str:
                 "thường làm trong một ngày bận (khoảng "
                 f"{duration(warning.capacity_minutes, lang)}). Bạn cân nhắc dời bớt "
                 "việc hoặc lùi deadline nhé."
+            )
+        case WarningType.BEYOND_WINDOW, Language.EN:
+            return (
+                f"Due {warning.day:%d/%m}: about "
+                f"{duration(warning.needed_minutes, lang)} is not placed yet because "
+                "this proposal only covers the next days. Press Schedule again later."
+            )
+        case WarningType.BEYOND_WINDOW, _:
+            return (
+                f"Hạn {warning.day:%d/%m}: còn khoảng "
+                f"{duration(warning.needed_minutes, lang)} chưa xếp vì đề xuất này chỉ "
+                "tính cho mấy ngày tới. Bấm Xếp lịch lại sau nhé."
             )
         case WarningType.CALENDAR_NOT_SYNCED, Language.EN:
             return (

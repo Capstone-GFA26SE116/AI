@@ -138,6 +138,7 @@ Full text in `docs/functional-requirements.md`. Status: first line of each `plan
 | FR-10b | Keep the lunch break free when scheduling and moving slots (config, same for all users) | `plans/FR-10b.md` |
 | FR-10c | Do not pile work up: spread over the days, blocks ≤ 3 h, switch projects / kinds of work | `plans/FR-10c.md` |
 | FR-10d | Learn each user's daily capacity from timer data (80th percentile of work days ≥ 60'); warn, never block, on heavier planned days | `plans/FR-10d.md` |
+| FR-10e | Tasks due after the proposal window and not fully placed get a `beyond_window` warning ("press Schedule again later"); placement unchanged | `plans/FR-10e.md` |
 | — | Quota check + `AIUsageLog` (before every LLM call) | — |
 | FR-08a | AI chat, task level: split a big task into subtasks, then Apply | `plans/FR-08a.md` |
 | FR-08b-1 | AI chat, project level: text brief → milestones + Flexible tasks, then Apply | `plans/FR-08b-1.md` |

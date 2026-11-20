@@ -25,6 +25,7 @@ from metanoia_ai.application.ports.project_chat_repository import (
     ChatRole,
     ConversationStatus,
     DocumentSourceType,
+    ExistingMilestone,
     ExistingWork,
     NewAttachment,
     NewMilestone,
@@ -192,6 +193,14 @@ TASK_TITLES = text("""
     JOIN "Project" p ON p."Id" = t."ProjectId"
     WHERE t."ProjectId" = :project_id AND p."UserId" = :user_id
     ORDER BY t."CreatedAt" DESC, t."Id" DESC
+""")
+
+LIST_MILESTONES = text("""
+    SELECT m."Id", m."Name"
+    FROM "Milestone" m
+    JOIN "Project" p ON p."Id" = m."ProjectId"
+    WHERE m."ProjectId" = :project_id AND p."UserId" = :user_id
+    ORDER BY m."OrderIndex", m."Id"
 """)
 
 NEXT_MILESTONE_ORDER = text("""
@@ -604,6 +613,13 @@ class SqlProjectChatRepository:
             milestone_titles=tuple(milestones.scalars()),
             task_titles=tuple(tasks.scalars()),
         )
+
+    async def list_milestones(
+        self, user_id: UUID, project_id: UUID
+    ) -> list[ExistingMilestone]:
+        params = {"project_id": project_id, "user_id": user_id}
+        rows = (await self.session.execute(LIST_MILESTONES, params)).all()
+        return [ExistingMilestone(row.Id, row.Name) for row in rows]
 
     async def next_milestone_order(self, user_id: UUID, project_id: UUID) -> int:
         params = {"project_id": project_id, "user_id": user_id}

@@ -264,6 +264,7 @@ class AppliedMilestoneResponse(BaseModel):
     title: str
     deadline: date
     tasks: list[AppliedTaskResponse]
+    reused: bool = False  # FR-08b-9: tasks went into an existing milestone
 
 
 class SkippedResponse(BaseModel):
@@ -632,6 +633,7 @@ def to_applied(result: AppliedProject) -> AppliedResponse:
                     )
                     for t in m.tasks
                 ],
+                reused=m.reused,
             )
             for m in result.milestones
         ],

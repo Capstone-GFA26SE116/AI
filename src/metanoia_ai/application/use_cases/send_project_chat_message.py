@@ -46,6 +46,8 @@ from metanoia_ai.application.ports.quota_repository import (
     Subscription,
 )
 from metanoia_ai.application.project_chat_writer import (
+    PLAN_BUTTON,
+    UPDATE_PLAN_BUTTON,
     DraftContext,
     ProjectChatLine,
     ProjectChatWriter,
@@ -153,7 +155,8 @@ def pick_history(
 
 
 def check_open(conversation: ProjectConversation) -> None:
-    if conversation.status is not ConversationStatus.OPEN:
+    """FR-08b-4: a chat stays open after Apply; only a Closed chat takes no message."""
+    if conversation.status is ConversationStatus.CLOSED:
         raise ConversationAppliedError(str(conversation.conversation_id))
 
 
@@ -211,7 +214,7 @@ class SendProjectChatMessage:
         mode: ChatMode = ChatMode.PLAN,
     ) -> ProjectChatTurn:
         text = message.strip()
-        self._check_input(text, attached)
+        self._check_input(text, attached, mode)
 
         # 1-3. Read everything in one short transaction. No LLM yet.
         async with self.repo.transaction():
@@ -223,9 +226,15 @@ class SendProjectChatMessage:
         new_attachments = await self._read_documents(prepared.library, attached)
         # #35; a message with documents only takes the language of the documents.
         latest = text or "\n".join(a.extracted_text for a in new_attachments)
-        language = reply_language(latest, self._brief(prepared.history))
-        if not text:
+        brief = self._brief(prepared.history)
+        if not latest and not brief:  # FR-08b-4: plan button in an empty chat
+            brief = " ".join(t for t in (project.name, project.description) if t)
+        language = reply_language(latest, brief)
+        if not text and new_attachments:
             text = DOCUMENTS_ONLY_TEXT[language]
+        elif not text:  # FR-08b-4: the plan button, without a text
+            has_draft = any(m.draft for m in prepared.history)
+            text = (UPDATE_PLAN_BUTTON if has_draft else PLAN_BUTTON)[language]
         documents = self._prompt_documents(new_attachments, prepared.earlier, project)
 
         # 4. One LLM call (plus a retry), outside any transaction.
@@ -284,8 +293,12 @@ class SendProjectChatMessage:
                 raise
             raise QuotaExceededError("plan limit reached") from None
 
-    def _check_input(self, text: str, attached: AttachedDocuments) -> None:
-        if len(text) > self.max_message_chars or (not text and not attached.count):
+    def _check_input(
+        self, text: str, attached: AttachedDocuments, mode: ChatMode = ChatMode.PLAN
+    ) -> None:
+        # FR-08b-4: the plan button may send no text; a discussion needs one.
+        empty_ok = attached.count > 0 or mode is ChatMode.PLAN
+        if len(text) > self.max_message_chars or (not text and not empty_ok):
             raise InvalidMessageError(
                 f"message must be 1-{self.max_message_chars} characters; "
                 "paste the main part of the brief"

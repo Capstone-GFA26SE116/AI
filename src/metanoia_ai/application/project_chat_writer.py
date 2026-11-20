@@ -45,6 +45,8 @@ DISCUSS_PROMPT_VERSION = "project_discuss_v1"  # FR-08b-3
 LANGUAGE_NAMES = {Language.VI: "Vietnamese", Language.EN: "English"}
 # FR-08b-3: the button that turns the discussion into a plan (named in the prompt).
 PLAN_BUTTON = {Language.VI: "Lên kế hoạch", Language.EN: "Plan"}
+# FR-08b-4: the same button once the chat has a draft.
+UPDATE_PLAN_BUTTON = {Language.VI: "Cập nhật kế hoạch", Language.EN: "Update plan"}
 ADDRESS_RULES = {
     Language.VI: 'Call yourself "mình" (never "tôi") and the user "bạn".',
     Language.EN: 'Use "I" and "you". Short, clear, friendly.',

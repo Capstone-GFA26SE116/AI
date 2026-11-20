@@ -98,5 +98,65 @@
       {"role": "assistant", "text": "Đây là kế hoạch 2 giai đoạn.", "draft": [{"title": "Thiết kế giao diện", "deadline": "2026-12-01", "tasks": [{"title": "Thiết kế trang chủ", "estimated_minutes": 240}]}]}
     ],
     "message": "Khách vừa xin thêm trang blog. Có ảnh hưởng tiến độ nhiều không?"
+  },
+  {
+    "name": "C: write a quote email to the client",
+    "language": "vi",
+    "today": "2026-11-20",
+    "ready": true,
+    "expect": "helps",
+    "project": {"name": "Website tiệm bánh", "description": "Website bán bánh online", "deadline": "2026-12-15", "existing_milestones": [], "existing_tasks": []},
+    "history": [{"role": "user", "text": "Mình nhận làm website bán bánh online cho [client]: trang chủ, danh sách bánh, giỏ hàng, thanh toán khi nhận hàng. Khách tự gửi ảnh."}, {"role": "assistant", "text": "Mình đã nắm 4 phần chính và cách thanh toán. Khi thấy đủ thì bấm Lên kế hoạch nhé.", "notes": {"clear": ["4 trang: trang chủ, danh sách bánh, giỏ hàng, thanh toán", "Thanh toán khi nhận hàng", "Hạn 15/12"], "missing": [], "risks": ["Ảnh khách gửi trễ"], "ready_to_plan": true}}],
+    "message": "Viết giúp mình email báo giá gửi khách: 12 triệu, chia 2 đợt 50/50, bàn giao 15/12, gồm 2 vòng chỉnh sửa."
+  },
+  {
+    "name": "C: compare two options and pick one",
+    "language": "vi",
+    "today": "2026-11-20",
+    "ready": true,
+    "expect": "helps",
+    "project": {"name": "Website tiệm bánh", "description": "Website bán bánh online", "deadline": "2026-12-15", "existing_milestones": [], "existing_tasks": []},
+    "history": [{"role": "user", "text": "Mình nhận làm website bán bánh online cho [client]: trang chủ, danh sách bánh, giỏ hàng, thanh toán khi nhận hàng. Khách tự gửi ảnh."}, {"role": "assistant", "text": "Mình đã nắm 4 phần chính và cách thanh toán. Khi thấy đủ thì bấm Lên kế hoạch nhé.", "notes": {"clear": ["4 trang: trang chủ, danh sách bánh, giỏ hàng, thanh toán", "Thanh toán khi nhận hàng", "Hạn 15/12"], "missing": [], "risks": ["Ảnh khách gửi trễ"], "ready_to_plan": true}}],
+    "message": "Nên làm bằng WordPress + WooCommerce hay tự code bằng Next.js? Khách muốn tự đăng bánh mới."
+  },
+  {
+    "name": "C: client asks for a discount",
+    "language": "vi",
+    "today": "2026-11-20",
+    "ready": true,
+    "expect": "helps",
+    "project": {"name": "Website tiệm bánh", "description": "Website bán bánh online", "deadline": "2026-12-15", "existing_milestones": [], "existing_tasks": []},
+    "history": [{"role": "user", "text": "Mình nhận làm website bán bánh online cho [client]: trang chủ, danh sách bánh, giỏ hàng, thanh toán khi nhận hàng. Khách tự gửi ảnh."}, {"role": "assistant", "text": "Mình đã nắm 4 phần chính và cách thanh toán. Khi thấy đủ thì bấm Lên kế hoạch nhé.", "notes": {"clear": ["4 trang: trang chủ, danh sách bánh, giỏ hàng, thanh toán", "Thanh toán khi nhận hàng", "Hạn 15/12"], "missing": [], "risks": ["Ảnh khách gửi trễ"], "ready_to_plan": true}}],
+    "message": "Khách xin giảm 20% mà vẫn giữ nguyên phạm vi. Mình nên trả lời sao cho khéo?"
+  },
+  {
+    "name": "C: explain a technical idea, English",
+    "language": "en",
+    "today": "2026-11-20",
+    "ready": true,
+    "expect": "helps",
+    "project": {"name": "Shop landing page", "description": "Landing page with sign-up form", "deadline": "2026-12-05", "existing_milestones": [], "existing_tasks": []},
+    "history": [{"role": "user", "text": "I build a landing page with hero, features, pricing and a sign-up form for [client]. Due Dec 5."}],
+    "message": "What is a webhook and do I need one for the sign-up form?"
+  },
+  {
+    "name": "C: asks for the task list in discuss mode",
+    "language": "vi",
+    "today": "2026-11-20",
+    "ready": true,
+    "expect": "no_plan",
+    "project": {"name": "Website tiệm bánh", "description": "Website bán bánh online", "deadline": "2026-12-15", "existing_milestones": [], "existing_tasks": []},
+    "history": [{"role": "user", "text": "Mình nhận làm website bán bánh online cho [client]: trang chủ, danh sách bánh, giỏ hàng, thanh toán khi nhận hàng. Khách tự gửi ảnh."}, {"role": "assistant", "text": "Mình đã nắm 4 phần chính và cách thanh toán. Khi thấy đủ thì bấm Lên kế hoạch nhé.", "notes": {"clear": ["4 trang: trang chủ, danh sách bánh, giỏ hàng, thanh toán", "Thanh toán khi nhận hàng", "Hạn 15/12"], "missing": [], "risks": ["Ảnh khách gửi trễ"], "ready_to_plan": true}}],
+    "message": "Liệt kê giúp mình các task và mỗi task mất bao nhiêu giờ luôn đi."
+  },
+  {
+    "name": "C: off-topic request is refused",
+    "language": "vi",
+    "today": "2026-11-20",
+    "ready": true,
+    "expect": "refuses",
+    "project": {"name": "Website tiệm bánh", "description": "Website bán bánh online", "deadline": "2026-12-15", "existing_milestones": [], "existing_tasks": []},
+    "history": [{"role": "user", "text": "Mình nhận làm website bán bánh online cho [client]: trang chủ, danh sách bánh, giỏ hàng, thanh toán khi nhận hàng. Khách tự gửi ảnh."}, {"role": "assistant", "text": "Mình đã nắm 4 phần chính và cách thanh toán. Khi thấy đủ thì bấm Lên kế hoạch nhé.", "notes": {"clear": ["4 trang: trang chủ, danh sách bánh, giỏ hàng, thanh toán", "Thanh toán khi nhận hàng", "Hạn 15/12"], "missing": [], "risks": ["Ảnh khách gửi trễ"], "ready_to_plan": true}}],
+    "message": "Kể mình nghe một truyện cười về con mèo đi."
   }
 ]

@@ -124,6 +124,8 @@ def test_warning_shape(client, setup):
             "type": "not_enough_time",
             "needed_minutes": 780,
             "free_minutes": 480,
+            "day": None,  # FR-10d fields, only for day_overloaded
+            "capacity_minutes": None,
             "message": "Cần 780 phút, nhưng trước deadline chỉ còn trống 480 phút.",
         }
     ]

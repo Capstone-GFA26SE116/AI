@@ -27,7 +27,7 @@ Ký hiệu: **AI ghi** = AI service được INSERT/UPDATE · **Chỉ đọc** =
 - Ghi khi đề xuất: `Status = 'Pending'`, `Level = 3`.
 - `UserId` NOT NULL · `Level` ∈ {1, 2, 3}, mặc định 3 · `IsFeasible` NOT NULL, mặc định true ·
   `MissingMinutes` trống hoặc > 0, **bắt buộc có khi `IsFeasible = false`** · `Explanation` text NOT NULL ·
-  `Warnings` jsonb, trống hoặc mảng (Hiếu thêm 2026-10-07) · `CreatedAt` mặc định now().
+  `Warnings` jsonb, trống hoặc mảng (Hiếu thêm 2026-10-07) — mỗi phần tử: `task_id`, `type`, `needed_minutes`, `free_minutes`, `day`, `capacity_minutes`, `message` (FR-10d thêm `day`, `capacity_minutes` cho `type = day_overloaded`) · `CreatedAt` mặc định now().
 - `BlindTestSessionId`, `DisplayPosition`, `IsChosen`: cho FR-13, AI không ghi.
 - `Status` ∈ {`Pending`, `Approved`, `PartlyApproved`, `Rejected`, `Superseded`}.
   ⚠️ `Superseded` do AI thêm thẳng vào DB 2026-10-13 (Hiếu cho phép, đã báo Backend):

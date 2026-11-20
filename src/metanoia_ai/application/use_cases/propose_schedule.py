@@ -33,6 +33,12 @@ from metanoia_ai.application.ports.schedule_repository import (
     TaskToSchedule,
 )
 from metanoia_ai.application.reason_writer import LLMCall, ReasonResult, ReasonWriter
+from metanoia_ai.domain.daily_capacity import (
+    MIN_DAYS,
+    daily_capacity,
+    minutes_by_day,
+    overloaded_days,
+)
 from metanoia_ai.domain.free_time import (
     BusyBlock,
     DailyBreak,
@@ -174,6 +180,7 @@ class ProposeSchedule:
         )
         plan = self._plan(data, units, blocks, now, window_end)
         warnings = list(plan.warnings)
+        warnings += self._heavy_days(plan, data, now)  # FR-10d
         if not data.calendar_synced:
             warnings.append(ScheduleWarning(WarningType.CALENDAR_NOT_SYNCED))
 
@@ -347,6 +354,18 @@ class ProposeSchedule:
             spread=self.spread,
             max_block_minutes=self.max_block_minutes,
             existing_load=work_by_day(data.approved_slots, data.hours.time_zone),
+        )
+
+    @staticmethod
+    def _heavy_days(
+        plan: PlanResult, data: PlanningData, now: datetime
+    ) -> list[ScheduleWarning]:
+        """FR-10d: warn about days with more work than the user usually manages."""
+        zone = data.hours.time_zone
+        worked = minutes_by_day(data.recent_sessions, now.astimezone(zone).date(), zone)
+        capacity = daily_capacity(list(worked.values()), MIN_DAYS)
+        return overloaded_days(
+            plan.slots, work_by_day(data.approved_slots, zone), capacity, zone
         )
 
     # --- 6. Facts for the LLM ---

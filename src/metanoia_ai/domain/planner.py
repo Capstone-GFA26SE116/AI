@@ -235,6 +235,16 @@ def plan_schedule(
                     )
                     plain.add(slot, unit, hours.time_zone)
                 task_state = plain
+        if not complete and deadline > window_end:  # FR-10e: placed later, not late
+            placed = sum(minutes_between(s.start, s.end) for s in task_slots)
+            warnings.append(
+                ScheduleWarning(
+                    WarningType.BEYOND_WINDOW,
+                    task_id,
+                    needed_minutes=sum(u.minutes for u in task_units) - placed,
+                    day=local_date(deadline, hours.time_zone),
+                )
+            )
         if not complete and deadline <= window_end:
             warnings.append(
                 ScheduleWarning(

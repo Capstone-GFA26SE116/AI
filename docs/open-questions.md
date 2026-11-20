@@ -90,11 +90,13 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 | Azure App Service (AI): nếu có đặt `CHAT_PROJECT_HISTORY_LIMIT=10` thì đổi thành 20 hoặc bỏ dòng (mặc định mới 20) | `plans/FR-08b-6.md` | |
 | ⚠️ (Web / Mobile) Bản nháp kế hoạch: nút chính **Áp dụng & xếp lịch** → `POST /chat/conversations/{id}/apply-and-schedule` `{message_id, milestones?, language}` → 201 `{applied, schedule, schedule_error}`; hiện `schedule` bằng màn đề xuất lịch có sẵn. `schedule_error` (`quota_exceeded` / `no_active_plan` / `plan_feature_locked` / `schedule_failed`) → báo "Đã tạo việc, chưa xếp được lịch" + nút Xếp lịch. Nút phụ **Chỉ áp dụng** vẫn gọi `/apply` | `plans/FR-08b-7.md` | Lỗi 404/409/422 như `/apply` |
 | ⚠️ (Web / Mobile) Bản nháp kế hoạch FR-08b-8: hiện `milestones[].reason` dưới tên cột mốc và `tasks[].subtasks[]` (tên · phút · lý do) dưới việc lớn; khi sửa tay gửi `subtasks` nếu user sửa việc con (bỏ trường = giữ việc con của AI, `[]` = bỏ hết) | `plans/FR-08b-8.md` | Áp dụng tạo `SubTask`; xếp lịch theo việc con |
+| (Web / Mobile) Đề xuất lịch có cảnh báo mới `type = "beyond_window"` (việc hạn xa chưa xếp hết, chỉ cần hiện `message`) | `plans/FR-10e.md` | `is_feasible` không đổi |
 
 ## Chờ quyết định (team / giảng viên)
 
 | Câu hỏi | Liên quan | Hiện đang dùng |
 |---|---|---|
+| Đề xuất lịch nên phủ bao xa: giữ 7 ngày (`SCHEDULE_WINDOW_DAYS`) hay tới hạn chót dự án? | FR-10, FR-10e | 7 ngày + cảnh báo `beyond_window` |
 | Chuyển Gemini sang gói trả phí (trước khi công bố) và đo lại tốc độ chat (cả chat dự án, FR-08b-1 AC9) | FR-08a AC8, #31 | Gói Free: chat trung vị 15 s, p95 21 s, ~10% trả 502 (Gemini > 20 s). Chưa đạt AC8 (< 10 s). FR-08b-1 (2026-10-16, 10 tin / lần): lần 1 trung vị 9.0 s, p95 28.6 s (2/12 lần gọi hỏng); lần 2 trung vị 12.6 s, p95 13.6 s (1/11). Mục tiêu p95 < 20 s: lúc đạt lúc không |
 | ⚠️ Groq (AI dự phòng) gói free giới hạn token / phút: khi Gemini sập, nhiều người dùng cùng lúc sẽ gặp 429, nhất là chat dự án có tài liệu (prompt đến ~20.000 token). Nâng Groq lên gói trả theo lượt trước khi công bố? | LLM-fallback | Gói free, `qwen/qwen3.8-27b`. Đo 2026-11-18 gọi liên tục 1 người: 22 lần phải chờ 429 / 56 câu |
 | (Frontend) Chat dự án: ngôn ngữ trả lời do code chọn theo dấu tiếng Việt (tin mới nhất, rồi brief). Gõ tiếng Việt **không dấu** → AI trả lời tiếng Anh | FR-08b-1 #35 | Nếu cần: gửi kèm ngôn ngữ giao diện của user (giống `language` của `/schedule/propose`) |

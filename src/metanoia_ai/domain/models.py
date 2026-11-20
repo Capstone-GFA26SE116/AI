@@ -96,6 +96,8 @@ class WarningType(StrEnum):
     OVERDUE = "overdue"
     CALENDAR_NOT_SYNCED = "calendar_not_synced"
     DAY_OVERLOADED = "day_overloaded"  # FR-10d: more work than the user usually does
+    # FR-10e: due after the proposal window; the rest is placed by a later "Schedule"
+    BEYOND_WINDOW = "beyond_window"
 
 
 class Placement(StrEnum):

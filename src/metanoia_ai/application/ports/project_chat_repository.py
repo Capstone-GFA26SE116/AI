@@ -90,6 +90,15 @@ class NewMilestone:
 
 
 @dataclass(frozen=True)
+class NewSubtask:
+    """FR-08b-8: a ToDo SubTask created with its task at Apply."""
+
+    title: str
+    estimated_minutes: int
+    order_index: int  # 1, 2, … in draft order
+
+
+@dataclass(frozen=True)
 class NewTask:
     """A Flexible ToDo task to create at Apply (#10)."""
 
@@ -99,6 +108,7 @@ class NewTask:
     deadline: datetime  # 23:59 of the milestone day, user's zone (#16)
     estimated_minutes: int
     ai_estimated_minutes: int | None  # the AI's number; None for user-added (#11)
+    subtasks: tuple[NewSubtask, ...] = ()  # FR-08b-8: written with the task
 
 
 class DocumentSourceType(StrEnum):
@@ -249,9 +259,9 @@ class ProjectChatRepository(Protocol):
         self, user_id: UUID, project_id: UUID, milestone: NewMilestone
     ) -> UUID: ...
 
-    async def add_task(
-        self, user_id: UUID, project_id: UUID, task: NewTask
-    ) -> UUID: ...
+    async def add_task(self, user_id: UUID, project_id: UUID, task: NewTask) -> UUID:
+        """The task and its subtasks (FR-08b-8)."""
+        ...
 
     async def mark_applied(
         self, user_id: UUID, conversation_id: UUID, message_id: UUID

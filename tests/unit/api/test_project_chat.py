@@ -180,7 +180,9 @@ def test_draft_turn_matches_the_plan_shape(client, world):
         "domain": {"id": str(DESIGN), "name": "Design"},
         "estimated_minutes": 240,
         "reason": "r",
+        "subtasks": [],  # FR-08b-8
     }
+    assert m1["reason"] is None  # FR-08b-8: the fake answer gives none
     assert draft["milestones"][1]["deadline"] == "2026-10-30"  # project deadline
     assert draft["reminders"] == ["Họp chốt giao diện"]
     assert draft["numbers"] == {

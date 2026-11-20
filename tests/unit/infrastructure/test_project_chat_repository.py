@@ -91,8 +91,10 @@ def test_proposal_json_shape_matches_the_plan():
         "domain": {"id": str(DESIGN), "name": "Design"},
         "estimated_minutes": 240,
         "reason": "1 dòng",
+        "subtasks": [],  # FR-08b-8
     }
     assert data["milestones"][0]["deadline"] == "2026-10-22"
+    assert data["milestones"][0]["reason"] is None  # FR-08b-8
     assert data["numbers"]["by_domain"] == [
         {"domain": "Design", "estimated_minutes": 300, "adjusted_minutes": 390}
     ]

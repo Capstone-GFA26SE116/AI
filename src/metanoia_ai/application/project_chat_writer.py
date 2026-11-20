@@ -47,7 +47,7 @@ from metanoia_ai.domain.project_discussion import (
 from metanoia_ai.domain.task_breakdown import BadDraftError, ReplyKind
 from metanoia_ai.prompts import load_prompt
 
-PROMPT_VERSION = "project_breakdown_v4"  # v4: milestone reasons + subtasks (FR-08b-8)
+PROMPT_VERSION = "project_breakdown_v5"  # v5: updates hold only new work (FR-08b-9)
 # Added after the main prompt only when the message has documents (FR-08b-2 #15),
 # so a chat without documents sends exactly the v2 prompt (AC8).
 DOCUMENTS_PROMPT_VERSION = "project_documents_v1"

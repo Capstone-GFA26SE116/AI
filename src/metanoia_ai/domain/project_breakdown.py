@@ -439,21 +439,58 @@ DUPLICATE_WARNINGS = {
 }
 
 
+# FR-08b-9: two or more dropped for the same reason → one line.
+GROUPED_DUPLICATE_WARNINGS = {
+    (
+        Language.VI,
+        DuplicateOf.EXISTING_TASK,
+    ): "Đã bỏ {count} việc dự án đã có: {titles}.",
+    (
+        Language.VI,
+        DuplicateOf.IN_DRAFT,
+    ): "Đã bỏ {count} việc trùng trong bản nháp: {titles}.",
+    (Language.EN, DuplicateOf.EXISTING_TASK): (
+        "Removed {count} tasks the project already has: {titles}."
+    ),
+    (Language.EN, DuplicateOf.IN_DRAFT): (
+        "Removed {count} tasks repeated in the draft: {titles}."
+    ),
+}
+NAMES_IN_WARNING = 3
+
+
+def duplicate_warnings(dropped: Sequence[DroppedTask], language: Language) -> list[str]:
+    """At most one line per reason (FR-08b-9); a single task keeps the old wording."""
+    lines = []
+    for reason in DuplicateOf:
+        titles = [d.title for d in dropped if d.reason is reason]
+        if len(titles) == 1:
+            lines.append(DUPLICATE_WARNINGS[(language, reason)].format(title=titles[0]))
+        elif titles:
+            shown = ", ".join(f'"{t}"' for t in titles[:NAMES_IN_WARNING])
+            if len(titles) > NAMES_IN_WARNING:
+                shown += "…"
+            lines.append(
+                GROUPED_DUPLICATE_WARNINGS[(language, reason)].format(
+                    count=len(titles), titles=shown
+                )
+            )
+    return lines
+
+
 def drop_duplicates(
     draft: ProjectDraft,
     existing_titles: Iterable[str],
     language: Language = Language.VI,
 ) -> ProjectDraft:
-    """An AI draft without duplicates, one warning per dropped task (#17).
+    """An AI draft without duplicates, at most one warning per reason (#17, FR-08b-9).
 
     Nothing left → BadDraftError (the answer is retried).
     """
     kept, dropped = split_duplicates(draft, existing_titles)
     if not kept.milestones:
         raise BadDraftError("every task repeats an existing task")
-    warnings = [
-        DUPLICATE_WARNINGS[(language, d.reason)].format(title=d.title) for d in dropped
-    ]
+    warnings = duplicate_warnings(dropped, language)
     return replace(kept, warnings=(*kept.warnings, *warnings))
 
 

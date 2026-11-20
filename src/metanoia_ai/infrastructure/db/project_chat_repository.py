@@ -37,12 +37,14 @@ from metanoia_ai.application.ports.project_chat_repository import (
 from metanoia_ai.domain.project_breakdown import (
     DomainNumbers,
     DraftMilestone,
+    DraftSubtask,
     DraftTask,
     ProjectDraft,
     ProjectNumbers,
 )
 from metanoia_ai.domain.project_discussion import DiscussionNotes
 from metanoia_ai.infrastructure.db.chat_repository import (
+    ADD_SUBTASK,
     ROLE_FROM_DB,
     ROLE_TO_DB,
     NotOwnedError,
@@ -264,6 +266,7 @@ def draft_to_json(saved: SavedProjectDraft) -> str:
             {
                 "key": m.key,
                 "title": m.title,
+                "reason": m.reason,  # FR-08b-8
                 "deadline": _iso(m.deadline),
                 "tasks": [
                     {
@@ -272,6 +275,14 @@ def draft_to_json(saved: SavedProjectDraft) -> str:
                         "domain": {"id": str(t.domain_id), "name": t.domain_name},
                         "estimated_minutes": t.estimated_minutes,
                         "reason": t.reason,
+                        "subtasks": [  # FR-08b-8
+                            {
+                                "title": s.title,
+                                "estimated_minutes": s.estimated_minutes,
+                                "reason": s.reason,
+                            }
+                            for s in t.subtasks
+                        ],
                     }
                     for t in m.tasks
                 ],
@@ -355,9 +366,16 @@ def draft_from_json(raw: str) -> SavedProjectDraft:
                             domain_name=t["domain"]["name"],
                             estimated_minutes=t["estimated_minutes"],
                             reason=t.get("reason"),
+                            subtasks=tuple(  # FR-08b-8; older drafts have none
+                                DraftSubtask(
+                                    s["title"], s["estimated_minutes"], s.get("reason")
+                                )
+                                for s in t.get("subtasks", [])
+                            ),
                         )
                         for t in m["tasks"]
                     ),
+                    reason=m.get("reason"),
                 )
                 for m in data["milestones"]
             ),
@@ -622,6 +640,17 @@ class SqlProjectChatRepository:
         task_id = (await self.session.execute(ADD_TASK, params)).scalar_one_or_none()
         if task_id is None:
             raise NotOwnedError(str(project_id))
+        for subtask in task.subtasks:  # FR-08b-8
+            sub_params = {
+                "task_id": task_id,
+                "user_id": user_id,
+                "title": subtask.title,
+                "minutes": subtask.estimated_minutes,
+                "order_index": subtask.order_index,
+            }
+            result = await self.session.execute(ADD_SUBTASK, sub_params)
+            if result.scalar_one_or_none() is None:
+                raise NotOwnedError(str(task_id))
         return task_id
 
     async def mark_applied(

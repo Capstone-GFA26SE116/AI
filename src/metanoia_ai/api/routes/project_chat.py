@@ -91,6 +91,7 @@ from metanoia_ai.domain.models import EstimateSource, Language
 from metanoia_ai.domain.project_breakdown import (
     DuplicateOf,
     MilestoneInput,
+    SubtaskInput,
     TaskInput,
 )
 from metanoia_ai.domain.project_discussion import ChatMode
@@ -151,17 +152,27 @@ class DomainResponse(BaseModel):
     name: str
 
 
+class DraftSubtaskResponse(BaseModel):
+    """FR-08b-8: one step of a task over 2 hours."""
+
+    title: str
+    estimated_minutes: int
+    reason: str | None
+
+
 class DraftTaskResponse(BaseModel):
     key: str | None
     title: str
     domain: DomainResponse
     estimated_minutes: int  # shown as "AI guess — change it if you think otherwise"
     reason: str | None
+    subtasks: list[DraftSubtaskResponse] = []  # FR-08b-8: big tasks only
 
 
 class DraftMilestoneResponse(BaseModel):
     key: str | None
     title: str
+    reason: str | None = None  # FR-08b-8: why this stage, why here
     deadline: date  # a day in the user's time zone, already filled (#6)
     tasks: list[DraftTaskResponse]
 
@@ -215,11 +226,18 @@ class ProjectChatResponse(BaseModel):
     applied: bool
 
 
+class EditedSubtask(BaseModel):
+    title: str
+    estimated_minutes: int
+
+
 class EditedTask(BaseModel):
     key: str | None = None  # from the draft; empty for a task the user added
     title: str
     domain_id: UUID
     estimated_minutes: int
+    # FR-08b-8: left out → keep the draft's subtasks (by key); [] → no subtasks
+    subtasks: list[EditedSubtask] | None = None
 
 
 class EditedMilestone(BaseModel):
@@ -286,9 +304,18 @@ def to_draft(message: ProjectChatMessage) -> ProjectDraftResponse | None:
                         domain=DomainResponse(id=t.domain_id, name=t.domain_name),
                         estimated_minutes=t.estimated_minutes,
                         reason=t.reason,
+                        subtasks=[
+                            DraftSubtaskResponse(
+                                title=st.title,
+                                estimated_minutes=st.estimated_minutes,
+                                reason=st.reason,
+                            )
+                            for st in t.subtasks
+                        ],
                     )
                     for t in m.tasks
                 ],
+                reason=m.reason,
             )
             for m in draft.milestones
         ],
@@ -362,7 +389,18 @@ def to_inputs(milestones: list[EditedMilestone]) -> list[MilestoneInput]:
             title=m.title,
             deadline=m.deadline,
             tasks=[
-                TaskInput(t.title, t.domain_id, t.estimated_minutes, key=t.key)
+                TaskInput(
+                    t.title,
+                    t.domain_id,
+                    t.estimated_minutes,
+                    key=t.key,
+                    subtasks=None
+                    if t.subtasks is None
+                    else [
+                        SubtaskInput(st.title, st.estimated_minutes)
+                        for st in t.subtasks
+                    ],
+                )
                 for t in m.tasks
             ],
             key=m.key,

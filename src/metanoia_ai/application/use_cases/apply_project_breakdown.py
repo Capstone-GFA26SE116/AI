@@ -7,12 +7,13 @@ tabs, never makes duplicates (#22).
 """
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from uuid import UUID
 
 from metanoia_ai.application.ports.project_chat_repository import (
     NewMilestone,
+    NewSubtask,
     NewTask,
     ProjectChatMessage,
     ProjectChatRepository,
@@ -29,6 +30,7 @@ from metanoia_ai.application.use_cases.start_project_chat import (
 )
 from metanoia_ai.domain.models import EstimateSource, estimate_source
 from metanoia_ai.domain.project_breakdown import (
+    DraftMilestone,
     DroppedTask,
     MilestoneInput,
     ProjectDraft,
@@ -114,8 +116,12 @@ class ApplyProjectBreakdown:
                 if any(t.domain_id not in domains for t in draft.tasks):
                     raise DomainInactiveError(str(conversation_id))
             else:
-                checked = check_project_draft(
-                    edited, domains, self.manual_limits, assign_keys=False
+                checked = keep_draft_subtasks(
+                    check_project_draft(
+                        edited, domains, self.manual_limits, assign_keys=False
+                    ),
+                    edited,
+                    saved,
                 )
                 draft = resolve_deadlines(
                     ProjectDraft(checked), project.deadline, today
@@ -153,6 +159,10 @@ class ApplyProjectBreakdown:
                             ),
                             estimated_minutes=task.estimated_minutes,
                             ai_estimated_minutes=ai_minutes,
+                            subtasks=tuple(
+                                NewSubtask(s.title, s.estimated_minutes, index)
+                                for index, s in enumerate(task.subtasks, start=1)
+                            ),
                         ),
                     )
                     tasks.append(
@@ -182,3 +192,30 @@ class ApplyProjectBreakdown:
         if latest is None or latest.message_id != message_id or latest.draft is None:
             raise NotLatestDraftError(str(message_id))
         return latest
+
+
+def keep_draft_subtasks(
+    checked: tuple[DraftMilestone, ...],
+    edited: Sequence[MilestoneInput],
+    saved: ProjectDraft,
+) -> tuple[DraftMilestone, ...]:
+    """FR-08b-8: an edited task that sent no `subtasks` keeps the draft's (by key);
+    sent ones, or [] (none), are used as sent."""
+    by_key = {t.key: t.subtasks for t in saved.tasks if t.key}
+    sent = {
+        (m_index, t_index): task.subtasks is not None
+        for m_index, milestone in enumerate(edited)
+        for t_index, task in enumerate(milestone.tasks)
+    }
+    return tuple(
+        replace(
+            milestone,
+            tasks=tuple(
+                task
+                if sent[(m_index, t_index)]
+                else replace(task, subtasks=by_key.get(task.key, ()))
+                for t_index, task in enumerate(milestone.tasks)
+            ),
+        )
+        for m_index, milestone in enumerate(checked)
+    )

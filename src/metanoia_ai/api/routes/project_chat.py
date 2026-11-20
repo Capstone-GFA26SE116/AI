@@ -5,6 +5,8 @@ FR-08b-2: a message may carry documents (JSON `document_ids`, or multipart with
 uploaded files). Document errors carry {"code": …, "file": …} where useful.
 """
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import date, datetime
 from enum import StrEnum
 from typing import Annotated
@@ -25,6 +27,7 @@ from pydantic import BaseModel
 
 from metanoia_ai.api.auth import get_current_user_id
 from metanoia_ai.api.deps import (
+    get_apply_and_schedule,
     get_apply_project_breakdown,
     get_get_project_chat,
     get_list_project_chats,
@@ -32,6 +35,7 @@ from metanoia_ai.api.deps import (
     get_start_project_chat,
 )
 from metanoia_ai.api.routes.chat import conflict, not_found
+from metanoia_ai.api.routes.schedule import ProposalResponse, to_response
 from metanoia_ai.application.ports.document_source import (
     DocumentFetchError,
     DocumentNotFoundError,
@@ -44,7 +48,12 @@ from metanoia_ai.application.ports.project_chat_repository import (
     ProjectChatMessage,
     ProjectConversation,
 )
+from metanoia_ai.application.use_cases.apply_and_schedule import (
+    ApplyAndSchedule,
+    ScheduleError,
+)
 from metanoia_ai.application.use_cases.apply_project_breakdown import (
+    AppliedProject,
     ApplyProjectBreakdown,
     DomainInactiveError,
 )
@@ -78,7 +87,7 @@ from metanoia_ai.application.use_cases.start_project_chat import (
     StartProjectChat,
 )
 from metanoia_ai.domain.document_text import DocumentError, DocumentErrorCode
-from metanoia_ai.domain.models import EstimateSource
+from metanoia_ai.domain.models import EstimateSource, Language
 from metanoia_ai.domain.project_breakdown import (
     DuplicateOf,
     MilestoneInput,
@@ -548,21 +557,11 @@ async def get_chat(
     )
 
 
-@router.post(
-    "/conversations/{conversation_id}/apply", status_code=status.HTTP_201_CREATED
-)
-async def apply(
-    conversation_id: UUID,
-    body: ApplyRequest,
-    user_id: Annotated[UUID, Depends(get_current_user_id)],
-    use_case: Annotated[ApplyProjectBreakdown, Depends(get_apply_project_breakdown)],
-) -> AppliedResponse:
-    """Create the milestones + tasks of the newest draft (or the edited plan). No AI call."""
-    edited = to_inputs(body.milestones) if body.milestones is not None else None
+@contextmanager
+def apply_errors() -> Iterator[None]:
+    """Apply errors → HTTP answers (/apply and /apply-and-schedule)."""
     try:
-        result = await use_case.execute(
-            user_id, conversation_id, body.message_id, edited
-        )
+        yield
     except BadDraftError as error:
         raise unprocessable(error) from error
     except (ConversationNotFoundError, ProjectNotFoundError) as error:
@@ -577,6 +576,9 @@ async def apply(
         raise conflict("project_closed") from error
     except DomainInactiveError as error:
         raise conflict("domain_inactive") from error
+
+
+def to_applied(result: AppliedProject) -> AppliedResponse:
     return AppliedResponse(
         milestones=[
             AppliedMilestoneResponse(
@@ -598,4 +600,57 @@ async def apply(
         skipped=[
             SkippedResponse(title=s.title, reason=s.reason) for s in result.skipped
         ],
+    )
+
+
+@router.post(
+    "/conversations/{conversation_id}/apply", status_code=status.HTTP_201_CREATED
+)
+async def apply(
+    conversation_id: UUID,
+    body: ApplyRequest,
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+    use_case: Annotated[ApplyProjectBreakdown, Depends(get_apply_project_breakdown)],
+) -> AppliedResponse:
+    """Create the milestones + tasks of the newest draft (or the edited plan). No AI call."""
+    edited = to_inputs(body.milestones) if body.milestones is not None else None
+    with apply_errors():
+        result = await use_case.execute(
+            user_id, conversation_id, body.message_id, edited
+        )
+    return to_applied(result)
+
+
+class ApplyAndScheduleRequest(ApplyRequest):
+    language: Language = Language.VI  # for the schedule reasons
+
+
+class AppliedAndScheduledResponse(BaseModel):
+    applied: AppliedResponse
+    schedule: ProposalResponse | None  # None: nothing new, or schedule_error
+    schedule_error: ScheduleError | None  # the work is saved anyway
+
+
+@router.post(
+    "/conversations/{conversation_id}/apply-and-schedule",
+    status_code=status.HTTP_201_CREATED,
+)
+async def apply_and_schedule(
+    conversation_id: UUID,
+    body: ApplyAndScheduleRequest,
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+    use_case: Annotated[ApplyAndSchedule, Depends(get_apply_and_schedule)],
+) -> AppliedAndScheduledResponse:
+    """FR-08b-7: Apply, then propose a schedule for the new tasks (1 AI call for the
+    reasons, like /schedule/propose). Apply errors as /apply; a schedule error
+    keeps the created work and comes back as schedule_error."""
+    edited = to_inputs(body.milestones) if body.milestones is not None else None
+    with apply_errors():
+        result = await use_case.execute(
+            user_id, conversation_id, body.message_id, body.language, edited
+        )
+    return AppliedAndScheduledResponse(
+        applied=to_applied(result.applied),
+        schedule=to_response(result.schedule) if result.schedule else None,
+        schedule_error=result.schedule_error,
     )

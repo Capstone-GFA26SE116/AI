@@ -80,6 +80,7 @@ Ký hiệu: **AI ghi** = AI service được INSERT/UPDATE · **Chỉ đọc** =
   `ProposalJson` **jsonb** trống được · `IsApplied` bool NOT NULL mặc định false · `CreatedAt`.
 - CHECK: chỉ tin `AI` mới có `ProposalJson`.
 - Unique `UX_ChatMessage_OneAppliedPerConversation` (`ConversationId`) WHERE `IsApplied` → mỗi cuộc chat tối đa 1 bản nháp đã áp dụng.
+  FR-08b-4: chat dự án áp được nhiều bản nháp → AI **không ghi `IsApplied` nữa**, ghi `ProposalJson.applied_at`; đọc "đã áp" = `IsApplied` (dòng cũ) hoặc có `applied_at`. `ChatConversation.Status = Applied` = "đã từng áp", không còn khóa chat.
 - **Không có** cột `kind`: `question` / `draft` phân biệt bằng `ProposalJson` trống hay không. Không có cột model / token.
 - FK `ConversationId` → `ChatConversation`: `ON DELETE CASCADE`. Index (`ConversationId`, `CreatedAt`).
 

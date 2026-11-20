@@ -146,6 +146,7 @@ Full text in `docs/functional-requirements.md`. Status: first line of each `plan
 | FR-08b-4 | Continuous project chat: plan button = `plan` without text; chat stays open after Apply; each draft applied once (`ProposalJson.applied_at`) | `plans/FR-08b-4.md` |
 | FR-08b-5 | Wider project chat (`discuss`, prompt v2): answers, opinions, client emails, document summaries, tech explanations; still no plan without the button; non-work requests refused; reply ≤ 4000 chars | `plans/FR-08b-5.md` |
 | FR-08b-6 | The plan remembers the discussion (prompt `project_breakdown_v3`): newest checklist as "agreed", long AI answers cut to 500 chars in the plan history, brief + 20 recent messages | `plans/FR-08b-6.md` |
+| FR-08b-7 | "Áp dụng & xếp lịch": `POST /chat/conversations/{id}/apply-and-schedule` = Apply, then FR-10 for the new tasks; a schedule error keeps the work (`schedule_error`) | `plans/FR-08b-7.md` |
 | — | Chat history page: all the user's chats (project + task), newest first, search by message / name; read only, no LLM | `plans/chat-history.md` |
 | FR-09 | Similar past tasks: hybrid search (vector + full-text) + RRF. Free/busy time and workload are already in FR-10 | `plans/FR-09.md` |
 | FR-09b | Similar tasks also return why their sessions stopped (counts + 2 masked notes) | `plans/FR-09b.md` |

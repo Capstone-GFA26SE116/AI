@@ -241,3 +241,30 @@ def test_focus_hour_wait_does_not_lose_a_task(spread):
     assert len(result.slots) == 2
     assert all(s.end <= due for s in result.slots)
     assert result.slots[1].start >= result.slots[0].end
+
+
+# --- FR-10f: why a unit has parts ---
+
+
+def test_long_work_cut_into_blocks_says_long_work():
+    from metanoia_ai.domain.models import SplitReason
+
+    result = plan([unit(1, 360)])
+    assert len(result.slots) == 2
+    assert {s.split_reason for s in result.slots} == {SplitReason.LONG_WORK}
+
+
+def test_a_single_slot_has_no_split_reason():
+    assert plan([unit(1, 60)]).slots[0].split_reason is None
+
+
+def test_no_long_gap_when_free_time_is_cut_up():
+    from metanoia_ai.domain.models import SplitReason
+
+    # Without blocks (max_block off): a meeting cuts the only day before the deadline.
+    busy = busy_ranges([fixed(at(19, 12), at(19, 13))], [], [])
+    result = plan(
+        [unit(1, 300, deadline=at(19, 17))], busy=busy, max_block=None, spread=False
+    )
+    assert len(result.slots) >= 2
+    assert {s.split_reason for s in result.slots} == {SplitReason.NO_LONG_GAP}

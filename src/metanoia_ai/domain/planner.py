@@ -32,6 +32,7 @@ from metanoia_ai.domain.models import (
     PlannedSlot,
     ScheduleUnit,
     ScheduleWarning,
+    SplitReason,
     TimeRange,
     WarningType,
     WorkingHours,
@@ -286,19 +287,22 @@ def place_task(
     slots: list[PlannedSlot] = []
     earliest = now  # a subtask never starts before the previous one ends
     for unit in task_units:
-        parts: list[tuple[TimeRange, Placement]] = []
+        parts: list[tuple[TimeRange, Placement, SplitReason | None]] = []
         missing = 0
-        for size in block_sizes(unit.minutes, max_block_minutes, min_chunk_minutes):
+        sizes = block_sizes(unit.minutes, max_block_minutes, min_chunk_minutes)
+        for size in sizes:
             block = replace(unit, minutes=size)
             usable = after(gaps, earliest)
             found = whole(block, usable, hours.time_zone, productive_hours, spread)
             if found is None:
                 pieces, missing = split(block, usable, min_chunk_minutes)
                 placement = Placement.EARLIEST_FREE  # parts fill free time in order
+                why: SplitReason | None = SplitReason.NO_LONG_GAP
             else:
                 pieces, placement = found
+                why = SplitReason.LONG_WORK if len(sizes) > 1 else None  # FR-10f
             for piece in pieces:
-                parts.append((piece, placement))
+                parts.append((piece, placement, why))
                 gaps = take_range(gaps, piece, hours, round_minutes)
                 if spread is not None:
                     spread.add(to_slot(unit, piece, placement), unit, hours.time_zone)
@@ -306,8 +310,8 @@ def place_task(
                 break
             earliest = pieces[-1].end
         slots += [
-            to_slot(unit, piece, placement, index, len(parts))
-            for index, (piece, placement) in enumerate(parts, start=1)
+            to_slot(unit, piece, placement, index, len(parts), why)
+            for index, (piece, placement, why) in enumerate(parts, start=1)
         ]
         if missing:
             return slots, gaps, False
@@ -320,6 +324,7 @@ def to_slot(
     placement: Placement,
     part_index: int = 1,
     part_count: int = 1,
+    split_reason: SplitReason | None = None,
 ) -> PlannedSlot:
     return PlannedSlot(
         task_id=unit.task_id,
@@ -330,6 +335,7 @@ def to_slot(
         part_index=part_index,
         part_count=part_count,
         placement=placement,
+        split_reason=split_reason if part_count > 1 else None,
     )
 
 

@@ -93,6 +93,8 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 | (Web / Mobile) Đề xuất lịch có cảnh báo mới `type = "beyond_window"` (việc hạn xa chưa xếp hết, chỉ cần hiện `message`) | `plans/FR-10e.md` | `is_feasible` không đổi |
 | (Web / Mobile) Kết quả Áp dụng có `applied.milestones[].reused` = true khi việc được thêm vào cột mốc đã có → hiện "đã thêm vào cột mốc …" thay vì "tạo cột mốc" | `plans/FR-08b-9.md` | |
 | (Web / Mobile) Ô đính kèm chat dự án cho chọn thêm `.xlsx`, `.csv` (FR-08b-10) | `plans/FR-08b-10.md` | |
+| ⚠️ (Backend) Từ 2026-11-20 AI được **tạo** dòng `Project` khi user nhập file (FR-08c): `Status Active`, `IsDefault false`, `ClientId null`, `AllowAiDocumentAccess false`, `StartDate` hôm nay; kiểm `ProjectLimit` y như `PlanLimitService` (đếm không mặc định, không Archived). AI không sửa / xóa dự án. Nếu Backend đổi luật đếm thì báo AI | `plans/FR-08c.md`, `docs/database.md` | Hiếu đã quyết |
+| ⚠️ (Web / Mobile) Trang Dự án: nút **Nhập từ file** → `POST /projects/import/preview` (multipart `file`, `language`) → hiện danh sách dự án (tên, hạn, mô tả, `source`, xem `brief`) cho sửa / bỏ, cảnh báo nếu nhiều hơn `projects_left` → `POST /projects/import` `{file_name, language, projects}` → 201 `{projects: [{project_id, conversation_id, name}]}`; 409 `project_limit` `{limit, used, wanted}`; 403 `plan_feature_locked` với gói Free | `plans/FR-08c.md` | Xem trước tốn 1 lượt AI, tạo không tốn |
 
 ## Chờ quyết định (team / giảng viên)
 

@@ -1,6 +1,6 @@
 # FR-08c — Nhập 1 file (Excel…) → nhiều dự án, mỗi dự án có sẵn chat để lên kế hoạch
 
-Trạng thái: Đang code · Branch: `feature/fr08c-import-projects` · Cập nhật: 2026-11-20
+Trạng thái: Xong · Branch: `feature/fr08c-import-projects` · Cập nhật: 2026-11-20
 
 <!-- Hiếu duyệt 2026-11-20: "ok làm đi và sửa lại luật cho phần AI có thể chỉnh sửa bảng project".
 Luật mới: AI chỉ TẠO dự án khi nhập file, kiểm giới hạn gói như Backend, không sửa / xóa (CLAUDE.md §8, docs/database.md).
@@ -14,15 +14,15 @@ Claude Code soạn plan rồi làm liền. -->
   2. **Tạo** — user sửa / bỏ bớt rồi bấm "Tạo dự án" → AI tạo các `Project` + mỗi dự án 1 cuộc chat dự án có sẵn tin đầu
      là `brief` → user vào từng dự án dùng luồng có sẵn (bàn bạc → Lên kế hoạch → Áp dụng & xếp lịch). Không gọi AI.
 - **Tiêu chí xong:**
-  - [ ] AC1 — Xem trước: gói Free → 403 `plan_feature_locked` (như chat); hết lượt → 429; file không đọc được → 422 như FR-08b-2.
-  - [ ] AC2 — Xem trước trả 1–20 dự án, tên ≤ 150 ký tự và không trùng nhau, hạn quá khứ → bỏ hạn; `brief` ≤ 6000 ký tự;
+  - [x] AC1 — Xem trước: gói Free → 403 `plan_feature_locked` (như chat); hết lượt → 429; file không đọc được → 422 như FR-08b-2.
+  - [x] AC2 — Xem trước trả 1–20 dự án, tên ≤ 150 ký tự và không trùng nhau, hạn quá khứ → bỏ hạn; `brief` ≤ 6000 ký tự;
     kèm `project_limit` / `projects_left` (null = không giới hạn) để UI cảnh báo trước.
-  - [ ] AC3 — Tạo: 1–20 dự án; tên rỗng / > 150 / trùng nhau, hạn quá khứ, brief rỗng → 422; vượt giới hạn gói → 409
+  - [x] AC3 — Tạo: 1–20 dự án; tên rỗng / > 150 / trùng nhau, hạn quá khứ, brief rỗng → 422; vượt giới hạn gói → 409
     `project_limit` (không tạo dự án nào); tất cả trong 1 giao dịch.
-  - [ ] AC4 — Mỗi dự án: `Status Active`, `IsDefault false`, `StartDate` = hôm nay (giờ user), `Deadline` như gửi; 1 cuộc chat
+  - [x] AC4 — Mỗi dự án: `Status Active`, `IsDefault false`, `StartDate` = hôm nay (giờ user), `Deadline` như gửi; 1 cuộc chat
     dự án (Open) + 1 tin của user = "Nội dung từ file <tên file> (<source>):" + brief. Trả `project_id`, `conversation_id`.
-  - [ ] AC5 — Tên khách / email / số điện thoại trong file được che trước khi gửi AI (`mask_contact`).
-  - [ ] AC6 — Chạy thật: 1 file Excel 3 dự án → xem trước (Gemini) → tạo → bàn + lên kế hoạch 1 dự án; dọn còn 0 dòng.
+  - [x] AC5 — Tên khách / email / số điện thoại trong file được che trước khi gửi AI (`mask_contact`).
+  - [x] AC6 — Chạy thật: 1 file Excel 3 dự án → xem trước (Gemini) → tạo → bàn + lên kế hoạch 1 dự án; dọn còn 0 dòng.
 - **Ngoài phạm vi:** gắn khách hàng (`ClientId`) · lưu file vào thư viện tài liệu · tự lên kế hoạch cho mọi dự án cùng lúc.
 
 ## 1. Bên ngoài
@@ -64,9 +64,11 @@ Claude Code soạn plan rồi làm liền. -->
 - [x] **1.** Domain + writer + prompt — T1.
 - [x] **2.** Port + use case + fake — T2, T3.
 - [x] **3.** SQL + API + wiring — T4, T5.
-- [ ] **4.** Chạy thật — T6; docs.
+- [x] **4.** Chạy thật — T6; docs.
 
 ## 5. Nhật ký thay đổi
 | Ngày | Thay đổi | Lý do (bug / quyết định mới) |
 |---|---|---|
 | 2026-11-20 | Tạo plan; luật mới cho bảng `Project` | Hiếu |
+| 2026-11-20 | Chạy thật (Supabase + Gemini; user + gói test, xóa đúng các dòng đã tạo, còn 0): Excel 1 sheet, 4 dòng / 3 khách → xem trước **3 dự án** (website 2 dòng gộp 1 dự án, logo, blog), đúng hạn, `source` "Sheet Việc tháng 12, rows 2-3", brief giữ dòng tiêu đề cột → tạo: DB 3 dự án `Active`, không mặc định, `StartDate` hôm nay, đúng hạn, `AllowAiDocumentAccess` false, mỗi dự án 1 chat + 1 tin đầu. 3/3 kiểm tra PASS. Bước "lên kế hoạch từ chat" lỗi do **cả Gemini (504) lẫn Groq (429)** không trả lời (phía nhà cung cấp); theo quy tắc chỉ chạy lại riêng bước đó (chỉ LLM, tin đầu tạo bằng `first_message`): kế hoạch 2 cột mốc có lý do, đủ hạng mục của 2 dòng. Gói Standard của user test không giới hạn dự án nên chưa thấy 409 trên DB thật (đã có test) | Bước 4 |
+| 2026-11-20 | Ghi nhận: tên khách nằm trong file (vd "Tiệm bánh Mai") vẫn tới AI, vì lúc nhập chưa biết khách nào để che; chỉ email / số điện thoại bị che. Tên dự án AI đặt cũng có thể chứa tên khách | Chạy thật → báo Hiếu |

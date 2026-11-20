@@ -83,7 +83,12 @@ from metanoia_ai.domain.project_breakdown import (
     reply_language,
     restore_client_in_notes,
 )
-from metanoia_ai.domain.project_discussion import ChatMode
+from metanoia_ai.domain.project_discussion import (
+    ChatMode,
+    DiscussionNotes,
+    latest_notes,
+    shorten,
+)
 
 
 class _LostLastCallError(Exception):
@@ -154,6 +159,25 @@ def pick_history(
     return [messages[0], *messages[-recent:]]
 
 
+def mask_notes(
+    notes: DiscussionNotes | None, client: str | None
+) -> DiscussionNotes | None:
+    """A checklist as it may go into a prompt: contact details masked (FR-08b-6 AC4)."""
+    if notes is None:
+        return None
+
+    def masked(lines: tuple[str, ...]) -> tuple[str, ...]:
+        return tuple(mask_contact(line, client) for line in lines)
+
+    return replace(
+        notes,
+        clear=masked(notes.clear),
+        missing=masked(notes.missing),
+        questions=masked(notes.questions),
+        risks=masked(notes.risks),
+    )
+
+
 def check_open(conversation: ProjectConversation) -> None:
     """FR-08b-4: a chat stays open after Apply; only a Closed chat takes no message."""
     if conversation.status is ConversationStatus.CLOSED:
@@ -171,6 +195,7 @@ class _Prepared:
     k_bias: dict[UUID, Decimal]
     work: ExistingWork
     library: list[ProjectDocument] = field(default_factory=list)  # asked for, checked
+    agreed: DiscussionNotes | None = None  # FR-08b-6: newest checklist of the chat
     earlier: list[ChatAttachment] = field(default_factory=list)  # of this chat
 
 
@@ -242,6 +267,7 @@ class SendProjectChatMessage:
         prompt_project = self._prompt_project(project, prepared.work)
         domains = self._prompt_domains(prepared.domains, prepared.k_bias)
         masked_text = mask_contact(text, client)
+        agreed = mask_notes(prepared.agreed, client)  # FR-08b-6 (AC4)
         history = self._fit_history(
             prepared.history,
             prompt_project,
@@ -251,6 +277,7 @@ class SendProjectChatMessage:
             today,
             language,
             mode,
+            agreed,
         )
         if mode is ChatMode.DISCUSS:
             result = await self.writer.discuss(
@@ -267,7 +294,13 @@ class SendProjectChatMessage:
                 language=language,
             )
             result = await self.writer.write(
-                prompt_project, domains, history, masked_text, context, documents
+                prompt_project,
+                domains,
+                history,
+                masked_text,
+                context,
+                documents,
+                agreed,
             )
         if result.reply is None:
             async with self.repo.transaction():
@@ -331,6 +364,7 @@ class SendProjectChatMessage:
             work=await self.repo.existing_work(user_id, project.project_id),
             library=library,
             earlier=await self.repo.list_attachments(user_id, conversation_id),
+            agreed=latest_notes(m.notes for m in messages),
         )
 
     async def _library_documents(
@@ -491,11 +525,17 @@ class SendProjectChatMessage:
         return None
 
     @staticmethod
-    def _line(message: ProjectChatMessage, client: str | None) -> ProjectChatLine:
+    def _line(
+        message: ProjectChatMessage, client: str | None, short: bool = False
+    ) -> ProjectChatLine:
+        """short (FR-08b-6, plan): long AI answers (emails...) leave room for more messages."""
         if message.role is ChatRole.USER:
             return ProjectChatLine("user", mask_contact(message.content, client))
         draft = message.draft.draft.milestones if message.draft else ()
-        return ProjectChatLine("assistant", message.content, draft, message.notes)
+        text = shorten(message.content) if short else message.content
+        return ProjectChatLine(
+            "assistant", text, draft, mask_notes(message.notes, client)
+        )
 
     def _fit_history(
         self,
@@ -507,9 +547,11 @@ class SendProjectChatMessage:
         today: date,
         language: Language,
         mode: ChatMode = ChatMode.PLAN,
+        agreed: DiscussionNotes | None = None,
     ) -> list[ProjectChatLine]:
         """Keep the brief; drop the oldest of the others until the prompt fits (#18)."""
-        lines = [self._line(m, client) for m in history]
+        short = mode is ChatMode.PLAN
+        lines = [self._line(m, client, short) for m in history]
         while len(lines) > 1:
             if mode is ChatMode.DISCUSS:
                 prompt = self.writer.render_discuss(
@@ -517,7 +559,7 @@ class SendProjectChatMessage:
                 )
             else:
                 prompt = self.writer.render(
-                    project, domains, lines, message, today, language
+                    project, domains, lines, message, today, language, agreed=agreed
                 )
             if len(prompt) <= self.max_prompt_chars:
                 break

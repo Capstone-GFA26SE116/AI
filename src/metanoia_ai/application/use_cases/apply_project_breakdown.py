@@ -39,6 +39,7 @@ from metanoia_ai.domain.project_breakdown import (
     check_project_draft,
     resolve_deadlines,
     restore_client,
+    same_title_key,
     split_duplicates,
     task_deadline,
 )
@@ -62,6 +63,7 @@ class AppliedMilestone:
     title: str
     deadline: date
     tasks: list[AppliedTask]
+    reused: bool = False  # FR-08b-9: added to a milestone the project already had
 
 
 @dataclass(frozen=True)
@@ -136,14 +138,25 @@ class ApplyProjectBreakdown:
             )  # #33: may be empty
 
             order = await self.repo.next_milestone_order(user_id, project.project_id)
+            # FR-08b-9: a draft milestone named like an existing one adds its tasks
+            # there instead of making a second milestone with the same name.
+            existing = {
+                same_title_key(m.title): m.milestone_id
+                for m in await self.repo.list_milestones(user_id, project.project_id)
+            }
             created: list[AppliedMilestone] = []
-            for index, milestone in enumerate(draft.milestones):
+            for milestone in draft.milestones:
                 assert milestone.deadline is not None  # set by resolve_deadlines
-                milestone_id = await self.repo.add_milestone(
-                    user_id,
-                    project.project_id,
-                    NewMilestone(milestone.title, milestone.deadline, order + index),
-                )
+                milestone_id = existing.get(same_title_key(milestone.title))
+                reused = milestone_id is not None
+                if milestone_id is None:
+                    milestone_id = await self.repo.add_milestone(
+                        user_id,
+                        project.project_id,
+                        NewMilestone(milestone.title, milestone.deadline, order),
+                    )
+                    existing[same_title_key(milestone.title)] = milestone_id
+                    order += 1
                 tasks: list[AppliedTask] = []
                 for task in milestone.tasks:
                     ai_minutes = ai_minutes_of(task.key, saved)
@@ -175,7 +188,7 @@ class ApplyProjectBreakdown:
                     )
                 created.append(
                     AppliedMilestone(
-                        milestone_id, milestone.title, milestone.deadline, tasks
+                        milestone_id, milestone.title, milestone.deadline, tasks, reused
                     )
                 )
             await self.repo.mark_applied(user_id, conversation_id, message_id)

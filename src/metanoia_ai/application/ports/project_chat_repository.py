@@ -83,6 +83,14 @@ class ExistingWork:
 
 
 @dataclass(frozen=True)
+class ExistingMilestone:
+    """FR-08b-9: a milestone the project already has (a draft may add tasks to it)."""
+
+    milestone_id: UUID
+    title: str
+
+
+@dataclass(frozen=True)
 class NewMilestone:
     title: str  # Milestone.Name
     due_date: date  # Milestone.DueDate
@@ -253,6 +261,12 @@ class ProjectChatRepository(Protocol):
 
     async def next_milestone_order(self, user_id: UUID, project_id: UUID) -> int:
         """max(Milestone.OrderIndex) + 1 for the project, 1 when it has none (#27)."""
+        ...
+
+    async def list_milestones(
+        self, user_id: UUID, project_id: UUID
+    ) -> list[ExistingMilestone]:
+        """FR-08b-9: the project's milestones, in order."""
         ...
 
     async def add_milestone(

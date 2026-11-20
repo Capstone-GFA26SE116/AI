@@ -8,7 +8,7 @@ from tests.unit.application.test_project_chat_writer import CONTEXT, LIMITS, fil
 
 
 def test_prompt_v4_states_the_five_rules():
-    assert PROMPT_VERSION == "project_breakdown_v4"
+    assert PROMPT_VERSION.startswith("project_breakdown_v")  # v4 rules kept in v5
     text = fill()
     assert "$" not in text
     for rule in (

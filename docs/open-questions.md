@@ -86,6 +86,7 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 | ⚠️ (Web) Xếp lịch: gửi **1** `POST /schedule/propose` với `task_ids` = mọi task đã chọn, không gọi song song mỗi task 1 request (`schedule-proposal-logic.ts`, nhánh `startstopfixed`): các request không thấy nhau → slot **trùng giờ**, tốn N lượt, request sau đánh `Superseded` request trước. Cảnh báo theo `task_id` hiện trên đúng thẻ task | FR-10 | Đọc DB 2026-11-20: đề xuất `4dd1b140` và `32d52ae6` cách 2 giây, cùng 09:20–10:38 |
 | ⚠️ (Backend) Duyệt đề xuất: từ chối đề xuất không còn `Pending` (DB 2026-11-20 có slot `Due` / `Missed` thuộc đề xuất `Superseded`) | FR-11 | |
 | ⚠️ (Web / Mobile) Trang "Lịch sử chat": `GET /chat/conversations?q=&limit=&offset=` → `{items, has_more}`; mỗi dòng có `scope`, `project`, `task`, `last_message` (preview + giờ), `applied`, `match` (khi tìm). Bấm: `project` → `GET /chat/conversations/{id}`; `task` → `GET /chat/tasks/{task.id}`; có `match.message_id` thì cuộn tới tin đó. Không có nút "chat mới" | `plans/chat-history.md` | Chỉ đọc, không tốn lượt AI |
+| ⚠️ (Web / Mobile) Chat dự án FR-08b-5: `reply` có thể dài (≤ 4000 ký tự, email / so sánh) và có xuống dòng + "- " → hiện với `white-space: pre-line`, thêm nút **Sao chép** dưới tin AI | `plans/FR-08b-5.md` | API không đổi |
 
 ## Chờ quyết định (team / giảng viên)
 

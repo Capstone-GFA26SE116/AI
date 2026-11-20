@@ -970,8 +970,10 @@ class FakeProjectChatRepository:
     ) -> None:
         chat = self._own_chat(user_id, conversation_id)
         assert chat is not None
-        if any(m.is_applied for m in chat.messages):
-            raise ValueError("one applied draft per chat (DB unique index)")
+        # FR-08b-4: several drafts per chat may be applied (ProposalJson.applied_at).
+        target = next(m for m in chat.messages if m.message_id == message_id)
+        if target.is_applied:
+            raise ValueError("this draft is already applied")
         chat.messages = [
             replace(m, is_applied=True) if m.message_id == message_id else m
             for m in chat.messages

@@ -63,4 +63,4 @@ Claude Code soạn plan rồi làm liền. -->
 |---|---|---|
 | 2026-11-19 | Tạo plan | Hiếu: không trần giờ, chỉ học và cảnh báo |
 | 2026-11-20 | Ngưỡng là hằng số trong domain thay vì config | Ít dây nối; đổi khi có dữ liệu thật |
-| 2026-11-20 | Chạy thật (chỉ SELECT) 5 user có nhiều phiên bấm giờ nhất: phiên chủ yếu là thử nghiệm (0–35'/ngày), nhiều nhất 4 ngày có làm → chưa ai có sức làm → không cảnh báo (đúng AC2). Lộ rủi ro: đủ 5 ngày "bấm thử" sẽ học ra 15' và cảnh báo mọi ngày → thêm `MIN_DAY_MINUTES = 60`: chỉ ngày làm ≥ 60' mới tính. `pytest` 2056 pass | Bước 3 |
+| 2026-11-20 | Chạy thật (chỉ SELECT) 5 user có nhiều phiên bấm giờ nhất: phiên chủ yếu là thử nghiệm (0–35'/ngày), nhiều nhất 4 ngày có làm → chưa ai có sức làm → không cảnh báo (đúng AC2). Lộ rủi ro: đủ 5 ngày "bấm thử" sẽ học ra 15' và cảnh báo mọi ngày → thêm `MIN_DAY_MINUTES = 60`: chỉ ngày làm ≥ 60' mới tính. `pytest` 2055 pass | Bước 3 |

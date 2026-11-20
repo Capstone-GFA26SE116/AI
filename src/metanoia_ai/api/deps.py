@@ -53,6 +53,7 @@ from metanoia_ai.application.use_cases.get_daily_briefing import (
 from metanoia_ai.application.use_cases.get_productive_hours import GetProductiveHours
 from metanoia_ai.application.use_cases.get_project_chat import GetProjectChat
 from metanoia_ai.application.use_cases.get_task_chat import GetTaskChat
+from metanoia_ai.application.use_cases.list_chat_history import ListChatHistory
 from metanoia_ai.application.use_cases.plan_overrun import (
     OverrunSettings,
     PlanOverrun,
@@ -90,6 +91,9 @@ from metanoia_ai.infrastructure.db.account_repository import SqlAccountRepositor
 from metanoia_ai.infrastructure.db.analytics_repository import SqlAnalyticsRepository
 from metanoia_ai.infrastructure.db.assistant_repository import SqlAssistantRepository
 from metanoia_ai.infrastructure.db.briefing_repository import SqlBriefingRepository
+from metanoia_ai.infrastructure.db.chat_history_repository import (
+    SqlChatHistoryRepository,
+)
 from metanoia_ai.infrastructure.db.chat_repository import SqlChatRepository
 from metanoia_ai.infrastructure.db.learning_repository import SqlLearningRepository
 from metanoia_ai.infrastructure.db.memory_repository import SqlMemoryRepository
@@ -466,6 +470,13 @@ def get_start_project_chat(
     return StartProjectChat(
         SqlProjectChatRepository(session), now=lambda: datetime.now(UTC)
     )
+
+
+def get_list_chat_history(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ListChatHistory:
+    """Chat history page: read only, no LLM (plans/chat-history.md)."""
+    return ListChatHistory(SqlChatHistoryRepository(session))
 
 
 def get_list_project_chats(

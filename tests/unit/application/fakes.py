@@ -26,6 +26,7 @@ from metanoia_ai.application.ports.backend_reader import (
     UnreadNotice,
 )
 from metanoia_ai.application.ports.briefing_repository import BriefingData
+from metanoia_ai.application.ports.chat_history_repository import ChatMatch, ChatSummary
 from metanoia_ai.application.ports.chat_repository import (
     ChatMessage,
     ChatRole,
@@ -1305,3 +1306,69 @@ class FakeOverrunRepository:
             return None
         late = next((s for s in data.slots if s.slot_id == slot_id), None)
         return replace(data, late=late)
+
+
+@dataclass
+class FakeHistoryMessage:
+    message_id: UUID
+    role: ChatRole
+    content: str
+    created_at: datetime
+
+
+@dataclass
+class FakeHistoryChat:
+    """A chat with its messages, as the history SQL would see it."""
+
+    summary: ChatSummary  # last_* and match are filled by the fake
+    user_id: UUID
+    messages: list[FakeHistoryMessage] = field(default_factory=list)
+
+
+HCM = ZoneInfo("Asia/Ho_Chi_Minh")
+
+
+class FakeChatHistoryRepository:
+    """Same rules as the SQL: own chats with messages, newest last message first."""
+
+    def __init__(self, time_zone: ZoneInfo | None = HCM):
+        self.zone = time_zone
+        self.chats: list[FakeHistoryChat] = []
+        self.calls: list[tuple[str | None, int, int]] = []
+
+    async def time_zone(self, user_id: UUID) -> ZoneInfo | None:
+        return self.zone
+
+    async def search(
+        self, user_id: UUID, query: str | None, limit: int, offset: int
+    ) -> list[ChatSummary]:
+        self.calls.append((query, limit, offset))
+        found = []
+        for chat in self.chats:
+            if chat.user_id != user_id or not chat.messages:
+                continue
+            ordered = sorted(chat.messages, key=lambda m: m.created_at)
+            last = ordered[-1]
+            summary = replace(
+                chat.summary,
+                message_count=len(ordered),
+                last_role=last.role,
+                last_content=last.content,
+                last_at=last.created_at,
+                match=None,
+            )
+            if query:
+                needle = query.lower()
+                hits = [m for m in ordered if needle in m.content.lower()]
+                names = [summary.project_name, summary.task_title or "", summary.title]
+                if not hits and not any(needle in n.lower() for n in names):
+                    continue
+                if hits:
+                    hit = hits[-1]
+                    summary = replace(
+                        summary,
+                        match=ChatMatch(hit.message_id, hit.content, hit.created_at),
+                    )
+            found.append(summary)
+        found.sort(key=lambda s: (s.last_at, str(s.conversation_id)), reverse=True)
+        return found[offset : offset + limit]

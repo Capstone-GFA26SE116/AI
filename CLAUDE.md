@@ -152,6 +152,7 @@ Full text in `docs/functional-requirements.md`. Status: first line of each `plan
 | FR-08b-8 | Plan drafts: a reason per milestone; tasks over 2 h get 2–6 subtasks (5 split rules: checkable result, 100 %, ≤ 2 h, natural steps, risky parts apart); Apply writes `SubTask` rows | `plans/FR-08b-8.md` |
 | FR-08b-9 | Update drafts hold only new work (prompt v5); duplicate warnings grouped per reason; Apply adds tasks to a same-title existing milestone (`reused`) | `plans/FR-08b-9.md` |
 | FR-08b-10 | Project chat reads spreadsheets (.xlsx via openpyxl, .csv) as `Row N: a | b` lines per sheet | `plans/FR-08b-10.md` |
+| FR-08c | Import one file (xlsx, csv, pdf, docx…) → AI splits it into projects (preview, 1 call) → create projects (plan's `ProjectLimit` checked like the Backend) each with a project chat seeded with its part of the file | `plans/FR-08c.md` |
 | — | Chat history page: all the user's chats (project + task), newest first, search by message / name; read only, no LLM | `plans/chat-history.md` |
 | FR-09 | Similar past tasks: hybrid search (vector + full-text) + RRF. Free/busy time and workload are already in FR-10 | `plans/FR-09.md` |
 | FR-09b | Similar tasks also return why their sessions stopped (counts + 2 masked notes) | `plans/FR-09b.md` |
@@ -213,6 +214,8 @@ All test data is wiped before public launch.
 - Need a schema change? STOP → tell Hieu (he agrees with the Backend first).
 - This service writes only to the tables listed as "AI writes" in `docs/database.md`.
   Everything else is read-only.
+- `Project` (Hiếu's decision, 2026-11-20, FR-08c): the AI may only **create** projects when the user imports a
+  file, after checking the plan's `ProjectLimit` exactly like the Backend. Never UPDATE or DELETE a project.
 
 **Every query**
 - Filtered by the owner's user ID (`Task` has no `UserId` → join `Project.UserId`).

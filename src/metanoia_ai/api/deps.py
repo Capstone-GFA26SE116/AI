@@ -14,6 +14,7 @@ from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from metanoia_ai.application.chat_writer import ChatWriter
+from metanoia_ai.application.import_writer import ImportWriter
 from metanoia_ai.application.llm_chat import CheckedLLMCaller
 from metanoia_ai.application.ports.account_repository import AccountRepository
 from metanoia_ai.application.ports.embedding_client import EmbeddingClient
@@ -54,10 +55,14 @@ from metanoia_ai.application.use_cases.get_daily_briefing import (
 from metanoia_ai.application.use_cases.get_productive_hours import GetProductiveHours
 from metanoia_ai.application.use_cases.get_project_chat import GetProjectChat
 from metanoia_ai.application.use_cases.get_task_chat import GetTaskChat
+from metanoia_ai.application.use_cases.import_projects import ImportProjects
 from metanoia_ai.application.use_cases.list_chat_history import ListChatHistory
 from metanoia_ai.application.use_cases.plan_overrun import (
     OverrunSettings,
     PlanOverrun,
+)
+from metanoia_ai.application.use_cases.preview_project_import import (
+    PreviewProjectImport,
 )
 from metanoia_ai.application.use_cases.propose_schedule import ProposeSchedule
 from metanoia_ai.application.use_cases.recompute_productive_hours import (
@@ -104,6 +109,9 @@ from metanoia_ai.infrastructure.db.productive_hours_repository import (
 )
 from metanoia_ai.infrastructure.db.project_chat_repository import (
     SqlProjectChatRepository,
+)
+from metanoia_ai.infrastructure.db.project_import_repository import (
+    SqlProjectImportRepository,
 )
 from metanoia_ai.infrastructure.db.quota_repository import SqlQuotaRepository
 from metanoia_ai.infrastructure.db.schedule_repository import SqlScheduleRepository
@@ -799,4 +807,35 @@ def get_assistant_turn(
         settings=assistant_settings(settings),
         now=now,
         router=local_router() if settings.assistant_local_router else None,
+    )
+
+
+def get_preview_project_import(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    llm_client: Annotated[LLMClient, Depends(get_project_chat_llm_client)],
+) -> PreviewProjectImport:
+    """FR-08c step 1: the project chat's model and limits, 1 AI call."""
+    llm = settings.llm_config()
+    return PreviewProjectImport(
+        SqlProjectImportRepository(session),
+        SqlQuotaRepository(session),
+        ImportWriter(
+            llm_client,
+            max_retries=settings.chat_project_max_retries,
+            input_price_per_1m=llm.input_price_per_1m,
+            output_price_per_1m=llm.output_price_per_1m,
+            retry_budget_seconds=settings.chat_project_retry_budget_seconds,
+        ),
+        limits=document_limits(settings),
+        now=lambda: datetime.now(UTC),
+    )
+
+
+def get_import_projects(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ImportProjects:
+    """FR-08c step 2: create projects + chats. No AI call."""
+    return ImportProjects(
+        SqlProjectImportRepository(session), now=lambda: datetime.now(UTC)
     )

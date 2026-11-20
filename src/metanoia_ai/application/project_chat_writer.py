@@ -50,7 +50,7 @@ from metanoia_ai.prompts import load_prompt
 PROMPT_VERSION = "project_breakdown_v5"  # v5: updates hold only new work (FR-08b-9)
 # Added after the main prompt only when the message has documents (FR-08b-2 #15),
 # so a chat without documents sends exactly the v2 prompt (AC8).
-DOCUMENTS_PROMPT_VERSION = "project_documents_v1"
+DOCUMENTS_PROMPT_VERSION = "project_documents_v2"  # v2: spreadsheets (FR-08b-10)
 DISCUSS_PROMPT_VERSION = "project_discuss_v2"  # FR-08b-5: wider help (v1: FR-08b-3)
 LANGUAGE_NAMES = {Language.VI: "Vietnamese", Language.EN: "English"}
 # FR-08b-3: the button that turns the discussion into a plan (named in the prompt).

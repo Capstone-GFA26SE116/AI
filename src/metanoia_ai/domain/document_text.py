@@ -1,19 +1,23 @@
 """FR-08b-2: read the text of a document the user attached to the project chat.
 
 Pure code: bytes in, text out. No network, no DB (the file is fetched elsewhere).
-Kinds: PDF, DOCX, plain text (.txt / .md). No OCR (#5).
+Kinds: PDF, DOCX, plain text (.txt / .md), and FR-08b-10 spreadsheets (.xlsx, .csv).
+No OCR (#5).
 """
 
+import csv
 import io
 import re
 import zipfile
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import date, datetime, time
 from enum import StrEnum
 from pathlib import PurePosixPath
 
 from docx import Document as open_docx
 from docx.table import Table
+from openpyxl import load_workbook
 from pypdf import PasswordType, PdfReader
 
 from metanoia_ai.domain.models import Language
@@ -22,6 +26,10 @@ TEXT_EXTENSIONS = {".txt", ".md"}
 # Fewer non-space characters than this in a PDF = scanned or empty (#12).
 PDF_MIN_TEXT_CHARS = 50
 DOCX_MAIN_PART = "word/document.xml"
+XLSX_MAIN_PART = "xl/workbook.xml"  # FR-08b-10
+CSV_EXTENSIONS = {".csv"}
+# FR-08b-10: a sheet with more rows is read up to here (the text budget cuts later anyway).
+MAX_SHEET_ROWS = 5000
 # A cut at a paragraph or sentence end must keep at least this share of the limit.
 MIN_BOUNDARY_SHARE = 0.5
 SENTENCE_END = re.compile(r"[.!?…](?=\s)")
@@ -42,6 +50,8 @@ class DocumentKind(StrEnum):
     PDF = "pdf"
     DOCX = "docx"
     TEXT = "text"
+    XLSX = "xlsx"  # FR-08b-10
+    CSV = "csv"
 
 
 class DocumentErrorCode(StrEnum):
@@ -72,7 +82,11 @@ def detect_kind(data: bytes, extension: str) -> DocumentKind | None:
     if data.startswith(b"%PDF"):
         return DocumentKind.PDF
     if zipfile.is_zipfile(io.BytesIO(data)):
-        return DocumentKind.DOCX if _is_docx(data) else None
+        if _has_part(data, DOCX_MAIN_PART):
+            return DocumentKind.DOCX
+        return DocumentKind.XLSX if _has_part(data, XLSX_MAIN_PART) else None
+    if extension in CSV_EXTENSIONS and _decode_text(data) is not None:
+        return DocumentKind.CSV
     if extension in TEXT_EXTENSIONS and _decode_text(data) is not None:
         return DocumentKind.TEXT
     return None
@@ -102,6 +116,12 @@ def extract_text(
         min_chars = PDF_MIN_TEXT_CHARS
     elif kind is DocumentKind.DOCX:
         text = _docx_text(data, name)
+        min_chars = 1
+    elif kind is DocumentKind.XLSX:
+        text = _xlsx_text(data, name)
+        min_chars = 1
+    elif kind is DocumentKind.CSV:
+        text = _csv_text(_decode_text(data) or "")
         min_chars = 1
     else:
         text = _decode_text(data) or ""
@@ -162,10 +182,10 @@ def normalize_text(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
 
 
-def _is_docx(data: bytes) -> bool:
+def _has_part(data: bytes, part: str) -> bool:
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
-            return DOCX_MAIN_PART in archive.namelist()
+            return part in archive.namelist()
     except zipfile.BadZipFile:
         return False
 
@@ -224,3 +244,80 @@ def _table_rows(table: Table) -> list[str]:
                 cells.append(text)
         rows.append(" | ".join(cells))
     return rows
+
+
+# --- FR-08b-10: spreadsheets ---
+
+
+def cell_text(value: object) -> str:
+    """One cell as short text: whole numbers without ".0", dates as YYYY-MM-DD."""
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "TRUE" if value else "FALSE"
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    if isinstance(value, datetime):
+        return (
+            value.date().isoformat()
+            if value.time() == time(0)
+            else value.isoformat(" ", "minutes")
+        )
+    if isinstance(value, date):
+        return value.isoformat()
+    return " ".join(str(value).split())
+
+
+def row_line(number: int, values: Sequence[object]) -> str | None:
+    """'Row 3: Logo | 2026-12-01 | 4' — empty cells at the end dropped; empty row → None.
+
+    Row numbers are the sheet's own, so the AI (and the user) can point at rows.
+    """
+    cells = [cell_text(v) for v in values]
+    while cells and not cells[-1]:
+        cells.pop()
+    if not cells:
+        return None
+    return f"Row {number}: " + " | ".join(cells)
+
+
+def _xlsx_text(data: bytes, name: str) -> str:
+    """Every sheet: a '## Sheet: <name>' line, then its non-empty rows."""
+    try:
+        book = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+        blocks: list[str] = []
+        for sheet in book.worksheets:
+            lines = [f"## Sheet: {sheet.title}"]
+            for number, values in enumerate(sheet.iter_rows(values_only=True), start=1):
+                if number > MAX_SHEET_ROWS:
+                    lines.append(
+                        f"(more rows after row {MAX_SHEET_ROWS} were not read)"
+                    )
+                    break
+                line = row_line(number, values)
+                if line:
+                    lines.append(line)
+            if len(lines) > 1:
+                blocks.append("\n".join(lines))
+        book.close()
+    except Exception as error:  # broken zip / XML, or a locked workbook
+        raise DocumentError(DocumentErrorCode.UNREADABLE, name) from error
+    return "\n\n".join(blocks)
+
+
+def _csv_text(text: str) -> str:
+    """Rows of a CSV file; the separator (, ; tab) is guessed from the first lines."""
+    sample = text[:4096]
+    try:
+        dialect: type[csv.Dialect] | csv.Dialect = csv.Sniffer().sniff(sample, ",;\t")
+    except csv.Error:
+        dialect = csv.excel
+    lines = []
+    for number, values in enumerate(csv.reader(io.StringIO(text), dialect), start=1):
+        if number > MAX_SHEET_ROWS:
+            lines.append(f"(more rows after row {MAX_SHEET_ROWS} were not read)")
+            break
+        line = row_line(number, values)
+        if line:
+            lines.append(line)
+    return "\n".join(lines)

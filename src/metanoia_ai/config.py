@@ -101,7 +101,7 @@ class Settings(BaseSettings):
     # Project chat (FR-08b-1): a client brief → milestones + Flexible tasks.
     chat_project_message_max_chars: int = Field(default=8000, gt=0)
     # The first message (the brief) is always sent, plus this many recent ones (#18).
-    chat_project_history_limit: int = Field(default=10, ge=1)
+    chat_project_history_limit: int = Field(default=20, ge=1)
     chat_project_prompt_max_chars: int = Field(default=30000, gt=0)
     # Newest existing milestone/task titles sent so the AI does not repeat them.
     chat_project_existing_titles_limit: int = Field(default=50, ge=0)

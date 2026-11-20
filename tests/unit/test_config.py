@@ -444,7 +444,7 @@ def test_breakdown_ranges_must_make_sense(env, changes):
 def test_project_chat_defaults(env):
     s = load()
     assert s.chat_project_message_max_chars == 8000
-    assert s.chat_project_history_limit == 10
+    assert s.chat_project_history_limit == 20  # FR-08b-6
     assert s.chat_project_prompt_max_chars == 30000
     assert s.chat_project_existing_titles_limit == 50
     assert (s.project_max_milestones, s.project_max_tasks_per_milestone) == (8, 15)

@@ -155,5 +155,27 @@
       ]}
     ],
     "message": "Drop the push reminder for now, the client will add it later."
+  },
+  {
+    "name": "agreed: a deliverable said only in the middle of a long talk (blog) must get a task",
+    "expect": "draft",
+    "language": "vi",
+    "today": "2026-11-20",
+    "project": {"name": "Website tiệm bánh", "description": "Website bán bánh online", "deadline": "2026-12-15", "existing_milestones": [], "existing_tasks": []},
+    "domains": "default",
+    "history": [{"role": "user", "text": "Mình nhận làm website bán bánh online cho [client]: trang chủ, danh sách bánh, giỏ hàng, thanh toán khi nhận hàng."}, {"role": "assistant", "text": "Mình đã nắm 4 phần chính. Khi thấy đủ thì bấm Lên kế hoạch nhé."}, {"role": "user", "text": "Viết giúp email báo giá 12 triệu nhé."}, {"role": "assistant", "text": "Chào [client], mình gửi báo giá website bán bánh online: 12.000.000 VNĐ, chia 2 đợt… (email đã rút gọn)"}],
+    "agreed": {"clear": ["4 trang: trang chủ, danh sách bánh, giỏ hàng, thanh toán khi nhận hàng", "Thêm trang blog 3 bài viết, khách gửi nội dung", "Khách tự đăng bánh mới nên cần trang quản trị đơn giản", "Hạn 15/12, 2 vòng góp ý"], "missing": [], "questions": ["Khách có sẵn tên miền chưa?"], "risks": ["Ảnh và bài blog khách gửi trễ"], "ready_to_plan": true},
+    "message": "Lên kế hoạch"
+  },
+  {
+    "name": "agreed: english, newer message overrides the checklist (no blog any more)",
+    "expect": "draft",
+    "language": "en",
+    "today": "2026-11-20",
+    "project": {"name": "Shop landing page", "description": "Landing page with sign-up form", "deadline": "2026-12-05", "existing_milestones": [], "existing_tasks": []},
+    "domains": "default",
+    "history": [{"role": "user", "text": "I build a landing page with hero, features, pricing and a sign-up form for [client]. Due Dec 5."}, {"role": "assistant", "text": "Got it. Press Plan when you are ready."}, {"role": "user", "text": "Update: the client dropped the blog section, keep everything else."}],
+    "agreed": {"clear": ["Landing page: hero, features, pricing, blog section", "Sign-up form", "Due 2026-12-05"], "missing": [], "questions": ["How many feedback rounds?"], "risks": ["Pricing text not ready"], "ready_to_plan": true},
+    "message": "Plan"
   }
 ]

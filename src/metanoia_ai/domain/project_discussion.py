@@ -13,6 +13,7 @@ from metanoia_ai.domain.task_breakdown import BadDraftError
 
 MAX_NOTE_LINES = 8  # per list
 MAX_NOTE_CHARS = 200  # per line
+MAX_REPLY_CHARS = 4000  # FR-08b-5: room for an email or a comparison
 
 
 class ChatMode(StrEnum):

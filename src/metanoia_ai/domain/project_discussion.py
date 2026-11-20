@@ -14,6 +14,7 @@ from metanoia_ai.domain.task_breakdown import BadDraftError
 MAX_NOTE_LINES = 8  # per list
 MAX_NOTE_CHARS = 200  # per line
 MAX_REPLY_CHARS = 4000  # FR-08b-5: room for an email or a comparison
+HISTORY_AI_TEXT_CHARS = 500  # FR-08b-6: AI texts in the history sent to the plan
 
 
 class ChatMode(StrEnum):
@@ -71,3 +72,22 @@ def check_notes(
         ready_to_plan=ready_to_plan and not missing_lines,
         questions=clean_lines(questions, "questions"),
     )
+
+
+def shorten(text: str, limit: int = HISTORY_AI_TEXT_CHARS) -> str:
+    """FR-08b-6: the text on one line, cut to `limit` characters with "…"."""
+    line = " ".join(text.split())
+    if len(line) <= limit:
+        return line
+    return line[: limit - 1].rstrip() + "…"
+
+
+def latest_notes(
+    notes_newest_last: Iterable[DiscussionNotes | None],
+) -> DiscussionNotes | None:
+    """FR-08b-6: the newest checklist of the chat (the AI rewrites it in full each time)."""
+    found = None
+    for notes in notes_newest_last:
+        if notes is not None:
+            found = notes
+    return found

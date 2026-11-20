@@ -41,7 +41,7 @@ from metanoia_ai.domain.project_discussion import (
 from metanoia_ai.domain.task_breakdown import BadDraftError, ReplyKind
 from metanoia_ai.prompts import load_prompt
 
-PROMPT_VERSION = "project_breakdown_v2"  # v2: the language is set by code (#35)
+PROMPT_VERSION = "project_breakdown_v3"  # v3: what the discussion agreed (FR-08b-6)
 # Added after the main prompt only when the message has documents (FR-08b-2 #15),
 # so a chat without documents sends exactly the v2 prompt (AC8).
 DOCUMENTS_PROMPT_VERSION = "project_documents_v1"
@@ -212,8 +212,10 @@ def build_prompt(
     limits: ProjectLimits,
     today: date,
     language: Language,
+    agreed: DiscussionNotes | None = None,
 ) -> str:
-    """Fill the prompt. Every user-written text goes in as a JSON string."""
+    """Fill the prompt. Every user-written text goes in as a JSON string.
+    agreed (FR-08b-6): the newest checklist of the discussion, or null."""
     return template.substitute(
         language_name=LANGUAGE_NAMES[language],
         address_rule=ADDRESS_RULES[language],
@@ -229,6 +231,7 @@ def build_prompt(
         domains=dumps(domains_to_json(domains)),
         history=dumps([line_to_json(line) for line in history]),
         message=json.dumps(message, ensure_ascii=False),
+        agreed=dumps(notes_to_json(agreed)) if agreed else "null",
     )
 
 
@@ -414,6 +417,7 @@ class ProjectChatWriter:
         today: date,
         language: Language,
         documents: Sequence[PromptDocument] = (),
+        agreed: DiscussionNotes | None = None,
     ) -> str:
         """The prompt as sent. Without documents its length is what the caller
         cuts history by (#18); documents have their own budget (#16)."""
@@ -426,6 +430,7 @@ class ProjectChatWriter:
             self.limits,
             today,
             language,
+            agreed,
         )
         return prompt + build_documents_part(
             self.documents_template, documents, language
@@ -439,6 +444,7 @@ class ProjectChatWriter:
         message: str,
         context: DraftContext,
         documents: Sequence[PromptDocument] = (),
+        agreed: DiscussionNotes | None = None,
     ) -> ProjectChatResult:
         prompt = self.render(
             project,
@@ -448,6 +454,7 @@ class ProjectChatWriter:
             context.today,
             context.language,
             documents,
+            agreed,
         )
         result = await self.caller.call(
             prompt,

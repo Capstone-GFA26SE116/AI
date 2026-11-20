@@ -33,6 +33,7 @@ from metanoia_ai.domain.project_breakdown import (
     ProjectLimits,
     reply_language,
 )
+from metanoia_ai.domain.project_discussion import DiscussionNotes
 from metanoia_ai.domain.task_breakdown import ReplyKind
 from metanoia_ai.prompts import load_samples
 from tests.unit.application.fakes import FakeLLMClient
@@ -263,6 +264,21 @@ def sample_prompt(sample: dict) -> str:
         LIMITS,
         date.fromisoformat(sample["today"]),
         Language(sample["language"]),
+        sample_agreed(sample),
+    )
+
+
+def sample_agreed(sample: dict) -> DiscussionNotes | None:
+    """FR-08b-6: a sample may carry the newest checklist of the discussion."""
+    raw = sample.get("agreed")
+    if raw is None:
+        return None
+    return DiscussionNotes(
+        tuple(raw["clear"]),
+        tuple(raw["missing"]),
+        tuple(raw["risks"]),
+        raw["ready_to_plan"],
+        tuple(raw["questions"]),
     )
 
 

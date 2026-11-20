@@ -213,6 +213,8 @@ All test data is wiped before public launch.
 - Need a schema change? STOP → tell Hieu (he agrees with the Backend first).
 - This service writes only to the tables listed as "AI writes" in `docs/database.md`.
   Everything else is read-only.
+- `Project` (Hiếu's decision, 2026-11-20, FR-08c): the AI may only **create** projects when the user imports a
+  file, after checking the plan's `ProjectLimit` exactly like the Backend. Never UPDATE or DELETE a project.
 
 **Every query**
 - Filtered by the owner's user ID (`Task` has no `UserId` → join `Project.UserId`).

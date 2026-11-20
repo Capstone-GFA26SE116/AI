@@ -350,3 +350,32 @@ def test_add_message_refuses_a_draft_and_notes_together():
         asyncio.run(
             repo.add_message(uuid4(), uuid4(), ChatRole.ASSISTANT, "Ok", SAVED, NOTES)
         )
+
+
+# --- FR-08b-4: several applied drafts per chat (T6) ---
+
+
+def test_mark_applied_records_the_time_in_the_draft_not_is_applied():
+    sql_text = " ".join(str(sql.MARK_MESSAGE_APPLIED).split())
+    assert "jsonb_set" in sql_text and "applied_at" in sql_text
+    assert '"IsApplied" = true' not in sql_text  # the unique index allows one per chat
+    assert 'm."ProposalJson" IS NOT NULL' in sql_text
+
+
+def test_applied_comes_from_the_flag_or_the_draft_time():
+    applied_json = json.dumps({**json.loads(draft_to_json(SAVED)), "applied_at": "x"})
+
+    def row(proposal, flag):
+        return SimpleNamespace(
+            Id=uuid4(),
+            Sender="AI",
+            Content="Ok",
+            ProposalJson=proposal,
+            IsApplied=flag,
+            CreatedAt=NOW,
+        )
+
+    assert to_message(row(applied_json, False)).is_applied  # FR-08b-4
+    assert to_message(row(draft_to_json(SAVED), True)).is_applied  # older rows
+    assert not to_message(row(draft_to_json(SAVED), False)).is_applied
+    assert to_message(row(applied_json, False)).draft == SAVED  # still reads

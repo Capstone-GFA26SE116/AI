@@ -171,8 +171,13 @@ def test_t17_unsupported_file_is_422_with_its_name(client, world):
     assert response.json()["detail"] == {"code": "unsupported_type", "file": "anh.png"}
 
 
-def test_t17_no_message_and_no_file_is_422(client, world):
-    assert send_files(client, world, message="").status_code == 422
+def test_t17_no_message_and_no_file_is_422_when_discussing(client, world):
+    """FR-08b-4: an empty "plan" is the plan button; an empty discussion is not."""
+    url = f"/chat/conversations/{world.chat_id}/messages/files"
+    response = client.post(
+        url, data={"message": "", "mode": "discuss"}, headers=HEADERS
+    )
+    assert response.status_code == 422
 
 
 def test_t17_multipart_without_token_is_401(client, world):

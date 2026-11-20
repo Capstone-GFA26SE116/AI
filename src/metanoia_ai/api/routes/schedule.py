@@ -5,7 +5,7 @@
 more time. It only proposes; the client applies it through the Backend (plan #2).
 """
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -56,8 +56,10 @@ class SlotResponse(BaseModel):
 class WarningResponse(BaseModel):
     task_id: UUID | None
     type: WarningType
-    needed_minutes: int | None
+    needed_minutes: int | None  # day_overloaded: work minutes on that day
     free_minutes: int | None
+    day: date | None = None  # FR-10d: the overloaded day
+    capacity_minutes: int | None = None  # FR-10d: what the user usually manages
     message: str
 
 
@@ -115,6 +117,8 @@ def to_response(result: ProposalResult) -> ProposalResponse:
                 type=w.warning.type,
                 needed_minutes=w.warning.needed_minutes,
                 free_minutes=w.warning.free_minutes,
+                day=w.warning.day,
+                capacity_minutes=w.warning.capacity_minutes,
                 message=w.message,
             )
             for w in result.warnings

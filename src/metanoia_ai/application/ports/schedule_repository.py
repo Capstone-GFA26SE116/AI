@@ -62,6 +62,8 @@ class PlanningData:
     calendar_events: tuple[CalendarEvent, ...]
     calendar_synced: bool  # False when the Google connection is Expired/Revoked
     approved_slots: tuple[TimeRange, ...]
+    # FR-10d: finished, confirmed focus sessions of the last LOOKBACK_DAYS days.
+    recent_sessions: tuple[TimeRange, ...] = ()
 
 
 @dataclass(frozen=True)

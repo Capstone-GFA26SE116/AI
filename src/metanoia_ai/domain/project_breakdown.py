@@ -15,6 +15,20 @@ from metanoia_ai.domain.task_breakdown import BadDraftError, ReplyKind, clean_ti
 
 MAX_TASK_TITLE_CHARS = 200  # Task.Title is varchar(200)
 END_OF_DAY = time(23, 59)  # a task due on a day is due at 23:59 that day (#16)
+# FR-08b-8: a task longer than this is split into subtasks (principle 3: one focus session).
+SPLIT_OVER_MINUTES = 120
+MIN_SUBTASKS, MAX_SUBTASKS = 2, 6
+MIN_SUBTASK_MINUTES, MAX_SUBTASK_MINUTES = 15, SPLIT_OVER_MINUTES
+MAX_REASON_CHARS = 200
+
+
+@dataclass(frozen=True)
+class SubtaskInput:
+    """FR-08b-8: one subtask as received (from the LLM or the user), not checked yet."""
+
+    title: object
+    estimated_minutes: object  # must turn out to be an int
+    reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -26,6 +40,8 @@ class TaskInput:
     estimated_minutes: object  # must turn out to be an int
     reason: str | None = None
     key: str | None = None  # manual edits: the draft key the task came from
+    # FR-08b-8: None = none sent (manual edits: keep the draft's); () = no subtasks
+    subtasks: Sequence[SubtaskInput] | None = None
 
 
 @dataclass(frozen=True)
@@ -34,6 +50,16 @@ class MilestoneInput:
     deadline: date | None
     tasks: Sequence[TaskInput]
     key: str | None = None
+    reason: str | None = None  # FR-08b-8: why this stage, why here
+
+
+@dataclass(frozen=True)
+class DraftSubtask:
+    """FR-08b-8: one step of a big task; becomes a SubTask row at Apply."""
+
+    title: str
+    estimated_minutes: int
+    reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -44,6 +70,7 @@ class DraftTask:
     domain_name: str
     estimated_minutes: int
     reason: str | None = None
+    subtasks: tuple[DraftSubtask, ...] = ()  # FR-08b-8: only for tasks over 2 hours
 
 
 @dataclass(frozen=True)
@@ -52,6 +79,7 @@ class DraftMilestone:
     title: str
     deadline: date | None  # always set after resolve_deadlines
     tasks: tuple[DraftTask, ...]
+    reason: str | None = None  # FR-08b-8
 
 
 @dataclass(frozen=True)
@@ -108,6 +136,45 @@ def _minutes(value: object, where: str, limits: ProjectLimits) -> int:
     return value
 
 
+def _reason(value: object) -> str | None:
+    """A one-line reason, cut to MAX_REASON_CHARS; empty → None."""
+    if not isinstance(value, str):
+        return None
+    reason = clean_title(value)
+    return reason[:MAX_REASON_CHARS] or None
+
+
+def check_subtasks(
+    items: Sequence[SubtaskInput], where: str
+) -> tuple[DraftSubtask, ...]:
+    """FR-08b-8: 2-6 subtasks of 15-120 minutes, titles unique. Empty → ()."""
+    if not items:
+        return ()
+    if not MIN_SUBTASKS <= len(items) <= MAX_SUBTASKS:
+        raise BadDraftError(
+            f"{where}: need {MIN_SUBTASKS}-{MAX_SUBTASKS} subtasks, got {len(items)}"
+        )
+    checked: list[DraftSubtask] = []
+    seen: set[str] = set()
+    for number, item in enumerate(items, start=1):
+        s_where = f"{where} subtask {number}"
+        title = _title(item.title, s_where, MAX_TASK_TITLE_CHARS)
+        key = same_title_key(title)
+        if key in seen:
+            raise BadDraftError(f"{s_where}: same title twice")
+        seen.add(key)
+        minutes = item.estimated_minutes
+        if isinstance(minutes, bool) or not isinstance(minutes, int):
+            raise BadDraftError(f"{s_where}: minutes must be a whole number")
+        if not MIN_SUBTASK_MINUTES <= minutes <= MAX_SUBTASK_MINUTES:
+            raise BadDraftError(
+                f"{s_where}: minutes must be "
+                f"{MIN_SUBTASK_MINUTES}-{MAX_SUBTASK_MINUTES}, got {minutes}"
+            )
+        checked.append(DraftSubtask(title, minutes, _reason(item.reason)))
+    return tuple(checked)
+
+
 def check_project_draft(
     milestones: Sequence[MilestoneInput],
     domains: Mapping[UUID, str],
@@ -144,17 +211,32 @@ def check_project_draft(
             t_where = f"{where} task {t_number}"
             domain_id = _domain_id(item.domain_id, t_where, domains)
             reason = clean_title(item.reason) if item.reason else None
+            subtasks = check_subtasks(item.subtasks or (), t_where)
+            minutes = item.estimated_minutes
+            if subtasks and assign_keys:  # AI draft: the task is its parts (100 %)
+                minutes = sum(s.estimated_minutes for s in subtasks)
+                if minutes <= SPLIT_OVER_MINUTES:  # small enough for one session
+                    subtasks = ()
             tasks.append(
                 DraftTask(
                     key=f"{m_key}-t{t_number}" if assign_keys else item.key,
                     title=_title(item.title, t_where, MAX_TASK_TITLE_CHARS),
                     domain_id=domain_id,
                     domain_name=domains[domain_id],
-                    estimated_minutes=_minutes(item.estimated_minutes, t_where, limits),
+                    estimated_minutes=_minutes(minutes, t_where, limits),
                     reason=reason or None,
+                    subtasks=subtasks,
                 )
             )
-        checked.append(DraftMilestone(m_key, title, milestone.deadline, tuple(tasks)))
+        checked.append(
+            DraftMilestone(
+                m_key,
+                title,
+                milestone.deadline,
+                tuple(tasks),
+                _reason(milestone.reason),
+            )
+        )
     return tuple(checked)
 
 

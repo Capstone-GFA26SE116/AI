@@ -23,11 +23,17 @@ from metanoia_ai.application.ports.llm_client import LLMClient
 from metanoia_ai.application.reason_writer import BadAnswerError, LLMCall
 from metanoia_ai.domain.models import Language
 from metanoia_ai.domain.project_breakdown import (
+    MAX_SUBTASK_MINUTES,
+    MAX_SUBTASKS,
     MAX_TASK_TITLE_CHARS,
+    MIN_SUBTASK_MINUTES,
+    MIN_SUBTASKS,
+    SPLIT_OVER_MINUTES,
     DraftMilestone,
     MilestoneInput,
     ProjectDraft,
     ProjectLimits,
+    SubtaskInput,
     TaskInput,
     check_project_reply,
     drop_duplicates,
@@ -41,7 +47,7 @@ from metanoia_ai.domain.project_discussion import (
 from metanoia_ai.domain.task_breakdown import BadDraftError, ReplyKind
 from metanoia_ai.prompts import load_prompt
 
-PROMPT_VERSION = "project_breakdown_v3"  # v3: what the discussion agreed (FR-08b-6)
+PROMPT_VERSION = "project_breakdown_v4"  # v4: milestone reasons + subtasks (FR-08b-8)
 # Added after the main prompt only when the message has documents (FR-08b-2 #15),
 # so a chat without documents sends exactly the v2 prompt (AC8).
 DOCUMENTS_PROMPT_VERSION = "project_documents_v1"
@@ -57,16 +63,26 @@ ADDRESS_RULES = {
 }
 
 
+class ProjectSubtaskItem(BaseModel):
+    """FR-08b-8: one step of a task over 2 hours."""
+
+    title: str
+    estimated_minutes: StrictInt
+    reason: str = ""
+
+
 class ProjectTaskItem(BaseModel):
     title: str
     domain_id: str  # an enum of the active domain ids in the schema sent (#5)
     # Strict: 30.0 or "30" is a bad answer, not something to fix silently.
     estimated_minutes: StrictInt
     reason: str
+    subtasks: list[ProjectSubtaskItem] = []  # FR-08b-8: empty for small tasks
 
 
 class ProjectMilestoneItem(BaseModel):
     title: str
+    reason: str = ""  # FR-08b-8: why this stage, why at this place
     deadline: date | None  # None: the project deadline (#6)
     tasks: list[ProjectTaskItem]
 
@@ -226,6 +242,11 @@ def build_prompt(
         max_minutes=limits.max_minutes,
         max_milestone_title_chars=limits.max_milestone_title_chars,
         max_task_title_chars=MAX_TASK_TITLE_CHARS,
+        split_over_minutes=SPLIT_OVER_MINUTES,
+        min_subtasks=MIN_SUBTASKS,
+        max_subtasks=MAX_SUBTASKS,
+        min_subtask_minutes=MIN_SUBTASK_MINUTES,
+        max_subtask_minutes=MAX_SUBTASK_MINUTES,
         today=today.isoformat(),
         project=dumps(project_to_json(project)),
         domains=dumps(domains_to_json(domains)),
@@ -316,9 +337,19 @@ def to_inputs(answer: ProjectAnswer) -> list[MilestoneInput]:
             title=m.title,
             deadline=m.deadline,
             tasks=[
-                TaskInput(t.title, t.domain_id, t.estimated_minutes, t.reason)
+                TaskInput(
+                    t.title,
+                    t.domain_id,
+                    t.estimated_minutes,
+                    t.reason,
+                    subtasks=[
+                        SubtaskInput(st.title, st.estimated_minutes, st.reason)
+                        for st in t.subtasks
+                    ],
+                )
                 for t in m.tasks
             ],
+            reason=m.reason,
         )
         for m in answer.milestones
     ]

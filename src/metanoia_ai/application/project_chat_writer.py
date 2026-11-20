@@ -33,7 +33,11 @@ from metanoia_ai.domain.project_breakdown import (
     drop_duplicates,
     resolve_deadlines,
 )
-from metanoia_ai.domain.project_discussion import DiscussionNotes, check_notes
+from metanoia_ai.domain.project_discussion import (
+    MAX_REPLY_CHARS,
+    DiscussionNotes,
+    check_notes,
+)
 from metanoia_ai.domain.task_breakdown import BadDraftError, ReplyKind
 from metanoia_ai.prompts import load_prompt
 
@@ -41,7 +45,7 @@ PROMPT_VERSION = "project_breakdown_v2"  # v2: the language is set by code (#35)
 # Added after the main prompt only when the message has documents (FR-08b-2 #15),
 # so a chat without documents sends exactly the v2 prompt (AC8).
 DOCUMENTS_PROMPT_VERSION = "project_documents_v1"
-DISCUSS_PROMPT_VERSION = "project_discuss_v1"  # FR-08b-3
+DISCUSS_PROMPT_VERSION = "project_discuss_v2"  # FR-08b-5: wider help (v1: FR-08b-3)
 LANGUAGE_NAMES = {Language.VI: "Vietnamese", Language.EN: "English"}
 # FR-08b-3: the button that turns the discussion into a plan (named in the prompt).
 PLAN_BUTTON = {Language.VI: "Lên kế hoạch", Language.EN: "Plan"}
@@ -351,6 +355,8 @@ def check_discuss_answer(text: str, language: Language) -> ProjectReply:
     reply = answer.reply.strip()
     if not reply:
         raise BadAnswerError("empty reply")
+    if len(reply) > MAX_REPLY_CHARS:  # FR-08b-5
+        raise BadAnswerError(f"reply longer than {MAX_REPLY_CHARS} characters")
     try:
         notes = check_notes(
             answer.clear,

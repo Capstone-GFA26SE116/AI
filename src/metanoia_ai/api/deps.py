@@ -20,6 +20,7 @@ from metanoia_ai.application.ports.embedding_client import EmbeddingClient
 from metanoia_ai.application.ports.llm_client import LLMClient
 from metanoia_ai.application.project_chat_writer import ProjectChatWriter
 from metanoia_ai.application.reason_writer import ReasonWriter
+from metanoia_ai.application.use_cases.apply_and_schedule import ApplyAndSchedule
 from metanoia_ai.application.use_cases.apply_project_breakdown import (
     ApplyProjectBreakdown,
 )
@@ -548,6 +549,14 @@ def get_apply_project_breakdown(
 
 
 # --- productive hours (FR-18) ---
+
+
+def get_apply_and_schedule(
+    apply: Annotated[ApplyProjectBreakdown, Depends(get_apply_project_breakdown)],
+    scheduler: Annotated[ProposeSchedule, Depends(get_propose_schedule)],
+) -> ApplyAndSchedule:
+    """FR-08b-7: Apply, then FR-10 for the new tasks. Same session, one after the other."""
+    return ApplyAndSchedule(apply, scheduler)
 
 
 def get_recompute_productive_hours(

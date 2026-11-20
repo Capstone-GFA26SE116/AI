@@ -14,6 +14,7 @@ from uuid import UUID
 from metanoia_ai.application.ports.project_chat_repository import (
     NewMilestone,
     NewTask,
+    ProjectChatMessage,
     ProjectChatRepository,
 )
 from metanoia_ai.application.use_cases.apply_task_breakdown import (
@@ -22,6 +23,7 @@ from metanoia_ai.application.use_cases.apply_task_breakdown import (
 )
 from metanoia_ai.application.use_cases.send_project_chat_message import check_open
 from metanoia_ai.application.use_cases.start_project_chat import (
+    ConversationAppliedError,
     ConversationNotFoundError,
     open_project,
 )
@@ -98,8 +100,12 @@ class ApplyProjectBreakdown:
             )
             if conversation is None:
                 raise ConversationNotFoundError(str(conversation_id))
-            check_open(conversation)  # applied before → 409 already_applied
-            saved = await self._latest_draft(user_id, conversation_id, message_id)
+            check_open(conversation)  # a Closed chat → 409
+            latest = await self._latest_draft(user_id, conversation_id, message_id)
+            if latest.is_applied:  # FR-08b-4: each draft once, the chat many times
+                raise ConversationAppliedError(str(message_id))
+            assert latest.draft is not None  # checked by _latest_draft
+            saved = latest.draft.draft
 
             domains = await self.repo.active_domains()
             today = self.now().astimezone(project.time_zone).date()
@@ -167,12 +173,12 @@ class ApplyProjectBreakdown:
 
     async def _latest_draft(
         self, user_id: UUID, conversation_id: UUID, message_id: UUID
-    ) -> ProjectDraft:
-        """The draft of `message_id`, if it is the newest draft of this chat."""
+    ) -> ProjectChatMessage:
+        """The message of `message_id`, if it holds the newest draft of this chat."""
         messages = await self.repo.list_messages(user_id, conversation_id)
         if all(m.message_id != message_id for m in messages):
             raise MessageNotFoundError(str(message_id))
         latest = await self.repo.latest_draft(user_id, conversation_id)
         if latest is None or latest.message_id != message_id or latest.draft is None:
             raise NotLatestDraftError(str(message_id))
-        return latest.draft.draft
+        return latest

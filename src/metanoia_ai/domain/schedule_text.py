@@ -278,8 +278,11 @@ def spare_hours(task_end: datetime, deadline: datetime) -> int:
 
 
 def split_reason(slot: PlannedSlot) -> SplitReason | None:
-    """The planner splits a unit only when no free time is long enough for it."""
-    return SplitReason.NO_LONG_GAP if slot.part_count > 1 else None
+    """Why a unit has parts: no free time long enough, or long work cut into
+    blocks on purpose (FR-10f). One part → None."""
+    if slot.part_count <= 1:
+        return None
+    return slot.split_reason or SplitReason.NO_LONG_GAP
 
 
 def extra_percent(k: Decimal | None) -> int:

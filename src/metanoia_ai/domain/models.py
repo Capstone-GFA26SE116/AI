@@ -134,6 +134,8 @@ class SplitReason(StrEnum):
     """Why a unit was split into parts. Values are sent to the LLM."""
 
     NO_LONG_GAP = "no_long_gap"  # no free time long enough before the deadline
+    # FR-10f: cut on purpose into blocks of at most SCHEDULE_MAX_BLOCK_MINUTES (FR-10c)
+    LONG_WORK = "long_work"
 
 
 @dataclass(frozen=True)
@@ -211,6 +213,7 @@ class PlannedSlot:
     part_index: int = 1
     part_count: int = 1
     placement: Placement = Placement.EARLIEST_FREE
+    split_reason: SplitReason | None = None  # FR-10f: why it has parts (None: one part)
 
     def __post_init__(self) -> None:
         _require_aware(self.start, self.end)

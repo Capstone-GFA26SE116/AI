@@ -388,5 +388,6 @@
         "split_reason": null
       }
     ]
-  }
+  },
+  {"name": "long task cut into 3-hour blocks on purpose, vi (FR-10f)", "language": "vi", "slots": [{"slot_id": "00000000-0000-0000-0000-000000000041", "task_title": "Lập trình giỏ hàng", "days_to_deadline": 3, "in_productive_hour": true, "extra_percent": 30, "extra_applied": true, "part": 1, "parts": 2, "placement": "earliest_free", "earlier_blocked_by": "none", "priority_rank": 1, "priority_total": 3, "estimate_minutes": 240, "planned_minutes": 312, "spare_hours": 60, "split_reason": "long_work"}, {"slot_id": "00000000-0000-0000-0000-000000000042", "task_title": "Lập trình giỏ hàng", "days_to_deadline": 2, "in_productive_hour": false, "extra_percent": 30, "extra_applied": true, "part": 2, "parts": 2, "placement": "spread_out", "earlier_blocked_by": "outside_work_hours", "priority_rank": 1, "priority_total": 3, "estimate_minutes": 240, "planned_minutes": 312, "spare_hours": 60, "split_reason": "long_work"}]}
 ]

@@ -7,7 +7,7 @@ GoogleCalendarEvent joins GoogleConnection.
 import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -21,6 +21,7 @@ from metanoia_ai.application.ports.schedule_repository import (
     TaskStatus,
     TaskToSchedule,
 )
+from metanoia_ai.domain.daily_capacity import LOOKBACK_DAYS
 from metanoia_ai.domain.free_time import CalendarEvent, FixedTaskTime
 from metanoia_ai.domain.models import FocusSessionRecord, TimeRange, WorkingHours
 from metanoia_ai.infrastructure.db.learning_repository import SOURCE_FROM_DB
@@ -86,6 +87,19 @@ GET_SESSIONS = text("""
     WHERE p."UserId" = :user_id
       AND t."TaskType" = 'Flexible'
       AND t."Status" NOT IN ('Done', 'Skipped')
+    ORDER BY fs."StartedAt"
+""")
+
+# FR-10d: every finished, confirmed session of the user since :since (any task).
+GET_RECENT_SESSIONS = text("""
+    SELECT fs."StartedAt", fs."EndedAt"
+    FROM "FocusSession" fs
+    JOIN "Task" t ON t."Id" = fs."TaskId"
+    JOIN "Project" p ON p."Id" = t."ProjectId"
+    WHERE p."UserId" = :user_id
+      AND fs."EndedAt" IS NOT NULL
+      AND fs."IsConfirmed"
+      AND fs."StartedAt" >= :since
     ORDER BY fs."StartedAt"
 """)
 
@@ -280,6 +294,13 @@ class SqlScheduleRepository:
                 TimeRange(r.StartTime, r.EndTime)
                 for r in await execute(GET_APPROVED_SLOTS, window)
             ),
+            recent_sessions=tuple(
+                TimeRange(r.StartedAt, r.EndedAt)
+                for r in await execute(
+                    GET_RECENT_SESSIONS,
+                    {**user, "since": window_start - timedelta(days=LOOKBACK_DAYS)},
+                )
+            ),
         )
 
     async def save_proposal(self, user_id: UUID, proposal: NewProposal) -> None:
@@ -326,6 +347,8 @@ def warnings_json(proposal: NewProposal) -> str:
                 "type": w.warning.type.value,
                 "needed_minutes": w.warning.needed_minutes,
                 "free_minutes": w.warning.free_minutes,
+                "day": w.warning.day.isoformat() if w.warning.day else None,
+                "capacity_minutes": w.warning.capacity_minutes,
                 "message": w.message,
             }
             for w in proposal.warnings

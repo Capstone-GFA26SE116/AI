@@ -92,6 +92,7 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 | ⚠️ (Web / Mobile) Bản nháp kế hoạch FR-08b-8: hiện `milestones[].reason` dưới tên cột mốc và `tasks[].subtasks[]` (tên · phút · lý do) dưới việc lớn; khi sửa tay gửi `subtasks` nếu user sửa việc con (bỏ trường = giữ việc con của AI, `[]` = bỏ hết) | `plans/FR-08b-8.md` | Áp dụng tạo `SubTask`; xếp lịch theo việc con |
 | (Web / Mobile) Đề xuất lịch có cảnh báo mới `type = "beyond_window"` (việc hạn xa chưa xếp hết, chỉ cần hiện `message`) | `plans/FR-10e.md` | `is_feasible` không đổi |
 | (Web / Mobile) Kết quả Áp dụng có `applied.milestones[].reused` = true khi việc được thêm vào cột mốc đã có → hiện "đã thêm vào cột mốc …" thay vì "tạo cột mốc" | `plans/FR-08b-9.md` | |
+| (Web / Mobile) Ô đính kèm chat dự án cho chọn thêm `.xlsx`, `.csv` (FR-08b-10) | `plans/FR-08b-10.md` | |
 
 ## Chờ quyết định (team / giảng viên)
 

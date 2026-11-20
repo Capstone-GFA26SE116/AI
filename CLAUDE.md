@@ -151,6 +151,7 @@ Full text in `docs/functional-requirements.md`. Status: first line of each `plan
 | FR-08b-7 | "Áp dụng & xếp lịch": `POST /chat/conversations/{id}/apply-and-schedule` = Apply, then FR-10 for the new tasks; a schedule error keeps the work (`schedule_error`) | `plans/FR-08b-7.md` |
 | FR-08b-8 | Plan drafts: a reason per milestone; tasks over 2 h get 2–6 subtasks (5 split rules: checkable result, 100 %, ≤ 2 h, natural steps, risky parts apart); Apply writes `SubTask` rows | `plans/FR-08b-8.md` |
 | FR-08b-9 | Update drafts hold only new work (prompt v5); duplicate warnings grouped per reason; Apply adds tasks to a same-title existing milestone (`reused`) | `plans/FR-08b-9.md` |
+| FR-08b-10 | Project chat reads spreadsheets (.xlsx via openpyxl, .csv) as `Row N: a | b` lines per sheet | `plans/FR-08b-10.md` |
 | — | Chat history page: all the user's chats (project + task), newest first, search by message / name; read only, no LLM | `plans/chat-history.md` |
 | FR-09 | Similar past tasks: hybrid search (vector + full-text) + RRF. Free/busy time and workload are already in FR-10 | `plans/FR-09.md` |
 | FR-09b | Similar tasks also return why their sessions stopped (counts + 2 masked notes) | `plans/FR-09b.md` |
@@ -179,7 +180,7 @@ Full text in `docs/functional-requirements.md`. Status: first line of each `plan
 - Documents go to the LLM **only when the user attaches them in the project chat**, ≤ 3 per
   message (FR-08b-2). Library files only while the project's `AllowAiDocumentAccess` is on
   (also for later messages); files uploaded in the chat always. Extract text first (PDF, DOCX,
-  TXT, MD; no OCR), cap all document text at **80,000 characters ≈ 20,000 tokens**, mask it
+  TXT, MD, XLSX, CSV; no OCR), cap all document text at **80,000 characters ≈ 20,000 tokens**, mask it
   with `mask_contact` and frame it as data (`<document>`). Never log document text.
 - Never send email, full name, OAuth tokens or client contact details (see §9).
 - Similar task results (FR-09) return titles as the user wrote them. Mask them with

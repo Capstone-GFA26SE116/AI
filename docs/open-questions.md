@@ -87,6 +87,7 @@ Số `#` = số trong tab Problems của Google Doc (nếu có).
 | ⚠️ (Backend) Duyệt đề xuất: từ chối đề xuất không còn `Pending` (DB 2026-11-20 có slot `Due` / `Missed` thuộc đề xuất `Superseded`) | FR-11 | |
 | ⚠️ (Web / Mobile) Trang "Lịch sử chat": `GET /chat/conversations?q=&limit=&offset=` → `{items, has_more}`; mỗi dòng có `scope`, `project`, `task`, `last_message` (preview + giờ), `applied`, `match` (khi tìm). Bấm: `project` → `GET /chat/conversations/{id}`; `task` → `GET /chat/tasks/{task.id}`; có `match.message_id` thì cuộn tới tin đó. Không có nút "chat mới" | `plans/chat-history.md` | Chỉ đọc, không tốn lượt AI |
 | ⚠️ (Web / Mobile) Chat dự án FR-08b-5: `reply` có thể dài (≤ 4000 ký tự, email / so sánh) và có xuống dòng + "- " → hiện với `white-space: pre-line`, thêm nút **Sao chép** dưới tin AI | `plans/FR-08b-5.md` | API không đổi |
+| Azure App Service (AI): nếu có đặt `CHAT_PROJECT_HISTORY_LIMIT=10` thì đổi thành 20 hoặc bỏ dòng (mặc định mới 20) | `plans/FR-08b-6.md` | |
 
 ## Chờ quyết định (team / giảng viên)
 

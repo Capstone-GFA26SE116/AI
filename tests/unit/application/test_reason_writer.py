@@ -223,9 +223,12 @@ def test_vietnamese_titles_are_sent_as_text():
 
 
 def test_prompt_version_file_exists():
-    assert PROMPT_VERSION == "schedule_reason_v3"
-    assert "slot_id" in load_prompt(PROMPT_VERSION)
-    assert "spread_out" in load_prompt(PROMPT_VERSION)  # FR-10c
+    assert PROMPT_VERSION == "schedule_reason_v4"
+    text = load_prompt(PROMPT_VERSION)
+    assert "slot_id" in text
+    assert "spread_out" in text  # FR-10c
+    assert "long_work" in text  # FR-10f
+    assert "phần 1 trên 5" in text and "hôm qua" in text  # named as things not to write
 
 
 FACT_KEYS = [

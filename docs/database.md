@@ -107,6 +107,17 @@ Bảng mới, **AI tạo 2026-10-28** (Hiếu cho phép, đã báo Backend; migr
 - Chỉ gắn với tin của **user** trong chat dự án. `ExtractedText` = chữ đã cắt theo ngân sách, **chưa che**
   (che lúc ghép prompt). Không trả về qua API.
 
+### `Project` — AI ghi: chỉ TẠO MỚI khi nhập file (FR-08c) ⚠️
+Hiếu cho phép 2026-11-20 (cần báo Backend). Đọc DB 2026-11-20 (chỉ đọc).
+- `Id` uuid mặc định `gen_random_uuid()` · `UserId` NOT NULL FK → `User` (`RESTRICT`) · `ClientId?` FK → `Client` (`SET NULL`) ·
+  `Name` varchar(**150**) NOT NULL · `Description` text? · `StartDate` date? · `Deadline` date? (CHECK `Deadline >= StartDate`) ·
+  `Status` varchar(20) ∈ {`Active`, `OnHold`, `Completed`, `Archived`}, mặc định `Active` · `IsDefault` bool mặc định false
+  (unique 1 dự án mặc định / user) · `CreatedAt` · `AllowAiDocumentAccess` bool mặc định false.
+- **AI chỉ INSERT**: `Status = 'Active'`, `IsDefault = false`, `ClientId = NULL`, `AllowAiDocumentAccess = false`,
+  `StartDate` = hôm nay (giờ user), `Deadline` ≥ hôm nay hoặc NULL. **Không bao giờ UPDATE / DELETE** dự án.
+- Giới hạn gói như Backend (`PlanLimitService.EnsureCanCreateProjectAsync`): `SubscriptionPlan.ProjectLimit` của gói `Active`
+  (NULL = không giới hạn); đếm dự án `UserId` = user, `IsDefault = false`, `Status <> 'Archived'`; đủ thì không tạo.
+
 ### `Milestone` — AI ghi lúc Apply (FR-08b-1) ⚠️
 Đọc DB 2026-10-16 (chỉ đọc, FR-08b-1 bước 0). Đang có 2 dòng.
 - `Id` uuid · `ProjectId` uuid NOT NULL · `Name` **varchar(150)** NOT NULL (plan gọi là `title`) ·

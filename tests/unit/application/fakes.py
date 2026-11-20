@@ -59,6 +59,7 @@ from metanoia_ai.application.ports.project_chat_repository import (
     ChatAttachment,
     ChatProject,
     ConversationStatus,
+    ExistingMilestone,
     ExistingWork,
     NewAttachment,
     NewMilestone,
@@ -930,6 +931,14 @@ class FakeProjectChatRepository:
             r.task.title for r in self.new_tasks if r.project_id == project_id
         ]
         return ExistingWork(tuple(reversed(milestones)), tuple(reversed(tasks)))
+
+    async def list_milestones(
+        self, user_id: UUID, project_id: UUID
+    ) -> list[ExistingMilestone]:
+        assert self._owns_project(user_id, project_id)
+        rows = [r for r in self.new_milestones if r.project_id == project_id]
+        rows.sort(key=lambda r: r.milestone.order_index)
+        return [ExistingMilestone(r.milestone_id, r.milestone.title) for r in rows]
 
     async def next_milestone_order(self, user_id: UUID, project_id: UUID) -> int:
         assert self._owns_project(user_id, project_id)

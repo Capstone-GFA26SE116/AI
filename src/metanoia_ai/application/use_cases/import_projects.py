@@ -59,7 +59,7 @@ class ImportProjects:
 
         created = []
         async with self.repo.transaction():
-            allowance = await self.repo.allowance(user_id)
+            allowance = await self.repo.allowance(user_id, lock=True)
             left = projects_left(allowance.limit, allowance.used)
             if left is not None and len(projects) > left:
                 assert allowance.limit is not None

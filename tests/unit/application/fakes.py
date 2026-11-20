@@ -1417,7 +1417,7 @@ class FakeProjectImportRepository:
     async def time_zone(self, user_id: UUID) -> ZoneInfo | None:
         return self.zone
 
-    async def allowance(self, user_id: UUID) -> ProjectAllowance:
+    async def allowance(self, user_id: UUID, lock: bool = False) -> ProjectAllowance:
         mine = sum(1 for p in self.created if p.user_id == user_id)
         return ProjectAllowance(self.limit, self.used + mine)
 

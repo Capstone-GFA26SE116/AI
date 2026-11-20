@@ -38,8 +38,9 @@ class ProjectImportRepository(Protocol):
         """The user's time zone; None if the user does not exist."""
         ...
 
-    async def allowance(self, user_id: UUID) -> ProjectAllowance:
-        """Read inside the creating transaction, after locking the user's row."""
+    async def allowance(self, user_id: UUID, lock: bool = False) -> ProjectAllowance:
+        """lock=True (inside the creating transaction): lock the user's row first,
+        so two imports at once cannot both pass the limit."""
         ...
 
     async def create_project(self, user_id: UUID, project: NewProject) -> UUID:

@@ -63,7 +63,7 @@ Claude Code soạn plan rồi làm liền. -->
 ## 4. Các bước code
 - [x] **1.** Domain + writer + prompt — T1.
 - [x] **2.** Port + use case + fake — T2, T3.
-- [ ] **3.** SQL + API + wiring — T4, T5.
+- [x] **3.** SQL + API + wiring — T4, T5.
 - [ ] **4.** Chạy thật — T6; docs.
 
 ## 5. Nhật ký thay đổi

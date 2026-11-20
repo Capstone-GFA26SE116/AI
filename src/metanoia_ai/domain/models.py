@@ -1,7 +1,7 @@
 """Basic domain types shared by the AI service."""
 
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from enum import StrEnum
 from uuid import UUID
@@ -95,6 +95,7 @@ class WarningType(StrEnum):
     NOT_ENOUGH_TIME = "not_enough_time"
     OVERDUE = "overdue"
     CALENDAR_NOT_SYNCED = "calendar_not_synced"
+    DAY_OVERLOADED = "day_overloaded"  # FR-10d: more work than the user usually does
 
 
 class Placement(StrEnum):
@@ -227,11 +228,18 @@ class ScheduleWarning:
     """A problem to show the user. The text is written later (vi/en)."""
 
     type: WarningType
-    task_id: UUID | None = None  # None only for calendar_not_synced
-    needed_minutes: int | None = None
+    task_id: UUID | None = None  # None for calendar_not_synced and day_overloaded
+    needed_minutes: int | None = None  # day_overloaded: work minutes on that day
     free_minutes: int | None = None
+    day: date | None = None  # FR-10d: the overloaded day (user's calendar)
+    capacity_minutes: int | None = None  # FR-10d: what the user usually manages
 
     def __post_init__(self) -> None:
-        about_a_task = self.type is not WarningType.CALENDAR_NOT_SYNCED
+        about_a_task = self.type not in (
+            WarningType.CALENDAR_NOT_SYNCED,
+            WarningType.DAY_OVERLOADED,
+        )
         if about_a_task and self.task_id is None:
             raise ValueError(f"{self.type} warning needs a task_id")
+        if self.type is WarningType.DAY_OVERLOADED and self.day is None:
+            raise ValueError("day_overloaded warning needs a day")

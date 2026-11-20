@@ -42,6 +42,7 @@ def summary(
     """One or two sentences about the whole proposal."""
     late = count(warnings, WarningType.NOT_ENOUGH_TIME)
     overdue = count(warnings, WarningType.OVERDUE)
+    heavy = count(warnings, WarningType.DAY_OVERLOADED)  # FR-10d
     if lang is Language.EN:
         if task_count == 0:
             return "Nothing to schedule."
@@ -53,6 +54,11 @@ def summary(
             parts.append(
                 f"{overdue} {plural(overdue, 'task')} {verb} past the deadline."
             )
+        if heavy:
+            parts.append(
+                f"{heavy} {plural(heavy, 'day')} {'has' if heavy == 1 else 'have'} "
+                "more work than you usually manage."
+            )
         return " ".join(parts)
 
     if task_count == 0:
@@ -62,6 +68,8 @@ def summary(
         parts.append(f"{late} task không kịp deadline.")
     if overdue:
         parts.append(f"{overdue} task đã quá hạn.")
+    if heavy:
+        parts.append(f"{heavy} ngày nhiều việc hơn mức bạn thường làm.")
     return " ".join(parts)
 
 
@@ -82,6 +90,21 @@ def warning_message(warning: ScheduleWarning, lang: Language) -> str:
             return "This task is past its deadline."
         case WarningType.OVERDUE, _:
             return "Task này đã quá hạn."
+        case WarningType.DAY_OVERLOADED, Language.EN:
+            return (
+                f"{warning.day:%d/%m} has about {duration(warning.needed_minutes, lang)} "
+                "of work, more than you usually manage on a busy day (about "
+                f"{duration(warning.capacity_minutes, lang)}). Consider moving some "
+                "work or the deadline."
+            )
+        case WarningType.DAY_OVERLOADED, _:
+            return (
+                f"Ngày {warning.day:%d/%m} có khoảng "
+                f"{duration(warning.needed_minutes, lang)} việc, nhiều hơn mức bạn "
+                "thường làm trong một ngày bận (khoảng "
+                f"{duration(warning.capacity_minutes, lang)}). Bạn cân nhắc dời bớt "
+                "việc hoặc lùi deadline nhé."
+            )
         case WarningType.CALENDAR_NOT_SYNCED, Language.EN:
             return (
                 "Your Google Calendar is not synced, so some events may be "
@@ -92,6 +115,18 @@ def warning_message(warning: ScheduleWarning, lang: Language) -> str:
                 "Lịch Google chưa được đồng bộ nên có thể thiếu sự kiện. "
                 "Hãy kết nối lại."
             )
+
+
+def duration(minutes: int | None, lang: Language) -> str:
+    """90 → "1 giờ 30 phút" / "1 h 30 min"; 480 → "8 giờ" / "8 h"."""
+    hours, rest = divmod(minutes or 0, 60)
+    if lang is Language.EN:
+        parts = [f"{hours} h" if hours else "", f"{rest} min" if rest else ""]
+    else:
+        parts = [f"{hours} giờ" if hours else "", f"{rest} phút" if rest else ""]
+    return " ".join(p for p in parts if p) or (
+        "0 min" if lang is Language.EN else "0 phút"
+    )
 
 
 @dataclass(frozen=True)

@@ -89,6 +89,7 @@ def test_warning_type_values_are_stable_api_strings():
         "not_enough_time",
         "overdue",
         "calendar_not_synced",
+        "day_overloaded",  # FR-10d
     ]
 
 

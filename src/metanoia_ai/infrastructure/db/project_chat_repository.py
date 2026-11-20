@@ -220,14 +220,19 @@ ADD_TASK = text("""
     RETURNING "Id"
 """)
 
+# FR-08b-4: a chat may apply several drafts, but the unique index
+# UX_ChatMessage_OneAppliedPerConversation allows one "IsApplied" per chat, so the
+# draft records its own Apply time instead. Old rows keep "IsApplied" = true.
 MARK_MESSAGE_APPLIED = text("""
     UPDATE "ChatMessage" m
-    SET "IsApplied" = true
+    SET "ProposalJson" = jsonb_set(
+        m."ProposalJson", '{applied_at}', to_jsonb(clock_timestamp())
+    )
     FROM "ChatConversation" cv
     JOIN "Project" p ON p."Id" = cv."ProjectId"
     WHERE m."Id" = :message_id AND m."ConversationId" = :conversation_id
       AND cv."Id" = m."ConversationId" AND cv."Scope" = 'Project'
-      AND p."UserId" = :user_id
+      AND p."UserId" = :user_id AND m."ProposalJson" IS NOT NULL
     RETURNING m."Id"
 """)
 
@@ -430,9 +435,14 @@ def to_message(row: Row) -> ProjectChatMessage:
         content=row.Content,
         created_at=row.CreatedAt,
         draft=draft,
-        is_applied=row.IsApplied,
+        is_applied=row.IsApplied or was_applied(row.ProposalJson),
         notes=notes,
     )
+
+
+def was_applied(raw: str | None) -> bool:
+    """FR-08b-4: the draft records its Apply time (see MARK_MESSAGE_APPLIED)."""
+    return bool(raw) and "applied_at" in json.loads(raw)
 
 
 class SqlProjectChatRepository:

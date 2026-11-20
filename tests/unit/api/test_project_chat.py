@@ -209,9 +209,17 @@ def test_send_to_unknown_chat_is_404(client, world):
     assert send(client, world, chat_id=uuid4()).status_code == 404
 
 
-def test_send_to_an_applied_chat_is_409(client, world):
+def test_chat_goes_on_after_apply(client, world):
+    """FR-08b-4: Apply no longer locks the chat."""
     message_id = drafted(client, world)
     apply(client, world, {"message_id": message_id})
+    world.llm.answers.append(QUESTION)
+    assert send(client, world).status_code == 200
+
+
+def test_send_to_a_closed_chat_is_409(client, world):
+    chat = world.repo.chats[world.chat_id]
+    chat.conversation = replace(chat.conversation, status=ConversationStatus.CLOSED)
     response = send(client, world)
     assert response.status_code == 409
     assert response.json()["detail"] == {"code": "already_applied"}
@@ -235,16 +243,31 @@ def test_send_without_a_plan_is_409(client, world):
     )
 
 
-@pytest.mark.parametrize("message", ["", "x" * 8001])
-def test_bad_message_is_422(client, world, message):
-    response = send(client, world, message=message)
+@pytest.mark.parametrize(
+    ("message", "mode"),
+    [("", "discuss"), ("x" * 8001, "plan"), ("x" * 8001, "discuss")],
+)
+def test_bad_message_is_422(client, world, message, mode):
+    url = f"/chat/conversations/{world.chat_id}/messages"
+    response = client.post(
+        url, json={"message": message, "mode": mode}, headers=HEADERS
+    )
     assert response.status_code == 422
     assert world.llm.prompts == []
 
 
 def test_missing_body_is_422(client, world):
     url = f"/chat/conversations/{world.chat_id}/messages"
-    assert client.post(url, json={}, headers=HEADERS).status_code == 422
+    assert client.post(url, headers=HEADERS).status_code == 422
+
+
+def test_empty_body_is_the_plan_button(client, world):
+    """FR-08b-4: {} = mode plan with no text."""
+    world.llm.answers.append(QUESTION)
+    url = f"/chat/conversations/{world.chat_id}/messages"
+    response = client.post(url, json={}, headers=HEADERS)
+    assert response.status_code == 200
+    assert response.json()["user_message"]["content"] == "Lên kế hoạch"
 
 
 def test_out_of_quota_is_429(client, world):
@@ -415,3 +438,38 @@ def test_apply_without_token_is_401(client, world):
 
 def test_status_values_are_stable_api_strings():
     assert [s.value for s in ConversationStatus] == ["open", "applied", "closed"]
+
+
+# --- FR-08b-4 (T7) ---
+
+
+def test_two_drafts_of_one_chat_can_be_applied(client, world):
+    first = drafted(client, world)
+    assert apply(client, world, {"message_id": first}).status_code == 201
+    world.llm.answers.append(
+        draft_answer(
+            [
+                {
+                    "title": "Trang blog",
+                    "deadline": None,
+                    "tasks": [task_json("Làm blog")],
+                }
+            ]
+        )
+    )
+    second = send(client, world, "Thêm trang blog").json()["ai_message"]["draft"]
+    assert apply(client, world, {"message_id": second["message_id"]}).status_code == 201
+
+    messages = client.get(
+        f"/chat/conversations/{world.chat_id}", headers=HEADERS
+    ).json()["messages"]
+    assert [m["applied"] for m in messages if m["kind"] == "draft"] == [True, True]
+
+
+def task_json(title):
+    return {
+        "title": title,
+        "domain_id": str(CODING),
+        "estimated_minutes": 120,
+        "reason": "r",
+    }

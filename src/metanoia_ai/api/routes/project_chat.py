@@ -120,8 +120,8 @@ class NotesResponse(BaseModel):
 
 class SendRequest(BaseModel):
     # Up to CHAT_PROJECT_MESSAGE_MAX_CHARS, checked by the use case. May be empty
-    # only when documents are attached.
-    message: str
+    # when documents are attached, or for mode "plan" (the plan button, FR-08b-4).
+    message: str = ""
     document_ids: list[UUID] = []  # FR-08b-2: library files, 0-3 (AC1, AC4)
     # FR-08b-3: "discuss" = talk it through (checklist, no plan); "plan" = as before.
     mode: ChatMode = ChatMode.PLAN
@@ -187,6 +187,7 @@ class MessageResponse(BaseModel):
     created_at: datetime  # ISO 8601 in the user's time zone
     draft: ProjectDraftResponse | None = None
     notes: NotesResponse | None = None  # FR-08b-3: discussion answers only
+    applied: bool = False  # FR-08b-4: this draft was applied (each draft once)
     attachments: list[AttachmentResponse] = []  # user messages only (FR-08b-2)
 
 
@@ -341,6 +342,7 @@ def to_message(
         created_at=message.created_at.astimezone(zone),
         draft=to_draft(message),
         notes=notes,
+        applied=message.is_applied,
         attachments=[to_attachment(a) for a in attachments],
     )
 

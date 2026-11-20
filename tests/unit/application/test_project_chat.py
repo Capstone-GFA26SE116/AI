@@ -39,6 +39,7 @@ from metanoia_ai.application.use_cases.start_project_chat import (
     StartProjectChat,
 )
 from metanoia_ai.domain.project_breakdown import DomainNumbers, ProjectLimits
+from metanoia_ai.domain.project_discussion import ChatMode
 from tests.unit.application.fakes import (
     FakeLLMClient,
     FakeProjectChatRepository,
@@ -282,10 +283,20 @@ def test_t12_over_the_time_budget_is_502_without_retry():
 # --- T13: refused before any LLM call ---
 
 
-def test_t13_applied_chat():
+def test_t13_applied_chat_goes_on():
+    """FR-08b-4: Apply no longer locks the chat."""
     world = World()
-    msg = run(world.repo.add_message(USER, world.chat_id, ChatRole.ASSISTANT, "ok"))
-    run(world.repo.mark_applied(USER, world.chat_id, msg.message_id))
+    world.send(FakeLLMClient(draft_answer()), message="Lên kế hoạch")
+    draft = run(world.repo.latest_draft(USER, world.chat_id))
+    run(world.repo.mark_applied(USER, world.chat_id, draft.message_id))
+    turn = world.send(FakeLLMClient(QUESTION), message="Khách xin thêm trang blog")
+    assert turn.ai_message.content == "Bạn cần bàn giao trước ngày nào?"
+
+
+def test_t13_closed_chat():
+    world = World()
+    chat = world.repo.chats[world.chat_id]
+    chat.conversation = replace(chat.conversation, status=ConversationStatus.CLOSED)
     llm = FakeLLMClient(QUESTION)
     with pytest.raises(ConversationAppliedError):
         world.send(llm)
@@ -325,12 +336,20 @@ def test_t13_out_of_calls():
     assert llm.prompts == []
 
 
-@pytest.mark.parametrize("message", ["", "   ", "x" * 8001])
-def test_bad_message_is_rejected(message):
+@pytest.mark.parametrize(
+    ("message", "mode"),
+    [
+        ("", ChatMode.DISCUSS),
+        ("   ", ChatMode.DISCUSS),
+        ("x" * 8001, ChatMode.DISCUSS),
+        ("x" * 8001, ChatMode.PLAN),
+    ],
+)
+def test_bad_message_is_rejected(message, mode):
     world = World()
     llm = FakeLLMClient(QUESTION)
     with pytest.raises(InvalidMessageError):
-        world.send(llm, message=message)
+        run(world.use_case(llm).execute(USER, world.chat_id, message, mode=mode))
     assert llm.prompts == []
 
 
@@ -360,9 +379,7 @@ def test_applied_in_another_tab_while_the_ai_answers():
 
     def apply_meanwhile(prompt: str) -> str:
         chat = world.repo.chats[world.chat_id]
-        chat.conversation = replace(
-            chat.conversation, status=ConversationStatus.APPLIED
-        )
+        chat.conversation = replace(chat.conversation, status=ConversationStatus.CLOSED)
         return QUESTION
 
     with pytest.raises(ConversationAppliedError):

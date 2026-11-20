@@ -21,6 +21,7 @@ from metanoia_ai.api.routes import (
     memory,
     profile,
     project_chat,
+    project_import,
     schedule,
 )
 from metanoia_ai.config import get_settings
@@ -52,6 +53,7 @@ app.include_router(memory.router)
 app.include_router(chat.router)
 app.include_router(project_chat.router)
 app.include_router(chat_history.router)
+app.include_router(project_import.router)
 app.include_router(profile.router)
 app.include_router(briefing.router)
 app.include_router(analytics.router)

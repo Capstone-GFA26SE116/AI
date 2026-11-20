@@ -69,6 +69,10 @@ from metanoia_ai.application.ports.project_chat_repository import (
     ProjectDocument,
     SavedProjectDraft,
 )
+from metanoia_ai.application.ports.project_import_repository import (
+    NewProject,
+    ProjectAllowance,
+)
 from metanoia_ai.application.ports.quota_repository import (
     Subscription,
     UsageLogEntry,
@@ -1381,3 +1385,56 @@ class FakeChatHistoryRepository:
             found.append(summary)
         found.sort(key=lambda s: (s.last_at, str(s.conversation_id)), reverse=True)
         return found[offset : offset + limit]
+
+
+@dataclass
+class FakeImportedProject:
+    user_id: UUID
+    project_id: UUID
+    project: NewProject
+    chats: list[tuple[UUID, str, str]] = field(
+        default_factory=list
+    )  # id, title, first message
+
+
+class FakeProjectImportRepository:
+    """Projects created by an import, in memory; rolls back like a transaction."""
+
+    def __init__(self, limit: int | None = None, used: int = 0, zone=HCM) -> None:
+        self.limit, self.used, self.zone = limit, used, zone
+        self.created: list[FakeImportedProject] = []
+        self.fail_on_chat = False
+
+    @asynccontextmanager
+    async def transaction(self) -> AsyncIterator[None]:
+        saved = list(self.created)
+        try:
+            yield
+        except BaseException:
+            self.created = saved
+            raise
+
+    async def time_zone(self, user_id: UUID) -> ZoneInfo | None:
+        return self.zone
+
+    async def allowance(self, user_id: UUID, lock: bool = False) -> ProjectAllowance:
+        mine = sum(1 for p in self.created if p.user_id == user_id)
+        return ProjectAllowance(self.limit, self.used + mine)
+
+    async def create_project(self, user_id: UUID, project: NewProject) -> UUID:
+        assert len(project.name) <= 150, "Project.Name is varchar(150)"
+        assert project.deadline is None or project.deadline >= project.start_date
+        row = FakeImportedProject(user_id, uuid4(), project)
+        self.created.append(row)
+        return row.project_id
+
+    async def create_chat(
+        self, user_id: UUID, project_id: UUID, title: str, first_message: str
+    ) -> UUID:
+        if self.fail_on_chat:
+            raise RuntimeError("db down")
+        row = next(p for p in self.created if p.project_id == project_id)
+        assert row.user_id == user_id and len(title) <= 200
+        chat_id = uuid4()
+        row.chats.append((chat_id, title, first_message))
+        return chat_id

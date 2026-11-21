@@ -11,7 +11,14 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Deploy only when lint and tests pass.
+  test:
+    uses: ./.github/workflows/tests.yml
+    permissions:
+      contents: read
+
   build:
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read #This is required for actions/checkout

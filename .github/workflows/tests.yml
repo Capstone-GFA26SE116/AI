@@ -1,0 +1,43 @@
+name: Tests
+
+# Runs on every pull request, and before every deploy (called by main_metanoia-ai-2.yml).
+on:
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Lint
+        run: uv run --frozen ruff check .
+
+      # No .env and no database: every test uses fakes. Fails below 80% coverage (Register NFR).
+      - name: Unit tests with coverage
+        run: >
+          uv run --frozen pytest -q -p no:cacheprovider
+          --cov=metanoia_ai --cov-report=term --cov-report=xml
+          --cov-fail-under=80
+          --junitxml=test-results.xml
+
+      - name: Upload test and coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-test-reports
+          path: |
+            test-results.xml
+            coverage.xml

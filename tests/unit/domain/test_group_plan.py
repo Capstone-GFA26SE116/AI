@@ -5,7 +5,7 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from metanoia_ai.domain.assignee_ranking import Candidate, GroupRole
-from metanoia_ai.domain.group_plan import PlanTask, assign_tasks
+from metanoia_ai.domain.group_plan import PlanTask, assign_tasks, without_masks
 from metanoia_ai.domain.models import Language, TimeRange
 
 VN = ZoneInfo("Asia/Ho_Chi_Minh")
@@ -84,3 +84,10 @@ def test_reason_has_free_hours_deadline_and_first_open_time():
 def test_no_members_means_no_assignment():
     result = assign_tasks([task("k", 60)], pool({}), Language.VI)
     assert result[0].user_id is None and result[0].reason is None
+
+
+def test_masks_are_removed_from_titles():
+    assert without_masks("Gửi email cho chị Lan [phone]") == "Gửi email cho chị Lan"
+    assert without_masks("Mail [email] rồi gọi [phone] nhé") == "Mail rồi gọi nhé"
+    assert without_masks("[phone]") == "[phone]"  # never an empty title
+    assert without_masks("Dựng trang") == "Dựng trang"

@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     kbias_initial: float = Field(default=INITIAL_K_BIAS, ge=K_MIN, le=K_MAX)
     kbias_outlier_ratio: float = Field(default=DEFAULT_OUTLIER_RATIO, gt=1)
 
+    # Work Group assignee suggestion (FR-23).
+    assignee_window_days: int = Field(default=7, gt=0, le=60)
+    assignee_max_candidates: int = Field(default=20, ge=1, le=50)
+    assignee_reason_count: int = Field(default=3, ge=0, le=10)
+
     # Schedule proposal (FR-10).
     schedule_window_days: int = Field(default=7, gt=0)
     schedule_min_chunk_minutes: int = Field(default=30, gt=0)

@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from metanoia_ai.application.assignee_reason_writer import AssigneeReasonWriter
 from metanoia_ai.application.chat_writer import ChatWriter
 from metanoia_ai.application.import_writer import ImportWriter
 from metanoia_ai.application.llm_chat import CheckedLLMCaller
@@ -84,6 +85,9 @@ from metanoia_ai.application.use_cases.start_project_chat import (
     ListProjectChats,
     StartProjectChat,
 )
+from metanoia_ai.application.use_cases.suggest_group_assignee import (
+    SuggestGroupAssignee,
+)
 from metanoia_ai.config import MissingLlmSettingError, Settings, get_settings
 from metanoia_ai.domain.analytics import AnalyticsRange
 from metanoia_ai.domain.briefing import BiasRule
@@ -101,6 +105,9 @@ from metanoia_ai.infrastructure.db.chat_history_repository import (
     SqlChatHistoryRepository,
 )
 from metanoia_ai.infrastructure.db.chat_repository import SqlChatRepository
+from metanoia_ai.infrastructure.db.group_assignee_repository import (
+    SqlGroupAssigneeRepository,
+)
 from metanoia_ai.infrastructure.db.learning_repository import SqlLearningRepository
 from metanoia_ai.infrastructure.db.memory_repository import SqlMemoryRepository
 from metanoia_ai.infrastructure.db.overrun_repository import SqlOverrunRepository
@@ -219,6 +226,32 @@ def get_propose_schedule(
         breaks=settings.lunch_breaks(),
         spread=settings.schedule_spread,
         max_block_minutes=settings.schedule_max_block_minutes,
+    )
+
+
+def get_suggest_group_assignee(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    llm_client: Annotated[LLMClient, Depends(get_llm_client)],
+) -> SuggestGroupAssignee:
+    """FR-23 use case on the real database and Gemini, with values from config."""
+    llm = settings.llm_config()
+    return SuggestGroupAssignee(
+        SqlGroupAssigneeRepository(session),
+        SqlScheduleRepository(session),
+        SqlQuotaRepository(session),  # same session → same transaction
+        AssigneeReasonWriter(
+            llm_client,
+            max_retries=llm.max_retries,
+            input_price_per_1m=llm.input_price_per_1m,
+            output_price_per_1m=llm.output_price_per_1m,
+        ),
+        initial_k=Decimal(str(settings.kbias_initial)),
+        window_days=settings.assignee_window_days,
+        max_candidates=settings.assignee_max_candidates,
+        reason_count=settings.assignee_reason_count,
+        clock=lambda: datetime.now(UTC),
+        breaks=settings.lunch_breaks(),
     )
 
 

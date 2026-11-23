@@ -44,6 +44,12 @@ from metanoia_ai.application.ports.group_assignee_repository import (
     GroupTaskInfo,
     GroupWork,
 )
+from metanoia_ai.application.ports.group_chat_repository import (
+    ChatGroup,
+    GroupChatMessage,
+    GroupConversation,
+    NewGroupMessage,
+)
 from metanoia_ai.application.ports.learning_repository import (
     DomainProfile,
     KBiasLogEntry,
@@ -1493,3 +1499,97 @@ class FakeGroupAssigneeRepository:
             (tuple(user_ids), window_start, window_end, exclude_task_id)
         )
         return {u: self.work[u] for u in user_ids if u in self.work}
+
+
+# --- Work Group plan chat (FR-24) ---
+
+
+class FakeGroupChatRepository:
+    """Group chats and their messages in memory. Its transaction covers the quota."""
+
+    def __init__(self, quota: FakeQuotaRepository, now: datetime) -> None:
+        self.quota = quota
+        self.now = now
+        self.groups: dict[UUID, ChatGroup] = {}
+        self.roles: dict[tuple[UUID, UUID], GroupRole] = {}
+        self.conversations: dict[UUID, GroupConversation] = {}
+        self.messages: dict[UUID, list[GroupChatMessage]] = {}
+        self.domains: dict[UUID, str] = {}
+        self.work: dict[UUID, ExistingWork] = {}
+        self.fail_on_add = False
+
+    @asynccontextmanager
+    async def transaction(self) -> AsyncIterator[None]:
+        saved = (
+            dict(self.quota.calls_used),
+            list(self.quota.logs),
+            {k: list(v) for k, v in self.messages.items()},
+            dict(self.conversations),
+        )
+        try:
+            yield
+        except BaseException:
+            (
+                self.quota.calls_used,
+                self.quota.logs,
+                self.messages,
+                self.conversations,
+            ) = saved
+            raise
+
+    async def get_group(self, group_id: UUID, caller_id: UUID) -> ChatGroup | None:
+        group = self.groups.get(group_id)
+        if group is None:
+            return None
+        return replace(group, caller_role=self.roles.get((group_id, caller_id)))
+
+    async def get_conversation(self, conversation_id: UUID) -> GroupConversation | None:
+        return self.conversations.get(conversation_id)
+
+    async def list_conversations(self, group_id: UUID) -> list[GroupConversation]:
+        found = [c for c in self.conversations.values() if c.group_id == group_id]
+        return sorted(found, key=lambda c: c.created_at, reverse=True)
+
+    async def create_conversation(
+        self, group_id: UUID, title: str
+    ) -> GroupConversation:
+        conversation = GroupConversation(
+            uuid4(), group_id, title, ConversationStatus.OPEN, self.now
+        )
+        self.conversations[conversation.conversation_id] = conversation
+        self.messages[conversation.conversation_id] = []
+        return conversation
+
+    async def list_messages(self, conversation_id: UUID) -> list[GroupChatMessage]:
+        return list(self.messages.get(conversation_id, []))
+
+    async def add_message(
+        self, conversation_id: UUID, message: NewGroupMessage
+    ) -> GroupChatMessage:
+        if self.fail_on_add:
+            raise RuntimeError("database error while saving")
+        saved = GroupChatMessage(
+            uuid4(),
+            message.role,
+            message.content,
+            self.now,
+            message.draft,
+            message.assignments,
+            message.notes,
+        )
+        self.messages[conversation_id].append(saved)
+        return saved
+
+    async def mark_applied(self, conversation_id: UUID, message_id: UUID) -> bool:
+        rows = self.messages.get(conversation_id, [])
+        for i, m in enumerate(rows):
+            if m.message_id == message_id and m.draft is not None and not m.is_applied:
+                rows[i] = replace(m, is_applied=True)
+                return True
+        return False
+
+    async def active_domains(self) -> dict[UUID, str]:
+        return dict(self.domains)
+
+    async def existing_work(self, group_id: UUID) -> ExistingWork:
+        return self.work.get(group_id, ExistingWork((), ()))

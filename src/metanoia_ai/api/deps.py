@@ -56,6 +56,7 @@ from metanoia_ai.application.use_cases.get_daily_briefing import (
 from metanoia_ai.application.use_cases.get_productive_hours import GetProductiveHours
 from metanoia_ai.application.use_cases.get_project_chat import GetProjectChat
 from metanoia_ai.application.use_cases.get_task_chat import GetTaskChat
+from metanoia_ai.application.use_cases.group_chat import GroupChat
 from metanoia_ai.application.use_cases.import_projects import ImportProjects
 from metanoia_ai.application.use_cases.list_chat_history import ListChatHistory
 from metanoia_ai.application.use_cases.plan_overrun import (
@@ -108,6 +109,7 @@ from metanoia_ai.infrastructure.db.chat_repository import SqlChatRepository
 from metanoia_ai.infrastructure.db.group_assignee_repository import (
     SqlGroupAssigneeRepository,
 )
+from metanoia_ai.infrastructure.db.group_chat_repository import SqlGroupChatRepository
 from metanoia_ai.infrastructure.db.learning_repository import SqlLearningRepository
 from metanoia_ai.infrastructure.db.memory_repository import SqlMemoryRepository
 from metanoia_ai.infrastructure.db.overrun_repository import SqlOverrunRepository
@@ -525,6 +527,38 @@ def get_list_project_chats(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ListProjectChats:
     return ListProjectChats(SqlProjectChatRepository(session))
+
+
+def get_group_chat(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    llm_client: Annotated[LLMClient, Depends(get_project_chat_llm_client)],
+) -> GroupChat:
+    """FR-24: the Leader's plan chat in a work group, same writer as the project chat."""
+    llm = settings.llm_config()
+    return GroupChat(
+        SqlGroupChatRepository(session),
+        SqlGroupAssigneeRepository(session),
+        SqlScheduleRepository(session),
+        SqlQuotaRepository(session),  # same session → same transaction
+        ProjectChatWriter(
+            llm_client,
+            limits=project_limits(settings, manual=False),
+            max_retries=settings.chat_project_max_retries,
+            input_price_per_1m=llm.input_price_per_1m,
+            output_price_per_1m=llm.output_price_per_1m,
+            retry_budget_seconds=settings.chat_project_retry_budget_seconds,
+        ),
+        initial_k=Decimal(str(settings.kbias_initial)),
+        history_limit=settings.chat_project_history_limit,
+        max_message_chars=settings.chat_project_message_max_chars,
+        existing_titles_limit=settings.chat_project_existing_titles_limit,
+        daily_work_hours=settings.chat_daily_work_hours,
+        window_days=settings.assignee_window_days,
+        max_candidates=settings.assignee_max_candidates,
+        now=lambda: datetime.now(UTC),
+        breaks=settings.lunch_breaks(),
+    )
 
 
 def get_send_project_chat_message(

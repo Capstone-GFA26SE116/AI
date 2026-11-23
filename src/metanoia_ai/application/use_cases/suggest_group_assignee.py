@@ -18,6 +18,7 @@ from enum import StrEnum
 from uuid import UUID
 
 from metanoia_ai.application.assignee_reason_writer import AssigneeReasonWriter
+from metanoia_ai.application.group_capacity import member_candidate
 from metanoia_ai.application.ports.group_assignee_repository import (
     GroupAssigneeRepository,
     GroupMember,
@@ -41,17 +42,12 @@ from metanoia_ai.domain.assignee_ranking import (
     Candidate,
     GroupRole,
     RankedCandidate,
-    best_free_times,
-    calendar_gaps,
-    needed_minutes,
-    overlaps,
     rank_candidates,
     reason_facts,
 )
-from metanoia_ai.domain.free_time import DailyBreak, break_ranges, busy_ranges
+from metanoia_ai.domain.free_time import DailyBreak
 from metanoia_ai.domain.memory_text import mask_contact
 from metanoia_ai.domain.models import Language, TimeRange
-from metanoia_ai.domain.schedule_duration import remaining_estimate
 
 OPEN = {GroupTaskStatus.TODO, GroupTaskStatus.IN_PROGRESS}
 OPEN_PERSONAL = {TaskStatus.TODO, TaskStatus.IN_PROGRESS}
@@ -222,30 +218,18 @@ class SuggestGroupAssignee:
         now: datetime,
         window_end: datetime,
     ) -> Candidate:
-        busy = busy_ranges(
-            planning.fixed_tasks, planning.calendar_events, planning.approved_slots
-        )
-        busy += list(work.fixed_times)
-        days = max(1, (window_end - now).days + 1)
-        breaks = break_ranges(planning.hours, now, days, self.breaks)
-        committed = personal_unscheduled_minutes(planning, now, window_end)
-        k = self.initial_k
-        if domain_id is not None:
-            k = planning.k_by_domain.get(domain_id, self.initial_k)
-        gaps = calendar_gaps(planning.hours, now, window_end, [*busy, *breaks])
-        free = sum(g.minutes for g in gaps) - committed - work.open_minutes
-        return Candidate(
-            user_id=member.user_id,
-            role=member.role,
-            is_current_assignee=member.user_id == task.assignee_id,
-            free_minutes=max(free, 0),
-            busy_at_fixed_time=task.fixed_time is not None
-            and overlaps(task.fixed_time, busy),
-            group_work_minutes=work.open_minutes
-            + sum(r.minutes for r in work.fixed_times if _in(r, now, window_end)),
-            needed_minutes=needed_minutes(task.estimate_minutes, k),
-            free_times=best_free_times(gaps),
-            time_zone=planning.hours.time_zone,
+        return member_candidate(
+            member,
+            planning,
+            work,
+            now=now,
+            window_end=window_end,
+            initial_k=self.initial_k,
+            breaks=self.breaks,
+            estimate_minutes=task.estimate_minutes,
+            domain_id=domain_id,
+            fixed_time=task.fixed_time,
+            assignee_id=task.assignee_id,
         )
 
     # --- 5. Reasons and quota ---
@@ -303,23 +287,3 @@ class SuggestGroupAssignee:
                     quota_charged=charged and call.succeeded,
                 )
             )
-
-
-def personal_unscheduled_minutes(
-    planning: PlanningData, now: datetime, window_end: datetime
-) -> int:
-    """The member's own open Flexible work due in the window and not on the calendar yet.
-
-    Tasks with an approved slot are already busy time, so they are not counted twice.
-    """
-    return sum(
-        remaining_estimate(t.estimated_minutes, t.sessions, now)
-        for t in planning.tasks
-        if t.status in OPEN_PERSONAL
-        and not t.has_approved_slot
-        and t.deadline <= window_end
-    )
-
-
-def _in(time_range: TimeRange, start: datetime, end: datetime) -> bool:
-    return time_range.start < end and start < time_range.end

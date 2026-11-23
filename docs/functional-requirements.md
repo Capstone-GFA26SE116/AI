@@ -44,3 +44,5 @@ FR-19 Bộ nhớ dài hạn: Lưu tên task, lý do dừng, lý do trễ để l
 FR-20 Dashboard: Tỷ lệ hoàn thành, độ lệch theo từng loại công việc qua thời gian, giờ dự kiến so với thực tế theo task, dự án và khách hàng. Viết bằng lời dễ hiểu, ví dụ "Bạn thường cần thêm 30% thời gian cho Writing".
 G. Quản trị
 FR-21 Admin: Quản lý gói, giá, quota AI, người dùng, giao dịch, chi phí AI, thư viện nhạc, bật chế độ nghiên cứu.
+H. Làm việc nhóm (thêm 2026-11-22 theo yêu cầu của giảng viên; Backend PR #15)
+FR-23 Gợi ý người nhận việc nhóm: Leader hỏi "giao việc này cho ai?". Code xếp hạng Leader / Member theo giờ rảnh trước hạn, việc nhóm đang ôm và K của từng người (loại việc Leader chọn); LLM chỉ viết 1 câu lý do cho vài người đầu. Chỉ gợi ý, Leader tự giao qua Backend. Không lộ K, lịch riêng hay tên dự án của thành viên.

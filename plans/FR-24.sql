@@ -1,14 +1,22 @@
 -- FR-24 (AI repo): chat AI của nhóm dùng lại ChatConversation / ChatMessage.
 -- Backend (Việt) chạy file này trên Supabase. AI KHÔNG tự chạy ALTER (CLAUDE.md §8).
 -- Không đổi dữ liệu cũ: mọi chat hiện có vẫn là Project / Task và vẫn có ProjectId.
+-- Chạy lại nhiều lần vẫn an toàn (đã thử trên Postgres 16 tạm, 2026-11-23).
+-- Backend nhớ sửa entity ChatConversation: ProjectId → Guid?, thêm GroupId Guid?.
 
 BEGIN;
 
 -- 1. Cột liên kết tới nhóm; xóa nhóm thì xóa luôn chat của nhóm.
 ALTER TABLE "ChatConversation" ADD COLUMN IF NOT EXISTS "GroupId" uuid;
-ALTER TABLE "ChatConversation"
-    ADD CONSTRAINT "ChatConversation_GroupId_fkey"
-    FOREIGN KEY ("GroupId") REFERENCES "WorkGroup" ("Id") ON DELETE CASCADE;
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                   WHERE conname = 'ChatConversation_GroupId_fkey') THEN
+        ALTER TABLE "ChatConversation"
+            ADD CONSTRAINT "ChatConversation_GroupId_fkey"
+            FOREIGN KEY ("GroupId") REFERENCES "WorkGroup" ("Id") ON DELETE CASCADE;
+    END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS "IX_ChatConversation_GroupId" ON "ChatConversation" ("GroupId");
 
 -- 2. Chat nhóm không thuộc dự án cá nhân nào.

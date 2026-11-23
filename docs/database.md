@@ -239,7 +239,8 @@ Hiếu cho phép 2026-11-20 (cần báo Backend). Đọc DB 2026-11-20 (chỉ đ
 - `WorkGroup` (`Status` Active / Archived) · `GroupMember` (`Role` Leader / Member / Viewer; unique `GroupId`+`UserId`).
 - `GroupTask`: `AssigneeId` (trống = chưa giao), `Status` ToDo / InProgress / Done / Skipped (không có Scheduled), `Deadline`, `EstimatedMinutes`, `FixedStart` + `FixedEnd` (cả hai hoặc không). **Không có `DomainId`** → FR-23 nhận `domain_id` từ request.
 - `GroupSubTask`: `AssigneeId`, `EstimatedMinutes`, `Status` như trên.
-- AI không ghi bảng nào của nhóm. Lượt AI của FR-23 ghi `AIUsageLog.Feature = 'Schedule'` (CHECK chỉ có Chat / Schedule / Briefing / Embedding).
+- AI không ghi bảng nào của nhóm.
+- ⚠️ FR-24: chat nhóm nằm trong `ChatConversation` (`Scope = 'Group'`, cột mới `GroupId`, `ProjectId` NULL) + `ChatMessage` (`ProposalJson` = bản nháp `project_v1` + mảng `assignments`). Cần Backend chạy `plans/FR-24.sql` (đã thử trên Postgres 16 tạm, chạy lại được). Lượt AI của FR-23 ghi `AIUsageLog.Feature = 'Schedule'` (CHECK chỉ có Chat / Schedule / Briefing / Embedding).
 
 ### `SubscriptionPlan`
 - `Price` bigint ≥ 0 (Free = 0) · `AiCallLimit` ≥ 0, trống = không giới hạn · `Name` unique.

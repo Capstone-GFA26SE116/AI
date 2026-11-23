@@ -5,8 +5,9 @@ draft tasks already given to them counted as extra work, so one member does not 
 everything. The reason is written by code from the same numbers (no extra LLM call).
 """
 
+import re
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from uuid import UUID
 
@@ -18,7 +19,13 @@ from metanoia_ai.domain.assignee_ranking import (
     hours_text,
     rank_candidates,
 )
+from metanoia_ai.domain.memory_text import EMAIL_MASK, PHONE_MASK
 from metanoia_ai.domain.models import Language
+from metanoia_ai.domain.project_breakdown import ProjectDraft
+
+MASKS = re.compile(
+    r"\s*(?:" + "|".join(re.escape(m) for m in (EMAIL_MASK, PHONE_MASK)) + r")"
+)
 
 
 @dataclass(frozen=True)
@@ -88,3 +95,36 @@ def assignment_reason(best: RankedCandidate, task: PlanTask, language: Language)
         )
     text = f"{free} free before {deadline}"
     return f"{text}; calendar open {first}." if first else f"{text}."
+
+
+def without_masks(text: str) -> str:
+    """'Gửi email cho chị Lan [phone]' → 'Gửi email cho chị Lan'.
+
+    The LLM only sees masked contacts, so it may copy a mask into a title; the
+    title becomes a real group task, where a mask makes no sense.
+    """
+    return " ".join(MASKS.sub("", text).split()) or text
+
+
+def clean_titles(draft: ProjectDraft) -> ProjectDraft:
+    """The draft with masks removed from milestone, task and subtask titles."""
+    return replace(
+        draft,
+        milestones=tuple(
+            replace(
+                m,
+                title=without_masks(m.title),
+                tasks=tuple(
+                    replace(
+                        t,
+                        title=without_masks(t.title),
+                        subtasks=tuple(
+                            replace(s, title=without_masks(s.title)) for s in t.subtasks
+                        ),
+                    )
+                    for t in m.tasks
+                ),
+            )
+            for m in draft.milestones
+        ),
+    )

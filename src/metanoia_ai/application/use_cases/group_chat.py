@@ -8,7 +8,7 @@ then marks the draft as applied here.
 """
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
@@ -51,7 +51,12 @@ from metanoia_ai.application.use_cases.suggest_group_assignee import (
 )
 from metanoia_ai.domain.assignee_ranking import Candidate, GroupRole
 from metanoia_ai.domain.free_time import DailyBreak
-from metanoia_ai.domain.group_plan import PlanTask, TaskAssignment, assign_tasks
+from metanoia_ai.domain.group_plan import (
+    PlanTask,
+    TaskAssignment,
+    assign_tasks,
+    clean_titles,
+)
 from metanoia_ai.domain.memory_text import mask_contact
 from metanoia_ai.domain.models import Language
 from metanoia_ai.domain.project_breakdown import (
@@ -243,6 +248,7 @@ class GroupChat:
         saved = None
         assignments: tuple[TaskAssignment, ...] = ()
         if reply.draft is not None:
+            reply = replace(reply, draft=clean_titles(reply.draft))
             saved = SavedProjectDraft(
                 draft=reply.draft,
                 numbers=project_numbers(

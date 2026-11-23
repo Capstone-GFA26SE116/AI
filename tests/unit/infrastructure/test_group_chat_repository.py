@@ -25,10 +25,12 @@ from metanoia_ai.domain.project_breakdown import (
 )
 from metanoia_ai.domain.project_discussion import DiscussionNotes
 from metanoia_ai.infrastructure.db.group_chat_repository import (
+    ACTIVE_DOMAINS,
     ADD_MESSAGE,
     CREATE_CONVERSATION,
     GET_CONVERSATION,
     GET_GROUP,
+    GROUP_MILESTONES,
     GROUP_TASKS,
     LIST_CONVERSATIONS,
     LIST_MESSAGES,
@@ -166,3 +168,44 @@ def test_add_message_and_mark_applied_send_the_right_params():
     assert params["sender"] == "AI" and "assignments" in params["proposal"]
     assert asyncio.run(repo.mark_applied(CHAT, MSG)) is False  # no row updated
     assert session.calls[1][1]["version"] == "project_v1"
+
+
+def test_reads_convert_rows():
+    conversation = SimpleNamespace(
+        Id=CHAT, GroupId=GROUP, Title="Kế hoạch", Status="Open", CreatedAt=WHEN
+    )
+    group = SimpleNamespace(
+        Id=GROUP,
+        Name="Nhóm",
+        Description="d",
+        Deadline=None,
+        Status="Active",
+        CallerRole="Member",
+        TimeZone="Asia/Ho_Chi_Minh",
+    )
+    session = RecordingSession(
+        {
+            str(GET_GROUP): [group],
+            str(GET_CONVERSATION): [conversation],
+            str(LIST_CONVERSATIONS): [conversation],
+            str(CREATE_CONVERSATION): [conversation],
+            str(LIST_MESSAGES): [message_row(None)],
+            str(ACTIVE_DOMAINS): [SimpleNamespace(Id=CODING, Name="Coding")],
+            str(GROUP_MILESTONES): [SimpleNamespace(Name="M1")],
+            str(GROUP_TASKS): [SimpleNamespace(Title="T1")],
+        }
+    )
+    repo = SqlGroupChatRepository(session)
+    run = asyncio.run
+    assert run(repo.get_group(GROUP, A)).caller_role is GroupRole.MEMBER
+    assert run(repo.get_conversation(CHAT)).title == "Kế hoạch"
+    assert [c.conversation_id for c in run(repo.list_conversations(GROUP))] == [CHAT]
+    assert run(repo.create_conversation(GROUP, "Kế hoạch")).group_id == GROUP
+    (message,) = run(repo.list_messages(CHAT))
+    assert message.draft is None and message.notes is None
+    assert run(repo.active_domains()) == {CODING: "Coding"}
+    work = run(repo.existing_work(GROUP))
+    assert work.milestone_titles == ("M1",) and work.task_titles == ("T1",)
+    empty = SqlGroupChatRepository(RecordingSession())
+    assert run(empty.get_group(GROUP, A)) is None
+    assert run(empty.get_conversation(CHAT)) is None

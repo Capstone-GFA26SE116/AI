@@ -80,7 +80,7 @@ def draft_answer() -> str:
                 {
                     "title": "Thiết kế",
                     "deadline": "2026-11-25",
-                    "tasks": [task("Wireframe trang chủ", DESIGN, 120)],
+                    "tasks": [task("Wireframe trang chủ gửi [email]", DESIGN, 120)],
                 },
                 {
                     "title": "Lập trình",
@@ -250,6 +250,7 @@ def test_plan_gives_a_draft_with_a_member_for_every_task():
     assert [a.task_key for a in ai.assignments] == keys
     assert all(a.user_id in (LEADER, MEMBER) and a.reason for a in ai.assignments)
     assert ai.assignments[0].user_id == MEMBER  # more free time than the Leader
+    assert ai.draft.draft.tasks[0].title == "Wireframe trang chủ gửi"  # no mask
     assert world.used == 1
     messages = run(world.use_case().get(LEADER, chat)).messages
     assert [m.role for m in messages] == [ChatRole.USER, ChatRole.ASSISTANT]

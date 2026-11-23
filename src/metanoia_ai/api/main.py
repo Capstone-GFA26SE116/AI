@@ -17,6 +17,7 @@ from metanoia_ai.api.routes import (
     briefing,
     chat,
     chat_history,
+    groups,
     learning,
     memory,
     profile,
@@ -58,6 +59,7 @@ app.include_router(profile.router)
 app.include_router(briefing.router)
 app.include_router(analytics.router)
 app.include_router(assistant.router)
+app.include_router(groups.router)
 
 
 class HealthResponse(BaseModel):

@@ -39,6 +39,11 @@ from metanoia_ai.application.ports.embedding_client import (
     EmbeddingError,
     EmbeddingResponse,
 )
+from metanoia_ai.application.ports.group_assignee_repository import (
+    GroupMember,
+    GroupTaskInfo,
+    GroupWork,
+)
 from metanoia_ai.application.ports.learning_repository import (
     DomainProfile,
     KBiasLogEntry,
@@ -86,6 +91,7 @@ from metanoia_ai.application.ports.similar_task_repository import (
     VectorMatch,
 )
 from metanoia_ai.domain.analytics import DeadlineTask, DoneTask, Period
+from metanoia_ai.domain.assignee_ranking import GroupRole
 from metanoia_ai.domain.memory_text import MemoryDraft
 from metanoia_ai.domain.name_matching import NamedItem
 from metanoia_ai.domain.productive_hours import (
@@ -1438,3 +1444,52 @@ class FakeProjectImportRepository:
         chat_id = uuid4()
         row.chats.append((chat_id, title, first_message))
         return chat_id
+
+
+# --- Work Group assignee suggestion (FR-23) ---
+
+
+class FakeGroupAssigneeRepository:
+    """Group tasks, members and group work in memory. Its transaction covers the quota fake."""
+
+    def __init__(self, quota: FakeQuotaRepository) -> None:
+        self.quota = quota
+        self.tasks: dict[UUID, GroupTaskInfo] = {}
+        self.roles: dict[
+            tuple[UUID, UUID], GroupRole
+        ] = {}  # (group, user) -> GroupRole
+        self.members: dict[UUID, list[GroupMember]] = {}  # group -> Leader / Member
+        self.work: dict[UUID, GroupWork] = {}  # user -> open group work
+        self.work_calls: list[tuple[tuple[UUID, ...], datetime, datetime, UUID]] = []
+        self.transactions = 0
+
+    @asynccontextmanager
+    async def transaction(self) -> AsyncIterator[None]:
+        self.transactions += 1
+        saved = (dict(self.quota.calls_used), list(self.quota.logs))
+        try:
+            yield
+        except BaseException:
+            self.quota.calls_used, self.quota.logs = saved
+            raise
+
+    async def get_task(self, task_id: UUID, caller_id: UUID) -> GroupTaskInfo | None:
+        task = self.tasks.get(task_id)
+        if task is None:
+            return None
+        return replace(task, caller_role=self.roles.get((task.group_id, caller_id)))
+
+    async def get_members(self, group_id: UUID, limit: int) -> list[GroupMember]:
+        return list(self.members.get(group_id, []))[:limit]
+
+    async def get_group_work(
+        self,
+        user_ids: Sequence[UUID],
+        window_start: datetime,
+        window_end: datetime,
+        exclude_task_id: UUID,
+    ) -> dict[UUID, GroupWork]:
+        self.work_calls.append(
+            (tuple(user_ids), window_start, window_end, exclude_task_id)
+        )
+        return {u: self.work[u] for u in user_ids if u in self.work}

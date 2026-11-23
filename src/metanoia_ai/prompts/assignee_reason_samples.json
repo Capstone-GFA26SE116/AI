@@ -1,0 +1,369 @@
+[
+  {
+    "name": "clear best, vi",
+    "language": "vi",
+    "task_title": "Thiết kế trang chủ",
+    "members": [
+      {
+        "member_id": "00000000-0000-0000-0000-000000000001",
+        "rank": 1,
+        "candidates": 3,
+        "busy_at_fixed_time": false,
+        "fits": true,
+        "free_hours": 14.0,
+        "group_work_hours": 0.0,
+        "most_free_time": true,
+        "least_group_work": true
+      },
+      {
+        "member_id": "00000000-0000-0000-0000-000000000002",
+        "rank": 2,
+        "candidates": 3,
+        "busy_at_fixed_time": false,
+        "fits": true,
+        "free_hours": 9.5,
+        "group_work_hours": 2.0,
+        "most_free_time": false,
+        "least_group_work": false
+      },
+      {
+        "member_id": "00000000-0000-0000-0000-000000000003",
+        "rank": 3,
+        "candidates": 3,
+        "busy_at_fixed_time": true,
+        "fits": true,
+        "free_hours": 12.0,
+        "group_work_hours": 1.0,
+        "most_free_time": false,
+        "least_group_work": false
+      }
+    ]
+  },
+  {
+    "name": "clear best, en",
+    "language": "en",
+    "task_title": "Write API docs",
+    "members": [
+      {
+        "member_id": "00000000-0000-0000-0000-000000000001",
+        "rank": 1,
+        "candidates": 3,
+        "busy_at_fixed_time": false,
+        "fits": true,
+        "free_hours": 14.0,
+        "group_work_hours": 0.0,
+        "most_free_time": true,
+        "least_group_work": true
+      },
+      {
+        "member_id": "00000000-0000-0000-0000-000000000002",
+        "rank": 2,
+        "candidates": 3,
+        "busy_at_fixed_time": false,
+        "fits": true,
+        "free_hours": 9.5,
+        "group_work_hours": 2.0,
+        "most_free_time": false,
+        "least_group_work": false
+      },
+      {
+        "member_id": "00000000-0000-0000-0000-000000000003",
+        "rank": 3,
+        "candidates": 3,
+        "busy_at_fixed_time": true,
+        "fits": true,
+        "free_hours": 12.0,
+        "group_work_hours": 1.0,
+        "most_free_time": false,
+        "least_group_work": false
+      }
+    ]
+  },
+  {
+    "name": "nobody fits, vi",
+    "language": "vi",
+    "task_title": "Làm báo cáo cuối kỳ",
+    "members": [
+      {
+        "member_id": "00000000-0000-0000-0000-000000000001",
+        "rank": 1,
+        "candidates": 2,
+        "busy_at_fixed_time": false,
+        "fits": false,
+        "free_hours": 4.0,
+        "group_work_hours": 6.0,
+        "most_free_time": true,
+        "least_group_work": false
+      },
+      {
+        "member_id": "00000000-0000-0000-0000-000000000002",
+        "rank": 2,
+        "candidates": 2,
+        "busy_at_fixed_time": false,
+        "fits": false,
+        "free_hours": 2.5,
+        "group_work_hours": 1.0,
+        "most_free_time": false,
+        "least_group_work": true
+      }
+    ]
+  },
+  {
+    "name": "no estimate, en",
+    "language": "en",
+    "task_title": "Fix login bug",
+    "members": [
+      {
+        "member_id": "00000000-0000-0000-0000-000000000001",
+        "rank": 1,
+        "candidates": 2,
+        "busy_at_fixed_time": false,
+        "fits": null,
+        "free_hours": 20.0,
+        "group_work_hours": 0.0,
+        "most_free_time": true,
+        "least_group_work": true
+      },
+      {
+        "member_id": "00000000-0000-0000-0000-000000000002",
+        "rank": 2,
+        "candidates": 2,
+        "busy_at_fixed_time": false,
+        "fits": null,
+        "free_hours": 8.0,
+        "group_work_hours": 3.5,
+        "most_free_time": false,
+        "least_group_work": false
+      }
+    ]
+  },
+  {
+    "name": "everyone busy at fixed time, vi",
+    "language": "vi",
+    "task_title": "Họp với khách hàng",
+    "members": [
+      {
+        "member_id": "00000000-0000-0000-0000-000000000001",
+        "rank": 1,
+        "candidates": 2,
+        "busy_at_fixed_time": true,
+        "fits": true,
+        "free_hours": 10.0,
+        "group_work_hours": 0.0,
+        "most_free_time": true,
+        "least_group_work": true
+      },
+      {
+        "member_id": "00000000-0000-0000-0000-000000000002",
+        "rank": 2,
+        "candidates": 2,
+        "busy_at_fixed_time": true,
+        "fits": false,
+        "free_hours": 3.0,
+        "group_work_hours": 4.0,
+        "most_free_time": false,
+        "least_group_work": false
+      }
+    ]
+  },
+  {
+    "name": "tie on free time, en",
+    "language": "en",
+    "task_title": "Test the payment page",
+    "members": [
+      {
+        "member_id": "00000000-0000-0000-0000-000000000001",
+        "rank": 1,
+        "candidates": 3,
+        "busy_at_fixed_time": false,
+        "fits": true,
+        "free_hours": 10.0,
+        "group_work_hours": 0.5,
+        "most_free_time": true,
+        "least_group_work": true
+      },
+      {
+        "member_id": "00000000-0000-0000-0000-000000000002",
+        "rank": 2,
+        "candidates": 3,
+        "busy_at_fixed_time": false,
+        "fits": true,
+        "free_hours": 10.0,
+        "group_work_hours": 1.5,
+        "most_free_time": true,
+        "least_group_work": false
+      },
+      {
+        "member_id": "00000000-0000-0000-0000-000000000003",
+        "rank": 3,
+        "candidates": 3,
+        "busy_at_fixed_time": false,
+        "fits": true,
+        "free_hours": 6.0,
+        "group_work_hours": 0.5,
+        "most_free_time": false,
+        "least_group_work": true
+      }
+    ]
+  },
+  {
+    "name": "single member, vi",
+    "language": "vi",
+    "task_title": "Cập nhật README",
+    "members": [
+      {
+        "member_id": "00000000-0000-0000-0000-000000000001",
+        "rank": 1,
+        "candidates": 1,
+        "busy_at_fixed_time": false,
+        "fits": true,
+        "free_hours": 30.0,
+        "group_work_hours": 0.0,
+        "most_free_time": true,
+        "least_group_work": true
+      }
+    ]
+  },
+  {
+    "name": "leader is busiest, en",
+    "language": "en",
+    "task_title": "Prepare demo data",
+    "members": [
+      {
+        "member_id": "00000000-0000-0000-0000-000000000001",
+        "rank": 1,
+        "candidates": 3,
+        "busy_at_fixed_time": false,
+        "fits": true,
+        "free_hours": 11.0,
+        "group_work_hours": 1.0,
+        "most_free_time": true,
+        "least_group_work": false
+      },
+      {
+        "member_id": "00000000-0000-0000-0000-000000000002",
+        "rank": 2,
+        "candidates": 3,
+        "busy_at_fixed_time": false,
+        "fits": true,
+        "free_hours": 7.0,
+        "group_work_hours": 0.0,
+        "most_free_time": false,
+        "least_group_work": true
+      },
+      {
+        "member_id": "00000000-0000-0000-0000-000000000003",
+        "rank": 3,
+        "candidates": 3,
+        "busy_at_fixed_time": false,
+        "fits": false,
+        "free_hours": 1.0,
+        "group_work_hours": 12.0,
+        "most_free_time": false,
+        "least_group_work": false
+      }
+    ]
+  },
+  {
+    "name": "tight deadline, vi",
+    "language": "vi",
+    "task_title": "Sửa lỗi giao diện mobile",
+    "members": [
+      {
+        "member_id": "00000000-0000-0000-0000-000000000001",
+        "rank": 1,
+        "candidates": 3,
+        "busy_at_fixed_time": false,
+        "fits": true,
+        "free_hours": 3.0,
+        "group_work_hours": 0.0,
+        "most_free_time": true,
+        "least_group_work": true
+      },
+      {
+        "member_id": "00000000-0000-0000-0000-000000000002",
+        "rank": 2,
+        "candidates": 3,
+        "busy_at_fixed_time": false,
+        "fits": false,
+        "free_hours": 1.5,
+        "group_work_hours": 0.0,
+        "most_free_time": false,
+        "least_group_work": true
+      },
+      {
+        "member_id": "00000000-0000-0000-0000-000000000003",
+        "rank": 3,
+        "candidates": 3,
+        "busy_at_fixed_time": true,
+        "fits": false,
+        "free_hours": 0.5,
+        "group_work_hours": 2.0,
+        "most_free_time": false,
+        "least_group_work": false
+      }
+    ]
+  },
+  {
+    "name": "many members, en",
+    "language": "en",
+    "task_title": "Translate the user guide",
+    "members": [
+      {
+        "member_id": "00000000-0000-0000-0000-000000000001",
+        "rank": 1,
+        "candidates": 5,
+        "busy_at_fixed_time": false,
+        "fits": true,
+        "free_hours": 13.0,
+        "group_work_hours": 0.5,
+        "most_free_time": true,
+        "least_group_work": true
+      },
+      {
+        "member_id": "00000000-0000-0000-0000-000000000002",
+        "rank": 2,
+        "candidates": 5,
+        "busy_at_fixed_time": false,
+        "fits": true,
+        "free_hours": 11.0,
+        "group_work_hours": 1.0,
+        "most_free_time": false,
+        "least_group_work": false
+      },
+      {
+        "member_id": "00000000-0000-0000-0000-000000000003",
+        "rank": 3,
+        "candidates": 5,
+        "busy_at_fixed_time": false,
+        "fits": true,
+        "free_hours": 9.0,
+        "group_work_hours": 1.5,
+        "most_free_time": false,
+        "least_group_work": false
+      },
+      {
+        "member_id": "00000000-0000-0000-0000-000000000004",
+        "rank": 4,
+        "candidates": 5,
+        "busy_at_fixed_time": false,
+        "fits": false,
+        "free_hours": 7.0,
+        "group_work_hours": 2.0,
+        "most_free_time": false,
+        "least_group_work": false
+      },
+      {
+        "member_id": "00000000-0000-0000-0000-000000000005",
+        "rank": 5,
+        "candidates": 5,
+        "busy_at_fixed_time": false,
+        "fits": false,
+        "free_hours": 5.0,
+        "group_work_hours": 2.5,
+        "most_free_time": false,
+        "least_group_work": false
+      }
+    ]
+  }
+]

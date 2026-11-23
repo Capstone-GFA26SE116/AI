@@ -4,6 +4,7 @@ Called by the Web / Mobile app when the Leader opens a group task. It only sugge
 the Leader assigns through the Backend (PUT /api/group-tasks/{id}/assignee).
 """
 
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -32,6 +33,11 @@ class SuggestRequest(BaseModel):
     language: Language = Language.VI
 
 
+class FreeTimeResponse(BaseModel):
+    start: datetime  # ISO 8601 in the member's time zone
+    end: datetime
+
+
 class SuggestionResponse(BaseModel):
     user_id: UUID
     role: GroupRole
@@ -42,6 +48,7 @@ class SuggestionResponse(BaseModel):
     group_work_minutes: int  # open group work in that time
     fits: bool | None  # None: the task has no estimate
     reason: str | None
+    free_times: list[FreeTimeResponse]  # the longest open spots on their calendar
 
 
 class SuggestResponse(BaseModel):
@@ -97,6 +104,9 @@ def to_response(result: SuggestionResult) -> SuggestResponse:
                 group_work_minutes=s.group_work_minutes,
                 fits=s.fits,
                 reason=s.reason,
+                free_times=[
+                    FreeTimeResponse(start=t.start, end=t.end) for t in s.free_times
+                ],
             )
             for s in result.suggestions
         ],

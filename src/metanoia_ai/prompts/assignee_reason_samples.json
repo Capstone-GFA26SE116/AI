@@ -13,7 +13,14 @@
         "free_hours": 14.0,
         "group_work_hours": 0.0,
         "most_free_time": true,
-        "least_group_work": true
+        "least_group_work": true,
+        "free_times": [
+          "Thứ Hai 23/11, 08:00–12:00",
+          "Thứ Ba 24/11, 13:00–17:00"
+        ],
+        "first_free": "Thứ Hai 23/11, 08:00",
+        "deadline": "Thứ Năm 26/11, 17:00",
+        "is_current_assignee": false
       },
       {
         "member_id": "00000000-0000-0000-0000-000000000002",
@@ -24,7 +31,14 @@
         "free_hours": 9.5,
         "group_work_hours": 2.0,
         "most_free_time": false,
-        "least_group_work": false
+        "least_group_work": false,
+        "free_times": [
+          "Thứ Ba 24/11, 08:00–12:00",
+          "Thứ Tư 25/11, 13:00–17:00"
+        ],
+        "first_free": "Thứ Ba 24/11, 08:00",
+        "deadline": "Thứ Năm 26/11, 17:00",
+        "is_current_assignee": true
       },
       {
         "member_id": "00000000-0000-0000-0000-000000000003",
@@ -35,7 +49,14 @@
         "free_hours": 12.0,
         "group_work_hours": 1.0,
         "most_free_time": false,
-        "least_group_work": false
+        "least_group_work": false,
+        "free_times": [
+          "Thứ Tư 25/11, 08:00–12:00",
+          "Thứ Hai 23/11, 13:00–17:00"
+        ],
+        "first_free": "Thứ Tư 25/11, 08:00",
+        "deadline": "Thứ Năm 26/11, 17:00",
+        "is_current_assignee": false
       }
     ]
   },
@@ -53,7 +74,14 @@
         "free_hours": 14.0,
         "group_work_hours": 0.0,
         "most_free_time": true,
-        "least_group_work": true
+        "least_group_work": true,
+        "free_times": [
+          "Tue 24/11, 08:00–12:00",
+          "Wed 25/11, 13:00–17:00"
+        ],
+        "first_free": "Tue 24/11, 08:00",
+        "deadline": "Thu 26/11, 17:00",
+        "is_current_assignee": false
       },
       {
         "member_id": "00000000-0000-0000-0000-000000000002",
@@ -64,7 +92,14 @@
         "free_hours": 9.5,
         "group_work_hours": 2.0,
         "most_free_time": false,
-        "least_group_work": false
+        "least_group_work": false,
+        "free_times": [
+          "Wed 25/11, 08:00–12:00",
+          "Mon 23/11, 13:00–17:00"
+        ],
+        "first_free": "Wed 25/11, 08:00",
+        "deadline": "Thu 26/11, 17:00",
+        "is_current_assignee": false
       },
       {
         "member_id": "00000000-0000-0000-0000-000000000003",
@@ -75,7 +110,14 @@
         "free_hours": 12.0,
         "group_work_hours": 1.0,
         "most_free_time": false,
-        "least_group_work": false
+        "least_group_work": false,
+        "free_times": [
+          "Mon 23/11, 08:00–12:00",
+          "Tue 24/11, 13:00–17:00"
+        ],
+        "first_free": "Mon 23/11, 08:00",
+        "deadline": "Thu 26/11, 17:00",
+        "is_current_assignee": false
       }
     ]
   },
@@ -93,7 +135,13 @@
         "free_hours": 4.0,
         "group_work_hours": 6.0,
         "most_free_time": true,
-        "least_group_work": false
+        "least_group_work": false,
+        "free_times": [
+          "Thứ Tư 25/11, 14:00–16:30"
+        ],
+        "first_free": "Thứ Tư 25/11, 14:00",
+        "deadline": "Thứ Năm 26/11, 17:00",
+        "is_current_assignee": false
       },
       {
         "member_id": "00000000-0000-0000-0000-000000000002",
@@ -104,7 +152,13 @@
         "free_hours": 2.5,
         "group_work_hours": 1.0,
         "most_free_time": false,
-        "least_group_work": true
+        "least_group_work": true,
+        "free_times": [
+          "Thứ Hai 23/11, 14:00–16:30"
+        ],
+        "first_free": "Thứ Hai 23/11, 14:00",
+        "deadline": "Thứ Năm 26/11, 17:00",
+        "is_current_assignee": false
       }
     ]
   },
@@ -122,7 +176,14 @@
         "free_hours": 20.0,
         "group_work_hours": 0.0,
         "most_free_time": true,
-        "least_group_work": true
+        "least_group_work": true,
+        "free_times": [
+          "Mon 23/11, 08:00–12:00",
+          "Tue 24/11, 13:00–17:00"
+        ],
+        "first_free": "Mon 23/11, 08:00",
+        "deadline": null,
+        "is_current_assignee": false
       },
       {
         "member_id": "00000000-0000-0000-0000-000000000002",
@@ -133,7 +194,14 @@
         "free_hours": 8.0,
         "group_work_hours": 3.5,
         "most_free_time": false,
-        "least_group_work": false
+        "least_group_work": false,
+        "free_times": [
+          "Tue 24/11, 08:00–12:00",
+          "Wed 25/11, 13:00–17:00"
+        ],
+        "first_free": "Tue 24/11, 08:00",
+        "deadline": null,
+        "is_current_assignee": true
       }
     ]
   },
@@ -151,7 +219,14 @@
         "free_hours": 10.0,
         "group_work_hours": 0.0,
         "most_free_time": true,
-        "least_group_work": true
+        "least_group_work": true,
+        "free_times": [
+          "Thứ Ba 24/11, 08:00–12:00",
+          "Thứ Tư 25/11, 13:00–17:00"
+        ],
+        "first_free": "Thứ Ba 24/11, 08:00",
+        "deadline": "Thứ Năm 26/11, 17:00",
+        "is_current_assignee": false
       },
       {
         "member_id": "00000000-0000-0000-0000-000000000002",
@@ -162,7 +237,13 @@
         "free_hours": 3.0,
         "group_work_hours": 4.0,
         "most_free_time": false,
-        "least_group_work": false
+        "least_group_work": false,
+        "free_times": [
+          "Thứ Tư 25/11, 14:00–16:30"
+        ],
+        "first_free": "Thứ Tư 25/11, 14:00",
+        "deadline": "Thứ Năm 26/11, 17:00",
+        "is_current_assignee": false
       }
     ]
   },
@@ -180,7 +261,14 @@
         "free_hours": 10.0,
         "group_work_hours": 0.5,
         "most_free_time": true,
-        "least_group_work": true
+        "least_group_work": true,
+        "free_times": [
+          "Wed 25/11, 08:00–12:00",
+          "Mon 23/11, 13:00–17:00"
+        ],
+        "first_free": "Wed 25/11, 08:00",
+        "deadline": "Thu 26/11, 17:00",
+        "is_current_assignee": false
       },
       {
         "member_id": "00000000-0000-0000-0000-000000000002",
@@ -191,7 +279,14 @@
         "free_hours": 10.0,
         "group_work_hours": 1.5,
         "most_free_time": true,
-        "least_group_work": false
+        "least_group_work": false,
+        "free_times": [
+          "Mon 23/11, 08:00–12:00",
+          "Tue 24/11, 13:00–17:00"
+        ],
+        "first_free": "Mon 23/11, 08:00",
+        "deadline": "Thu 26/11, 17:00",
+        "is_current_assignee": false
       },
       {
         "member_id": "00000000-0000-0000-0000-000000000003",
@@ -202,7 +297,14 @@
         "free_hours": 6.0,
         "group_work_hours": 0.5,
         "most_free_time": false,
-        "least_group_work": true
+        "least_group_work": true,
+        "free_times": [
+          "Tue 24/11, 08:00–12:00",
+          "Wed 25/11, 13:00–17:00"
+        ],
+        "first_free": "Tue 24/11, 08:00",
+        "deadline": "Thu 26/11, 17:00",
+        "is_current_assignee": false
       }
     ]
   },
@@ -220,7 +322,14 @@
         "free_hours": 30.0,
         "group_work_hours": 0.0,
         "most_free_time": true,
-        "least_group_work": true
+        "least_group_work": true,
+        "free_times": [
+          "Thứ Hai 23/11, 08:00–12:00",
+          "Thứ Ba 24/11, 13:00–17:00"
+        ],
+        "first_free": "Thứ Hai 23/11, 08:00",
+        "deadline": "Thứ Năm 26/11, 17:00",
+        "is_current_assignee": false
       }
     ]
   },
@@ -238,7 +347,14 @@
         "free_hours": 11.0,
         "group_work_hours": 1.0,
         "most_free_time": true,
-        "least_group_work": false
+        "least_group_work": false,
+        "free_times": [
+          "Tue 24/11, 08:00–12:00",
+          "Wed 25/11, 13:00–17:00"
+        ],
+        "first_free": "Tue 24/11, 08:00",
+        "deadline": "Thu 26/11, 17:00",
+        "is_current_assignee": false
       },
       {
         "member_id": "00000000-0000-0000-0000-000000000002",
@@ -249,7 +365,14 @@
         "free_hours": 7.0,
         "group_work_hours": 0.0,
         "most_free_time": false,
-        "least_group_work": true
+        "least_group_work": true,
+        "free_times": [
+          "Wed 25/11, 08:00–12:00",
+          "Mon 23/11, 13:00–17:00"
+        ],
+        "first_free": "Wed 25/11, 08:00",
+        "deadline": "Thu 26/11, 17:00",
+        "is_current_assignee": false
       },
       {
         "member_id": "00000000-0000-0000-0000-000000000003",
@@ -260,7 +383,13 @@
         "free_hours": 1.0,
         "group_work_hours": 12.0,
         "most_free_time": false,
-        "least_group_work": false
+        "least_group_work": false,
+        "free_times": [
+          "Mon 23/11, 14:00–16:30"
+        ],
+        "first_free": "Mon 23/11, 14:00",
+        "deadline": "Thu 26/11, 17:00",
+        "is_current_assignee": false
       }
     ]
   },
@@ -278,7 +407,13 @@
         "free_hours": 3.0,
         "group_work_hours": 0.0,
         "most_free_time": true,
-        "least_group_work": true
+        "least_group_work": true,
+        "free_times": [
+          "Thứ Tư 25/11, 14:00–16:30"
+        ],
+        "first_free": "Thứ Tư 25/11, 14:00",
+        "deadline": "Thứ Năm 26/11, 17:00",
+        "is_current_assignee": false
       },
       {
         "member_id": "00000000-0000-0000-0000-000000000002",
@@ -289,7 +424,13 @@
         "free_hours": 1.5,
         "group_work_hours": 0.0,
         "most_free_time": false,
-        "least_group_work": true
+        "least_group_work": true,
+        "free_times": [
+          "Thứ Hai 23/11, 14:00–16:30"
+        ],
+        "first_free": "Thứ Hai 23/11, 14:00",
+        "deadline": "Thứ Năm 26/11, 17:00",
+        "is_current_assignee": false
       },
       {
         "member_id": "00000000-0000-0000-0000-000000000003",
@@ -300,7 +441,11 @@
         "free_hours": 0.5,
         "group_work_hours": 2.0,
         "most_free_time": false,
-        "least_group_work": false
+        "least_group_work": false,
+        "free_times": [],
+        "first_free": null,
+        "deadline": "Thứ Năm 26/11, 17:00",
+        "is_current_assignee": false
       }
     ]
   },
@@ -318,7 +463,14 @@
         "free_hours": 13.0,
         "group_work_hours": 0.5,
         "most_free_time": true,
-        "least_group_work": true
+        "least_group_work": true,
+        "free_times": [
+          "Mon 23/11, 08:00–12:00",
+          "Tue 24/11, 13:00–17:00"
+        ],
+        "first_free": "Mon 23/11, 08:00",
+        "deadline": "Thu 26/11, 17:00",
+        "is_current_assignee": false
       },
       {
         "member_id": "00000000-0000-0000-0000-000000000002",
@@ -329,7 +481,14 @@
         "free_hours": 11.0,
         "group_work_hours": 1.0,
         "most_free_time": false,
-        "least_group_work": false
+        "least_group_work": false,
+        "free_times": [
+          "Tue 24/11, 08:00–12:00",
+          "Wed 25/11, 13:00–17:00"
+        ],
+        "first_free": "Tue 24/11, 08:00",
+        "deadline": "Thu 26/11, 17:00",
+        "is_current_assignee": true
       },
       {
         "member_id": "00000000-0000-0000-0000-000000000003",
@@ -340,7 +499,14 @@
         "free_hours": 9.0,
         "group_work_hours": 1.5,
         "most_free_time": false,
-        "least_group_work": false
+        "least_group_work": false,
+        "free_times": [
+          "Wed 25/11, 08:00–12:00",
+          "Mon 23/11, 13:00–17:00"
+        ],
+        "first_free": "Wed 25/11, 08:00",
+        "deadline": "Thu 26/11, 17:00",
+        "is_current_assignee": false
       },
       {
         "member_id": "00000000-0000-0000-0000-000000000004",
@@ -351,7 +517,14 @@
         "free_hours": 7.0,
         "group_work_hours": 2.0,
         "most_free_time": false,
-        "least_group_work": false
+        "least_group_work": false,
+        "free_times": [
+          "Mon 23/11, 08:00–12:00",
+          "Tue 24/11, 13:00–17:00"
+        ],
+        "first_free": "Mon 23/11, 08:00",
+        "deadline": "Thu 26/11, 17:00",
+        "is_current_assignee": false
       },
       {
         "member_id": "00000000-0000-0000-0000-000000000005",
@@ -362,7 +535,13 @@
         "free_hours": 5.0,
         "group_work_hours": 2.5,
         "most_free_time": false,
-        "least_group_work": false
+        "least_group_work": false,
+        "free_times": [
+          "Tue 24/11, 14:00–16:30"
+        ],
+        "first_free": "Tue 24/11, 14:00",
+        "deadline": "Thu 26/11, 17:00",
+        "is_current_assignee": false
       }
     ]
   }

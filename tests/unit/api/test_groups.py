@@ -58,8 +58,10 @@ def test_suggestions_shape_without_private_numbers():
         "group_work_minutes",
         "fits",
         "reason",
+        "free_times",
     }  # no K, no needed minutes
     assert first["rank"] == 1 and first["reason"]
+    assert first["free_times"][0]["start"].endswith("+07:00")  # member's clock
 
 
 def test_without_quota_the_ranking_still_comes_back():

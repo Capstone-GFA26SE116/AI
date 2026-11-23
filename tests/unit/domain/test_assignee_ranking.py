@@ -8,14 +8,19 @@ from zoneinfo import ZoneInfo
 from metanoia_ai.domain.assignee_ranking import (
     Candidate,
     GroupRole,
+    best_free_times,
+    calendar_gaps,
+    format_moment,
+    format_range,
     free_minutes_in_window,
     hours,
+    hours_text,
     needed_minutes,
     overlaps,
     rank_candidates,
     reason_facts,
 )
-from metanoia_ai.domain.models import TimeRange, WorkingHours
+from metanoia_ai.domain.models import Language, TimeRange, WorkingHours
 
 VN = ZoneInfo("Asia/Ho_Chi_Minh")
 HOURS = WorkingHours(
@@ -153,3 +158,73 @@ def test_reason_facts_mark_the_best_free_time_and_least_work():
 def test_hours_rounds_to_one_decimal():
     assert hours(90) == 1.5
     assert hours(100) == 1.7
+
+
+# --- FR-23 #7: concrete free times ---
+
+
+def at(day: int, hour: int, minute: int = 0) -> datetime:
+    return datetime(2026, 11, day, hour, minute, tzinfo=VN)
+
+
+def test_calendar_gaps_and_the_two_longest_in_time_order():
+    busy = [TimeRange(at(23, 9), at(23, 10)), TimeRange(at(24, 8), at(24, 16, 40))]
+    gaps = calendar_gaps(HOURS, MONDAY_8, at(25, 8), busy)
+    assert [(g.start, g.end) for g in gaps] == [
+        (at(23, 8), at(23, 9)),
+        (at(23, 10), at(23, 17)),
+        (at(24, 16, 40), at(24, 17)),  # 20 min: too short to show
+    ]
+    best = best_free_times(gaps)
+    assert [(g.start, g.end) for g in best] == [
+        (at(23, 8), at(23, 9)),
+        (at(23, 10), at(23, 17)),
+    ]
+    assert best_free_times(gaps, count=1) == (gaps[1],)
+    assert calendar_gaps(HOURS, MONDAY_8, MONDAY_8, []) == []
+
+
+def test_times_are_written_in_the_language_and_clock():
+    utc = ZoneInfo("UTC")
+    moment = at(24, 8)
+    assert format_moment(moment, VN, Language.VI) == "Thứ Ba 24/11, 08:00"
+    assert format_moment(moment, VN, Language.EN) == "Tue 24/11, 08:00"
+    assert format_moment(moment, utc, Language.EN) == "Tue 24/11, 01:00"
+    same_day = TimeRange(at(24, 8), at(24, 12))
+    assert format_range(same_day, VN, Language.VI) == "Thứ Ba 24/11, 08:00–12:00"
+    overnight = TimeRange(at(24, 22), at(25, 1))
+    assert format_range(overnight, VN, Language.EN) == (
+        "Tue 24/11, 22:00 – Wed 25/11, 01:00"
+    )
+
+
+def test_reason_facts_carry_free_times_deadline_and_assignee():
+    c = candidate(
+        1,
+        free_times=(TimeRange(at(24, 8), at(24, 12)),),
+        time_zone=VN,
+        is_current_assignee=True,
+    )
+    facts = reason_facts(rank_candidates([c]), Language.VI, at(25, 17))[UUID(int=1)]
+    assert facts.free_times == ("Thứ Ba 24/11, 08:00–12:00",)
+    assert facts.first_free == "Thứ Ba 24/11, 08:00"
+    assert facts.deadline == "Thứ Tư 25/11, 17:00"
+    assert facts.is_current_assignee
+    bare = reason_facts(rank_candidates([candidate(2)]))[UUID(int=2)]
+    assert bare.free_times == () and bare.first_free is None and bare.deadline is None
+
+
+def test_hours_text_has_no_point_zero_and_uses_the_language():
+    assert hours_text(570, Language.VI) == "9,5 giờ"
+    assert hours_text(720, Language.VI) == "12 giờ"
+    assert hours_text(570, Language.EN) == "9.5 hours"
+    assert hours_text(60, Language.EN) == "1 hour"
+    assert hours_text(0, Language.EN) == "0 hours"
+
+
+def test_a_past_deadline_becomes_overdue_without_a_date():
+    ranked = rank_candidates([candidate(1, time_zone=VN)])
+    past = reason_facts(ranked, Language.VI, at(22, 5), now=at(23, 8))[UUID(int=1)]
+    assert past.overdue and past.deadline is None
+    future = reason_facts(ranked, Language.VI, at(25, 17), now=at(23, 8))[UUID(int=1)]
+    assert not future.overdue and future.deadline == "Thứ Tư 25/11, 17:00"

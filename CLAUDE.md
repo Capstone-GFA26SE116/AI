@@ -164,7 +164,7 @@ Full text in `docs/functional-requirements.md`. Status: first line of each `plan
 | FR-22c | Assistant phase 2: 5 voice commands (start / stop / finish / extend timer, approve proposal) returned as "confirm" + action; the app runs them after a yes | `plans/FR-22c.md` |
 | — | Second LLM provider (OpenAI-style API, Groq) when Gemini fails; off until `FALLBACK_LLM_*` are set | `plans/LLM-fallback.md` |
 | — | Plan gates: Free has no AI chat, the assistant is Premium only, productive learning uses `Premium` | `plans/plan-gates.md` |
-| FR-23 | Work Group: suggest who should do a group task. Code ranks Leaders / Members (busy at the fixed time, fits before the deadline with their K, spare time, group work); LLM writes a reason for the top N; no quota → ranking only. Read only on group tables | `plans/FR-23.md` |
+| FR-23 | Work Group: suggest who should do a group task. Code ranks Leaders / Members (busy at the fixed time, fits before the deadline with their K, spare time, group work); LLM writes a reason for the top N with concrete free times / hours (prompt v2; dates and times are checked against the facts); no quota → ranking only. Read only on group tables | `plans/FR-23.md` |
 | FR-16b | A slot runs over: propose to extend it or move the slots after it (no LLM, writes nothing) | `plans/FR-16b.md` |
 
 **Not this repo:** FR-11 schedule approval + writing to Google Calendar (Backend).

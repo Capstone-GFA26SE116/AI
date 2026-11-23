@@ -91,7 +91,8 @@ def reasons_for(prompt: str) -> str:
     return json.dumps(
         {
             "reasons": [
-                {"member_id": i, "reason": "Có nhiều thời gian rảnh."} for i in ids
+                {"member_id": i, "reason": "Còn khoảng 18 giờ rảnh trước hạn."}
+                for i in ids
             ]
         }
     )
@@ -321,3 +322,42 @@ def test_prompt_has_no_names_emails_k_or_needed_minutes():
     assert "@example.com" not in prompt  # masked task title
     assert "1.87" not in prompt and "needed" not in prompt
     assert str(OUTSIDER) not in prompt
+
+
+# --- FR-23 #7: concrete free times ---
+
+
+def test_free_times_and_deadline_reach_the_prompt_and_the_result():
+    world = World(reasons_for)
+    # Member B: busy Monday 08:00–15:00 → longest gaps Tuesday 08:00–12:00 and
+    # Tuesday 13:00–17:00 (lunch 12–13), Monday 15:00–17:00 is shorter.
+    busy = (TimeRange(NOW, NOW + timedelta(hours=7)),)
+    world.schedules.planning[MEMBER_B] = planning(approved_slots=busy)
+    result = world.suggest(breaks=(DailyBreak(time(12), time(13)),))
+    b = next(s for s in result.suggestions if s.user_id == MEMBER_B)
+    assert [(t.start.hour, t.end.hour, t.start.day) for t in b.free_times] == [
+        (8, 12, 24),
+        (13, 17, 24),
+    ]
+    assert b.free_times[0].start.tzinfo == VN
+    prompt = world.llm.prompts[0]
+    assert "Thứ Ba 24/11, 08:00–12:00" in prompt
+    assert '"deadline": "Thứ Tư 25/11, 08:00"' in prompt
+    assert '"first_free": "Thứ Ba 24/11, 08:00"' in prompt
+
+
+def test_hours_reach_the_prompt_as_text():
+    world = World(reasons_for)
+    world.groups.work[MEMBER_A] = GroupWork((), 90)
+    world.suggest()
+    prompt = world.llm.prompts[0]
+    assert '"group_work_hours": "1,5 giờ"' in prompt
+    assert '"free_hours": "18 giờ"' in prompt
+
+
+def test_overdue_task_sends_no_past_deadline():
+    world = World(reasons_for)
+    world.groups.tasks[TASK] = task_info(deadline=NOW - timedelta(days=1))
+    world.suggest()
+    prompt = world.llm.prompts[0]
+    assert '"overdue": true' in prompt and '"deadline": null' in prompt

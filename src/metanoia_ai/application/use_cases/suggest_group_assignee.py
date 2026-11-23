@@ -41,7 +41,8 @@ from metanoia_ai.domain.assignee_ranking import (
     Candidate,
     GroupRole,
     RankedCandidate,
-    free_minutes_in_window,
+    best_free_times,
+    calendar_gaps,
     needed_minutes,
     overlaps,
     rank_candidates,
@@ -90,6 +91,7 @@ class Suggestion:
     group_work_minutes: int
     fits: bool | None
     reason: str | None
+    free_times: tuple[TimeRange, ...] = ()  # longest gaps, in the member's clock
 
 
 @dataclass(frozen=True)
@@ -175,6 +177,13 @@ class SuggestGroupAssignee:
                     group_work_minutes=r.candidate.group_work_minutes,
                     fits=r.fits,
                     reason=reasons.get(r.candidate.user_id),
+                    free_times=tuple(
+                        TimeRange(
+                            t.start.astimezone(r.candidate.time_zone),
+                            t.end.astimezone(r.candidate.time_zone),
+                        )
+                        for t in r.candidate.free_times
+                    ),
                 )
                 for r in ranked
             ),
@@ -223,22 +232,20 @@ class SuggestGroupAssignee:
         k = self.initial_k
         if domain_id is not None:
             k = planning.k_by_domain.get(domain_id, self.initial_k)
+        gaps = calendar_gaps(planning.hours, now, window_end, [*busy, *breaks])
+        free = sum(g.minutes for g in gaps) - committed - work.open_minutes
         return Candidate(
             user_id=member.user_id,
             role=member.role,
             is_current_assignee=member.user_id == task.assignee_id,
-            free_minutes=free_minutes_in_window(
-                planning.hours,
-                now,
-                window_end,
-                [*busy, *breaks],
-                committed + work.open_minutes,
-            ),
+            free_minutes=max(free, 0),
             busy_at_fixed_time=task.fixed_time is not None
             and overlaps(task.fixed_time, busy),
             group_work_minutes=work.open_minutes
             + sum(r.minutes for r in work.fixed_times if _in(r, now, window_end)),
             needed_minutes=needed_minutes(task.estimate_minutes, k),
+            free_times=best_free_times(gaps),
+            time_zone=planning.hours.time_zone,
         )
 
     # --- 5. Reasons and quota ---
@@ -257,7 +264,7 @@ class SuggestGroupAssignee:
         if subscription is None or not subscription.has_calls_left:
             return {}, ReasonSkip.QUOTA
 
-        facts = reason_facts(ranked)
+        facts = reason_facts(ranked, language, task.deadline, now)
         top = {r.candidate.user_id: facts[r.candidate.user_id] for r in ranked}
         top = dict(list(top.items())[: self.reason_count])
         title = mask_contact(task.title, None)

@@ -6,6 +6,7 @@ and if every try fails the ranking is kept without reasons.
 """
 
 import json
+import re
 import time
 from collections.abc import Callable, Mapping
 from decimal import Decimal
@@ -27,8 +28,8 @@ from metanoia_ai.domain.forbidden_terms import has_internal_name
 from metanoia_ai.domain.models import Language
 from metanoia_ai.prompts import load_prompt
 
-PROMPT_VERSION = "assignee_reason_v1"
-MAX_REASON_LENGTH = 200
+PROMPT_VERSION = "assignee_reason_v2"  # v2: concrete times and hours (FR-23 #7)
+MAX_REASON_LENGTH = 250
 # Fact names the user must never see (plus the shared internal names).
 FORBIDDEN_WORDS = (
     "busy_at_fixed_time",
@@ -37,7 +38,13 @@ FORBIDDEN_WORDS = (
     "most_free_time",
     "least_group_work",
     "member_id",
-)
+    "free_times",
+    "first_free",
+    "is_current_assignee",
+)  # "overdue" is a fact name but also a normal word the reason should use
+
+
+DATE_OR_TIME = re.compile(r"\b\d{1,2}[/:]\d{2}\b")  # 24/11, 08:00
 
 
 class AssigneeReasonItem(BaseModel):
@@ -87,7 +94,7 @@ class AssigneeReasonWriter:
                 )
                 continue
             try:
-                reasons = check_answer(response.text, set(facts))
+                reasons = check_answer(response.text, facts)
             except BadAnswerError:
                 reasons = None
             calls.append(
@@ -141,15 +148,24 @@ def facts_to_json(member_id: UUID, facts: ReasonFacts) -> dict[str, object]:
         "candidates": facts.candidates,
         "busy_at_fixed_time": facts.busy_at_fixed_time,
         "fits": facts.fits,
-        "free_hours": facts.free_hours,
-        "group_work_hours": facts.group_work_hours,
+        "free_hours": facts.free_text,
+        "group_work_hours": facts.group_work_text,
         "most_free_time": facts.most_free_time,
         "least_group_work": facts.least_group_work,
+        "free_times": list(facts.free_times),
+        "first_free": facts.first_free,
+        "deadline": facts.deadline,
+        "is_current_assignee": facts.is_current_assignee,
+        "overdue": facts.overdue,
     }
 
 
-def check_answer(text: str, member_ids: set[UUID]) -> dict[UUID, str]:
-    """The reasons by member, or BadAnswerError if the answer breaks any rule."""
+def check_answer(text: str, facts: Mapping[UUID, ReasonFacts]) -> dict[UUID, str]:
+    """The reasons by member, or BadAnswerError if the answer breaks any rule.
+
+    Every date (24/11) or clock time (08:00) in a reason must come from that
+    member's facts: the LLM copies times, it never makes them up.
+    """
     try:
         answer = AssigneeReasonsAnswer.model_validate_json(text)
     except ValidationError as error:
@@ -164,7 +180,13 @@ def check_answer(text: str, member_ids: set[UUID]) -> dict[UUID, str]:
             raise BadAnswerError("reason empty, too long or more than one line")
         if has_internal_name(reason, FORBIDDEN_WORDS):
             raise BadAnswerError("reason shows an internal name")
+        if not any(ch.isdigit() for ch in reason):
+            raise BadAnswerError("reason has no concrete time or number")
+        member = facts.get(item.member_id)
+        allowed = member.written_texts() if member else ""
+        if any(found not in allowed for found in DATE_OR_TIME.findall(reason)):
+            raise BadAnswerError("reason has a date or time not in the facts")
         reasons[item.member_id] = reason
-    if set(reasons) != member_ids:
+    if set(reasons) != set(facts):
         raise BadAnswerError("members missing or unknown")
     return reasons

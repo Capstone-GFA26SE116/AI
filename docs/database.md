@@ -28,7 +28,7 @@ Ký hiệu: **AI ghi** = AI service được INSERT/UPDATE · **Chỉ đọc** =
 - `UserId` NOT NULL · `Level` ∈ {1, 2, 3}, mặc định 3 · `IsFeasible` NOT NULL, mặc định true ·
   `MissingMinutes` trống hoặc > 0, **bắt buộc có khi `IsFeasible = false`** · `Explanation` text NOT NULL ·
   `Warnings` jsonb, trống hoặc mảng (Hiếu thêm 2026-10-07) — mỗi phần tử: `task_id`, `type`, `needed_minutes`, `free_minutes`, `day`, `capacity_minutes`, `message` (FR-10d thêm `day`, `capacity_minutes` cho `type = day_overloaded`) · `CreatedAt` mặc định now().
-- `BlindTestSessionId`, `DisplayPosition`, `IsChosen`: cho FR-13, AI không ghi.
+- `BlindTestSessionId`, `DisplayPosition`, `IsChosen`: **đã bị Backend xóa 2026-11-24** (bỏ FR-13 blind test, bảng `BlindTestSession`). AI không được dùng các cột này.
 - `Status` ∈ {`Pending`, `Approved`, `PartlyApproved`, `Rejected`, `Superseded`}.
   ⚠️ `Superseded` do AI thêm thẳng vào DB 2026-10-13 (Hiếu cho phép, đã báo Backend):
   Backend phải cập nhật entity / migration, nếu không migration sau có thể xoá mất giá trị này.
@@ -181,7 +181,7 @@ Hiếu cho phép 2026-11-20 (cần báo Backend). Đọc DB 2026-11-20 (chỉ đ
 - Có `EndedAt` thì bắt buộc `StopReason` ∈ {`Completed`, `Interrupted`, `Blocked`, `Other`}.
 - `RemainingMinutes` trống hoặc > 0 (Hiếu thêm 2026-10-07; Backend ghi ở FR-16).
 - `Note` text trống được (ghi chú của phiên; FR-19 đưa vào text memory sau khi che thông tin).
-- Cột khác: `ScheduleSlotId?`, `FocusTrackId?` (AI không dùng). Index: `TaskId`, `StartedAt`, `ScheduleSlotId`.
+- Cột khác: `ScheduleSlotId?` (AI không dùng). `FocusTrackId` đã bị Backend xóa 2026-11-24 (cùng bảng `FocusTrack`). Index: `TaskId`, `StartedAt`, `ScheduleSlotId`.
 - 2026-10-16: 7 dòng, **đều của user test** (`@example.invalid`, sót từ các lần chạy thử) → chưa có phiên thật.
 
 ### `Domain`
@@ -240,7 +240,7 @@ Hiếu cho phép 2026-11-20 (cần báo Backend). Đọc DB 2026-11-20 (chỉ đ
 - `GroupTask`: `AssigneeId` (trống = chưa giao), `Status` ToDo / InProgress / Done / Skipped (không có Scheduled), `Deadline`, `EstimatedMinutes`, `FixedStart` + `FixedEnd` (cả hai hoặc không). **Không có `DomainId`** → FR-23 nhận `domain_id` từ request.
 - `GroupSubTask`: `AssigneeId`, `EstimatedMinutes`, `Status` như trên.
 - AI không ghi bảng nào của nhóm.
-- ⚠️ FR-24: chat nhóm nằm trong `ChatConversation` (`Scope = 'Group'`, cột mới `GroupId`, `ProjectId` NULL) + `ChatMessage` (`ProposalJson` = bản nháp `project_v1` + mảng `assignments`). Cần Backend chạy `plans/FR-24.sql` (đã thử trên Postgres 16 tạm, chạy lại được). Lượt AI của FR-23 ghi `AIUsageLog.Feature = 'Schedule'` (CHECK chỉ có Chat / Schedule / Briefing / Embedding).
+- ⚠️ FR-24: chat nhóm nằm trong `ChatConversation` (`Scope = 'Group'`, cột mới `GroupId`, `ProjectId` NULL) + `ChatMessage` (`ProposalJson` = bản nháp `project_v1` + mảng `assignments`). Backend đã chạy (Backend `docs/sql/008_chat_group.sql`, cùng nội dung `plans/FR-24.sql`); kiểm tra DB 2026-11-24: có `GroupId`, FK cascade, `CK_ChatConversation_Scope` / `ScopeLinks`. Lượt AI của FR-23 ghi `AIUsageLog.Feature = 'Schedule'` (CHECK chỉ có Chat / Schedule / Briefing / Embedding).
 
 ### `SubscriptionPlan`
 - `Price` bigint ≥ 0 (Free = 0) · `AiCallLimit` ≥ 0, trống = không giới hạn · `Name` unique.

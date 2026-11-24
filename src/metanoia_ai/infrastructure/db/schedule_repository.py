@@ -156,7 +156,8 @@ GET_APPROVED_SLOTS = text(
 """
 )
 
-# Blind-test proposals (FR-13) are never touched here.
+# A new proposal replaces every older pending one of the user.
+# (The FR-13 blind-test tables and "BlindTestSessionId" were dropped by the Backend on 2026-11-24.)
 CANCEL_OLD_SLOTS = text("""
     UPDATE "ScheduleSlot" s
     SET "Status" = 'Cancelled'
@@ -164,7 +165,6 @@ CANCEL_OLD_SLOTS = text("""
     WHERE s."ScheduleProposalId" = sp."Id"
       AND sp."UserId" = :user_id
       AND sp."Status" = 'Pending'
-      AND sp."BlindTestSessionId" IS NULL
       AND s."Status" = 'Proposed'
 """)
 
@@ -173,7 +173,6 @@ SUPERSEDE_OLD_PROPOSALS = text("""
     SET "Status" = 'Superseded'
     WHERE "UserId" = :user_id
       AND "Status" = 'Pending'
-      AND "BlindTestSessionId" IS NULL
 """)
 
 INSERT_PROPOSAL = text("""

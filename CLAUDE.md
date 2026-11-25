@@ -166,6 +166,8 @@ Full text in `docs/functional-requirements.md`. Status: first line of each `plan
 | — | Plan gates: Free has no AI chat, the assistant is Premium only, productive learning uses `Premium` | `plans/plan-gates.md` |
 | FR-23 | Work Group: suggest who should do a group task. Code ranks Leaders / Members (busy at the fixed time, fits before the deadline with their K, spare time, group work); LLM writes a reason for the top N with concrete free times / hours (prompt v2; dates and times are checked against the facts); no quota → ranking only. Read only on group tables | `plans/FR-23.md` |
 | FR-24 | Work Group plan chat (Leader only): same writer / prompts as FR-08b (`discuss` checklist, `plan` draft); every draft task gets a suggested member by code (FR-23 ranking, work spread out, template reason). AI writes only `ChatConversation` (Scope `Group`, needs `plans/FR-24.sql` on the DB) + `ChatMessage`; the app creates the work through the Backend and calls `/applied` | `plans/FR-24.md` |
+| FR-25 | Work Group: suggest time slots on the caller's calendar for the group work given to them (FR-10 planner, no K, no LLM, writes nothing; the app creates the slots through the Backend) | `plans/FR-25.md` |
+| — | Work Group slots (`ScheduleSlot.GroupTaskId`, owner `UserId`) are busy time in FR-10 / FR-16b / FR-12 / FR-22 / FR-23 | `plans/group-slots-busy.md` |
 | FR-16b | A slot runs over: propose to extend it or move the slots after it (no LLM, writes nothing) | `plans/FR-16b.md` |
 
 **Not this repo:** FR-11 schedule approval + writing to Google Calendar (Backend).

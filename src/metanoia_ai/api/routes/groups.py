@@ -1,4 +1,4 @@
-"""FR-23 endpoint: suggest who should do a group task (Work Group, Backend PR #15).
+"""Work Group endpoints: FR-23 who should do a task, FR-24 plan chat, FR-25 time slots.
 
 Called by the Web / Mobile app when the Leader opens a group task. It only suggests;
 the Leader assigns through the Backend (PUT /api/group-tasks/{id}/assignee).
@@ -12,7 +12,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from metanoia_ai.api.auth import get_current_user_id
-from metanoia_ai.api.deps import get_group_chat, get_suggest_group_assignee
+from metanoia_ai.api.deps import (
+    get_group_chat,
+    get_suggest_group_assignee,
+    get_suggest_group_slots,
+)
 from metanoia_ai.application.ports.chat_repository import ChatRole
 from metanoia_ai.application.ports.group_chat_repository import (
     GroupChatMessage,
@@ -39,6 +43,13 @@ from metanoia_ai.application.use_cases.suggest_group_assignee import (
     ReasonSkip,
     SuggestGroupAssignee,
     SuggestionResult,
+)
+from metanoia_ai.application.use_cases.suggest_group_slots import (
+    GroupSlotSuggestion,
+    GroupTaskBlockedError,
+    GroupTaskMissingError,
+    NotAssignedError,
+    SuggestGroupSlots,
 )
 from metanoia_ai.domain.assignee_ranking import GroupRole
 from metanoia_ai.domain.models import Language
@@ -130,6 +141,102 @@ def to_response(result: SuggestionResult) -> SuggestResponse:
             for s in result.suggestions
         ],
         reasons_skipped=result.reasons_skipped,
+    )
+
+
+# --- FR-25: time slots for my group work ---
+
+
+class SlotSuggestRequest(BaseModel):
+    language: Language = Language.VI
+
+
+class GroupSlotResponse(BaseModel):
+    subtask_id: UUID | None  # send as subTaskId when creating the slot
+    title: str
+    start: datetime  # ISO 8601 in the caller's time zone
+    end: datetime
+    minutes: int
+    reason: str  # ≤ 500 chars: fits the Backend Explanation
+
+
+class GroupSlotWarningResponse(BaseModel):
+    type: str  # not_enough_time / overdue / beyond_window / no_estimate
+    subtask_id: UUID | None = None
+    needed_minutes: int | None = None
+    free_minutes: int | None = None
+
+
+class GroupSlotSuggestResponse(BaseModel):
+    task_id: UUID
+    slots: list[GroupSlotResponse]
+    warnings: list[GroupSlotWarningResponse]
+    summary: str
+    time_zone: str
+
+
+BLOCKED_DETAIL = {
+    "archived": "The group is archived",
+    "closed": "The task is already Done or Skipped",
+    "fixed_time": "The task has a fixed time set by the Leader",
+}
+
+
+@router.post("/tasks/{group_task_id}/slot-suggestions")
+async def suggest_slots(
+    group_task_id: UUID,
+    body: SlotSuggestRequest,
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+    use_case: Annotated[SuggestGroupSlots, Depends(get_suggest_group_slots)],
+) -> GroupSlotSuggestResponse:
+    """Free time on the caller's calendar for their part of this task. Writes nothing.
+
+    The app creates the slots the member keeps with the Backend
+    (POST /api/group-tasks/{id}/schedule-slots).
+    """
+    try:
+        result = await use_case.execute(user_id, group_task_id, body.language)
+    except GroupTaskMissingError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Group task not found"
+        ) from error
+    except NotAssignedError as error:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Nothing open in this task is assigned to you",
+        ) from error
+    except GroupTaskBlockedError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=BLOCKED_DETAIL[error.reason]
+        ) from error
+    return slots_response(result)
+
+
+def slots_response(result: GroupSlotSuggestion) -> GroupSlotSuggestResponse:
+    return GroupSlotSuggestResponse(
+        task_id=result.task_id,
+        slots=[
+            GroupSlotResponse(
+                subtask_id=s.subtask_id,
+                title=s.title,
+                start=s.start,
+                end=s.end,
+                minutes=s.minutes,
+                reason=s.reason,
+            )
+            for s in result.slots
+        ],
+        warnings=[
+            GroupSlotWarningResponse(
+                type=w.type,
+                subtask_id=w.subtask_id,
+                needed_minutes=w.needed_minutes,
+                free_minutes=w.free_minutes,
+            )
+            for w in result.warnings
+        ],
+        summary=result.summary,
+        time_zone=result.time_zone,
     )
 
 

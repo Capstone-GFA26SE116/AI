@@ -241,11 +241,11 @@ Hiếu cho phép 2026-11-20 (cần báo Backend). Đọc DB 2026-11-20 (chỉ đ
 - Unique index `UX_UserSubscription_OneActivePerUser` (`UserId` WHERE `Status = 'Active'`) → mỗi user ≤ 1 dòng `Active`.
 - Nâng cấp gói = dòng mới → `AiCallsUsed` bắt đầu từ 0.
 
-### Work Group (FR-23, chỉ đọc; Backend PR #15, `docs/sql/005`–`006` của Backend)
+### Work Group (FR-23, FR-25, chỉ đọc; Backend PR #15, `docs/sql/005`–`006` của Backend)
 - `WorkGroup` (`Status` Active / Archived) · `GroupMember` (`Role` Leader / Member / Viewer; unique `GroupId`+`UserId`).
 - `GroupTask`: `AssigneeId` (trống = chưa giao), `Status` ToDo / InProgress / Done / Skipped (không có Scheduled), `Deadline`, `EstimatedMinutes`, `FixedStart` + `FixedEnd` (cả hai hoặc không). **Không có `DomainId`** → FR-23 nhận `domain_id` từ request.
 - `GroupSubTask`: `AssigneeId`, `EstimatedMinutes`, `Status` như trên.
-- AI không ghi bảng nào của nhóm.
+- AI không ghi bảng nào của nhóm. FR-25 đọc thêm `WorkGroup.Deadline` (kiểu `date` → cuối giờ làm việc ngày đó) và slot nhóm của người gọi cho việc đó.
 - `GroupFocusSession` (bảng riêng, không phải `FocusSession`): `GroupTaskId`, `GroupSubTaskId?`, `UserId`, `StartedAt`,
   `EndedAt?`, `ScheduleSlotId?` (sql/009). AI chỉ đọc nó để biết slot nhóm đã bấm giờ (FR-16b); không học K hay giờ
   hiệu quả từ đây (Hiếu, 2026-11-25).

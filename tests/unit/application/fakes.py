@@ -1593,3 +1593,17 @@ class FakeGroupChatRepository:
 
     async def existing_work(self, group_id: UUID) -> ExistingWork:
         return self.work.get(group_id, ExistingWork((), ()))
+
+
+class FakeGroupSlotRepository:
+    """FR-25: one group task per id, as seen by any caller."""
+
+    def __init__(self) -> None:
+        from metanoia_ai.application.ports.group_slot_repository import GroupSlotTask
+
+        self.tasks: dict[UUID, GroupSlotTask] = {}
+        self.calls: list[tuple[UUID, UUID]] = []
+
+    async def get_task(self, task_id: UUID, caller_id: UUID):
+        self.calls.append((task_id, caller_id))
+        return self.tasks.get(task_id)

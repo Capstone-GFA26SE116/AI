@@ -89,6 +89,10 @@ from metanoia_ai.application.use_cases.start_project_chat import (
 from metanoia_ai.application.use_cases.suggest_group_assignee import (
     SuggestGroupAssignee,
 )
+from metanoia_ai.application.use_cases.suggest_group_slots import (
+    GroupSlotSettings,
+    SuggestGroupSlots,
+)
 from metanoia_ai.config import MissingLlmSettingError, Settings, get_settings
 from metanoia_ai.domain.analytics import AnalyticsRange
 from metanoia_ai.domain.briefing import BiasRule
@@ -110,6 +114,7 @@ from metanoia_ai.infrastructure.db.group_assignee_repository import (
     SqlGroupAssigneeRepository,
 )
 from metanoia_ai.infrastructure.db.group_chat_repository import SqlGroupChatRepository
+from metanoia_ai.infrastructure.db.group_slot_repository import SqlGroupSlotRepository
 from metanoia_ai.infrastructure.db.learning_repository import SqlLearningRepository
 from metanoia_ai.infrastructure.db.memory_repository import SqlMemoryRepository
 from metanoia_ai.infrastructure.db.overrun_repository import SqlOverrunRepository
@@ -254,6 +259,27 @@ def get_suggest_group_assignee(
         reason_count=settings.assignee_reason_count,
         clock=lambda: datetime.now(UTC),
         breaks=settings.lunch_breaks(),
+    )
+
+
+def get_suggest_group_slots(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> SuggestGroupSlots:
+    """FR-25 use case on the real database. Reads only; no LLM, same planner config as FR-10."""
+    return SuggestGroupSlots(
+        SqlGroupSlotRepository(session),
+        SqlScheduleRepository(session),
+        GroupSlotSettings(
+            window_days=settings.schedule_window_days,
+            min_chunk_minutes=settings.schedule_min_chunk_minutes,
+            round_minutes=settings.schedule_round_minutes,
+            top_productive_hours=settings.schedule_top_productive_hours,
+            breaks=tuple(settings.lunch_breaks()),
+            spread=settings.schedule_spread,
+            max_block_minutes=settings.schedule_max_block_minutes or None,
+        ),
+        clock=lambda: datetime.now(UTC),
     )
 
 

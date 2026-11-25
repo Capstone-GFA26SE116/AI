@@ -71,6 +71,7 @@ def slot(n: int, status: str, task_type: str = "Flexible", started: bool = False
         TaskType=task_type,
         Deadline=END,
         Started=started,
+        IsGroup=False,
     )
 
 
@@ -172,3 +173,16 @@ def test_a_new_db_status_fails_loudly(status: str) -> None:
 
     with pytest.raises(KeyError):
         run(session)
+
+
+def test_group_slots_are_read_with_their_owner() -> None:
+    # Backend sql/009 (2026-11-25): no TaskId, owner in UserId, timer in GroupFocusSession.
+    for statement in (GET_SLOT, GET_SLOTS):
+        personal, group = sql(statement).split("UNION ALL")
+        assert 'JOIN "Task"' in personal and 'FALSE AS "IsGroup"' in personal
+        assert 'JOIN "GroupTask" gt ON gt."Id" = s."GroupTaskId"' in group
+        assert 's."GroupTaskId" IS NOT NULL AND s."UserId" = :user_id' in group
+        assert 'gf."ScheduleSlotId" = s."Id"' in group
+        assert 'TRUE AS "IsGroup"' in group
+    assert sql(GET_SLOT).count(":slot_id") == 2
+    assert sql(GET_SLOTS).count(":window_start") == 2

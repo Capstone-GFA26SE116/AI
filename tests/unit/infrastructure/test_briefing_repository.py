@@ -20,10 +20,12 @@ from metanoia_ai.application.ports.briefing_repository import (
 )
 from metanoia_ai.application.ports.schedule_repository import TaskStatus
 from metanoia_ai.domain.briefing import OpenSubtask, SlotStatus
+from metanoia_ai.domain.models import TimeRange
 from metanoia_ai.infrastructure.db.briefing_repository import (
     GET_CALENDAR_EVENTS,
     GET_CONNECTION_STATUS,
     GET_FIXED_TASKS,
+    GET_GROUP_SLOT_TIMES,
     GET_HOURS,
     GET_K_BIAS,
     GET_SESSIONS,
@@ -144,6 +146,16 @@ def test_slots_of_today_only_shown_states():
     assert 't."Title" || \': \' || st."Title"' in text
 
 
+def test_group_slots_of_today_are_read_by_their_owner():
+    # Backend sql/009 (2026-11-25): no TaskId, owner in UserId.
+    personal, group = sql(GET_SLOTS).split("UNION ALL")
+    assert 'FALSE AS "IsGroup"' in personal
+    assert 'SELECT s."GroupTaskId",' in group and 'TRUE AS "IsGroup"' in group
+    assert 's."GroupTaskId" IS NOT NULL AND s."UserId" = :user_id' in group
+    assert 'gt."Title" || \': \' || gs."Title"' in group
+    assert 's."EndTime" > :day_start AND s."StartTime" < :day_end' in group
+
+
 def test_slot_states_match_the_check_constraint():
     assert set(SLOT_STATUS_FROM_DB.values()) == set(SlotStatus)
 
@@ -172,6 +184,7 @@ def test_reads_run_in_one_read_only_transaction():
 
 def test_maps_rows():
     task_id, sub_open, sub_done, domain = uuid4(), uuid4(), uuid4(), uuid4()
+    group_task_id = uuid4()
     started = NOW - timedelta(hours=2)
     rows = {
         str(GET_USER): [USER_ROW],
@@ -219,7 +232,19 @@ def test_maps_rows():
                 StartTime=NOW,
                 EndTime=NOW + timedelta(hours=1),
                 Status="Approved",
-            )
+                IsGroup=False,
+            ),
+            SimpleNamespace(
+                TaskId=group_task_id,
+                Title="Báo cáo nhóm: Slide",
+                StartTime=NOW + timedelta(hours=2),
+                EndTime=NOW + timedelta(hours=3),
+                Status="Due",
+                IsGroup=True,
+            ),
+        ],
+        str(GET_GROUP_SLOT_TIMES): [
+            SimpleNamespace(StartTime=NOW, EndTime=NOW + timedelta(hours=1))
         ],
         str(GET_FIXED_TASKS): [
             SimpleNamespace(
@@ -255,6 +280,11 @@ def test_maps_rows():
     assert data.has_productive_answer is True  # a Learned hour
     assert data.slots[0].status is SlotStatus.APPROVED
     assert data.slots[0].title == "Landing page: Header"
+    assert data.slots[0].is_group is False
+    assert data.slots[1].is_group is True
+    assert data.slots[1].task_id == group_task_id
+    assert data.slots[1].status is SlotStatus.APPROVED  # Due is shown like Approved
+    assert data.group_busy == (TimeRange(NOW, NOW + timedelta(hours=1)),)
     assert data.fixed_tasks[0].is_skipped is True
     assert data.events[0].is_all_day is True
     assert data.calendar_connected is False  # no connection row
@@ -268,6 +298,11 @@ def test_params_carry_the_user_and_the_windows():
         "user_id": USER,
         "day_start": DAY_START,
         "day_end": DAY_END,
+    }
+    assert params[str(GET_GROUP_SLOT_TIMES)] == {
+        "user_id": USER,
+        "window_start": DAY_START,
+        "window_end": WINDOW_END,
     }
     assert params[str(GET_FIXED_TASKS)] == {
         "user_id": USER,

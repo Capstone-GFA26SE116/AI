@@ -1,6 +1,7 @@
 """Overrun proposal (FR-16b) reads on the shared Supabase Postgres. Only SELECT.
 
-Every query is limited to one user (Task has no UserId, so it joins Project).
+Every query is limited to one user (Task has no UserId, so it joins Project;
+a group slot carries its UserId).
 User hours, Fixed tasks and Google events use the FR-10 queries.
 """
 
@@ -9,7 +10,7 @@ from typing import Any
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import text
+from sqlalchemy import TextClause, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from metanoia_ai.application.ports.overrun_repository import OverrunData, SlotRow
@@ -20,6 +21,7 @@ from metanoia_ai.infrastructure.db.schedule_repository import (
     GET_CALENDAR_EVENTS,
     GET_FIXED_TASKS,
     GET_USER,
+    GROUP_SLOT_OF_USER,
 )
 
 STATE_FROM_DB = {
@@ -36,32 +38,54 @@ STATE_FROM_DB = {
 }
 FIXED_TASK = "Fixed"
 
-_SLOT_COLUMNS = """
+_PERSONAL_SLOTS = """
     SELECT s."Id", s."StartTime", s."EndTime", s."Status",
            t."Title", t."TaskType", t."Deadline",
            EXISTS (
                SELECT 1 FROM "FocusSession" fs WHERE fs."ScheduleSlotId" = s."Id"
-           ) AS "Started"
+           ) AS "Started",
+           FALSE AS "IsGroup"
     FROM "ScheduleSlot" s
     JOIN "Task" t ON t."Id" = s."TaskId"
     JOIN "Project" p ON p."Id" = t."ProjectId"
     WHERE p."UserId" = :user_id
 """
 
-GET_SLOT = text(
-    _SLOT_COLUMNS
-    + """
-      AND s."Id" = :slot_id
-"""
+# Work Group slots (Backend sql/009): no TaskId, the owner is s."UserId".
+# A group task is never Fixed here: its slot is time the member chose.
+_GROUP_SLOTS = (
+    """
+    SELECT s."Id", s."StartTime", s."EndTime", s."Status",
+           CASE WHEN gs."Title" IS NULL THEN gt."Title"
+                ELSE gt."Title" || ': ' || gs."Title" END AS "Title",
+           CAST(NULL AS varchar) AS "TaskType", gt."Deadline",
+           EXISTS (
+               SELECT 1 FROM "GroupFocusSession" gf WHERE gf."ScheduleSlotId" = s."Id"
+           ) AS "Started",
+           TRUE AS "IsGroup"
+    FROM "ScheduleSlot" s
+    JOIN "GroupTask" gt ON gt."Id" = s."GroupTaskId"
+    LEFT JOIN "GroupSubTask" gs ON gs."Id" = s."GroupSubTaskId"
+    WHERE """
+    + GROUP_SLOT_OF_USER
 )
 
-GET_SLOTS = text(
-    _SLOT_COLUMNS
-    + """
+
+def _both_kinds(condition: str) -> TextClause:
+    """Personal and group slots of the user that match `condition`."""
+    return text(
+        _PERSONAL_SLOTS + condition + "    UNION ALL" + _GROUP_SLOTS + condition
+    )
+
+
+GET_SLOT = _both_kinds("""
+      AND s."Id" = :slot_id
+""")
+
+GET_SLOTS = _both_kinds("""
       AND s."EndTime" > :window_start
       AND s."StartTime" < :window_end
-"""
-)
+""")
 
 
 def slot_row(r: Any) -> SlotRow:
@@ -75,6 +99,7 @@ def slot_row(r: Any) -> SlotRow:
         is_fixed=is_fixed,
         deadline=None if is_fixed else r.Deadline,
         started=r.Started,
+        is_group=r.IsGroup,
     )
 
 

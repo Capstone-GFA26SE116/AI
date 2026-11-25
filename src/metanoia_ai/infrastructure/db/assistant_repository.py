@@ -132,6 +132,7 @@ class SqlAssistantRepository:
                         r.StartTime,
                         r.EndTime,
                         SLOT_STATUS_FROM_DB[r.Status],
+                        r.IsGroup,
                     )
                     for r in await execute(GET_SLOTS, slot_params)
                 ),

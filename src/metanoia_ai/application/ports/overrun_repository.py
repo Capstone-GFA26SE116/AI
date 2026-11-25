@@ -22,6 +22,7 @@ class SlotRow:
     is_fixed: bool  # the task is Fixed
     deadline: datetime | None  # the task deadline (Flexible tasks only)
     started: bool  # a timer was started on this slot
+    is_group: bool = False  # a Work Group slot: busy, never moved by the AI
 
 
 @dataclass(frozen=True)

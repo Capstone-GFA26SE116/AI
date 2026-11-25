@@ -100,7 +100,7 @@ class PlanOverrun:
                 s.start,
                 s.end,
                 s.deadline,
-                is_movable(s.state, s.is_fixed, s.started),
+                is_movable(s.state, s.is_fixed, s.started) and not s.is_group,
             )
             for s in data.slots
             if s.slot_id != late.slot_id and s.state in BUSY_STATES

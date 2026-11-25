@@ -34,7 +34,13 @@ Ký hiệu: **AI ghi** = AI service được INSERT/UPDATE · **Chỉ đọc** =
   Backend phải cập nhật entity / migration, nếu không migration sau có thể xoá mất giá trị này.
 
 ### `ScheduleSlot` — AI ghi, chỉ slot trạng thái `Proposed` (FR-10)
-- `TaskId` NOT NULL · `SubTaskId?` · `ScheduleProposalId?` · `StartTime`, `EndTime` timestamptz, `EndTime > StartTime`.
+- `TaskId?` · `SubTaskId?` · `ScheduleProposalId?` · `StartTime`, `EndTime` timestamptz, `EndTime > StartTime`.
+- **Slot nhóm** (Backend `docs/sql/009_group_schedule_slot.sql`, chạy 2026-11-25): `TaskId` NULL, `GroupTaskId` +
+  `GroupSubTaskId?` có giá trị, chủ slot là `UserId` (bắt buộc với slot nhóm; slot cá nhân để NULL). CHECK: đúng một
+  trong `TaskId` / `GroupTaskId`; việc con đi đúng loại. Slot AI ghi vẫn là slot cá nhân, không gửi `UserId`.
+  **Luật đọc:** slot cá nhân lọc qua `Task → Project.UserId`; slot nhóm lọc `"GroupTaskId" IS NOT NULL AND "UserId" = :user_id`
+  (`UNION ALL`). Slot nhóm là giờ bận ở FR-10, FR-16b, FR-12, FR-22, FR-23/24 và AI không bao giờ dời nó
+  (`plans/group-slots-busy.md`).
 - `Status` ∈ {`Proposed`, `Approved`, `Due`, `InProgress`, `Overrun`, `Done`, `Skipped`, `Missed`, `Postponed`, `Cancelled`}, mặc định `Proposed` (CHECK đọc 2026-11-10).
   Backend chạy slot đã duyệt qua `Approved → Due → InProgress → Overrun`: cả 4 vẫn nằm trên lịch (giờ bận FR-10, hiện ở FR-12 / trợ lý).
 - `ProposedMinutes` > 0 (phần làm việc) · `KBiasUsed` numeric (gói Free: trống) · `Explanation` varchar.
@@ -240,6 +246,9 @@ Hiếu cho phép 2026-11-20 (cần báo Backend). Đọc DB 2026-11-20 (chỉ đ
 - `GroupTask`: `AssigneeId` (trống = chưa giao), `Status` ToDo / InProgress / Done / Skipped (không có Scheduled), `Deadline`, `EstimatedMinutes`, `FixedStart` + `FixedEnd` (cả hai hoặc không). **Không có `DomainId`** → FR-23 nhận `domain_id` từ request.
 - `GroupSubTask`: `AssigneeId`, `EstimatedMinutes`, `Status` như trên.
 - AI không ghi bảng nào của nhóm.
+- `GroupFocusSession` (bảng riêng, không phải `FocusSession`): `GroupTaskId`, `GroupSubTaskId?`, `UserId`, `StartedAt`,
+  `EndedAt?`, `ScheduleSlotId?` (sql/009). AI chỉ đọc nó để biết slot nhóm đã bấm giờ (FR-16b); không học K hay giờ
+  hiệu quả từ đây (Hiếu, 2026-11-25).
 - ⚠️ FR-24: chat nhóm nằm trong `ChatConversation` (`Scope = 'Group'`, cột mới `GroupId`, `ProjectId` NULL) + `ChatMessage` (`ProposalJson` = bản nháp `project_v1` + mảng `assignments`). Backend đã chạy (Backend `docs/sql/008_chat_group.sql`, cùng nội dung `plans/FR-24.sql`); kiểm tra DB 2026-11-24: có `GroupId`, FK cascade, `CK_ChatConversation_Scope` / `ScopeLinks`. Lượt AI của FR-23 ghi `AIUsageLog.Feature = 'Schedule'` (CHECK chỉ có Chat / Schedule / Briefing / Embedding).
 
 ### `SubscriptionPlan`

@@ -1,15 +1,19 @@
 # AI cho nhóm (Work Group): hướng dẫn cho FE (Web / Mobile)
 
-Cập nhật: 23/11/2026 · Người viết: Hiếu (AI) · Code: AI PR #54, #55, #56 (đã deploy)
+Cập nhật: 25/11/2026 · Người viết: Hiếu (AI) · Code: AI PR #54, #55, #56, #58, #59 (đã merge)
 
-Hai chức năng AI dành cho **Leader** của nhóm:
+**Tóm tắt nhanh**
+- Có 3 API AI mới cho nhóm. Hiện **chưa màn hình nào gọi**, FE/Mobile cần nối:
 
-| # | Chức năng | Màn hình gợi ý | Plan chi tiết |
-|---|---|---|---|
-| 1 | **Gợi ý người nhận việc** — "giao việc này cho ai?" | Chi tiết một việc nhóm, cạnh ô "Người được giao" | `plans/FR-23.md` |
-| 2 | **Chat AI lập kế hoạch nhóm** — dán brief → bàn → bản nháp giai đoạn / việc / việc con, mỗi việc có sẵn người được gợi ý → Áp dụng | Tab "Chat AI" trong nhóm | `plans/FR-24.md` |
+| # | Chức năng | Ai dùng | Màn hình gợi ý | API | Tốn lượt AI |
+|---|---|---|---|---|---|
+| 1 | **Gợi ý người nhận việc**: "giao việc này cho ai?" | Leader | Chi tiết việc nhóm, cạnh ô "Người được giao" | `POST /groups/tasks/{id}/assignee-suggestions` | Tối đa 1 lượt |
+| 2 | **Chat AI lập kế hoạch nhóm**: dán brief → bàn → bản nháp giai đoạn / việc / việc con, mỗi việc có sẵn người được gợi ý → Áp dụng | Leader (gói Pro / Premium) | Tab "Chat AI" trong nhóm | `/groups/{id}/chats`… | 1 lượt / tin |
+| 3 | **Gợi ý giờ làm việc nhóm** (**mới**): AI tìm giờ trống trong lịch của mình cho phần việc nhóm được giao | Người được giao (Leader hoặc Member) | Chi tiết việc nhóm / "Việc nhóm của tôi", nút "Gợi ý giờ" | `POST /groups/tasks/{id}/slot-suggestions` | **Không** |
 
-> ⚠️ **Chức năng 2 cần Việt chạy `plans/FR-24.sql` (repo AI) trên Supabase trước.** Chưa chạy thì các API lưu chat trả `500`. Chức năng 1 dùng được ngay.
+- AI **không ghi vào bảng nhóm**. Ở cả 3 chức năng, FE gọi API Backend để giao việc, tạo việc hoặc tạo slot.
+- Từ 25/11, AI coi **slot nhóm là giờ bận** ở mọi chỗ. Hệ quả cho các màn hình đang có được ghi ở mục 4 (briefing có `kind: "group"`, overrun).
+- Chat nhóm đã sẵn sàng trên DB (Backend đã chạy `008_chat_group.sql` ngày 24/11).
 
 ---
 
@@ -21,7 +25,8 @@ Hai chức năng AI dành cho **Leader** của nhóm:
 - Header: `Authorization: Bearer <access token của Backend>` (đúng token đang dùng gọi Backend).
 
 ### Ai được dùng
-- **Chỉ Leader** của nhóm. Member / Viewer: **ẩn nút**, gọi vẫn bị `403`.
+- Chức năng 1 và 2: **chỉ Leader** của nhóm. Member / Viewer: **ẩn nút**, gọi vẫn bị `403`.
+- Chức năng 3: **người được giao** việc (hoặc ít nhất một việc con đang mở) của việc đó. Người khác: ẩn nút (`403`).
 - Nhóm đã lưu trữ (Archived): ẩn nút (`409`).
 
 ### Mã lỗi
@@ -33,7 +38,7 @@ AI service trả lỗi dạng FastAPI: `{ "detail": "..." }` hoặc `{ "detail":
 | `403` | Không phải Leader | Ẩn chức năng |
 | `403` `{"detail": {"code": "plan_feature_locked", "feature": "group_chat"}}` | Gói **Free** dùng chat nhóm | "Chat AI nhóm có ở gói Pro / Premium" + nút nâng cấp |
 | `404` | Không thuộc nhóm / không có việc / không có chat | "Không tìm thấy" |
-| `409` | Nhóm đã lưu trữ; việc đã Done / Skipped; bản nháp đã áp dụng (`"already_applied"`); không có gói (`"no_active_plan"`) | Hiện thông báo tương ứng |
+| `409` | Nhóm đã lưu trữ; việc đã Done / Skipped; việc có giờ cố định (chức năng 3); bản nháp đã áp dụng (`"already_applied"`); không có gói (`"no_active_plan"`) | Hiện thông báo tương ứng |
 | `422` | Tin nhắn rỗng (khi `discuss`) hoặc dài quá 4000 ký tự | Chặn ở ô nhập |
 | `429` | Hết lượt AI của gói | "Bạn đã dùng hết lượt AI của gói" + nút nâng cấp |
 | `502` | AI tạm lỗi (Gemini và dự phòng đều lỗi) | "AI đang bận, thử lại sau" + nút Thử lại. **Không bị trừ lượt** |
@@ -43,7 +48,7 @@ AI **không bao giờ** trả tên / email (riêng tư). AI chỉ trả `user_id
 `GET /api/groups/{groupId}/members` → `[{ userId, fullName, email, role, joinedAt }]` → map `user_id` → `fullName`.
 
 ### Giờ giấc
-- `free_times[].start/end`: ISO 8601 **theo múi giờ của thành viên** (ví dụ `+07:00`) → hiển thị thẳng.
+- `free_times[].start/end` (chức năng 1) và `slots[].start/end` (chức năng 3): ISO 8601 **theo múi giờ của người đó** (ví dụ `+07:00`) → hiển thị thẳng.
 - `created_at` của chat: ISO 8601 UTC (`Z`) → đổi sang giờ máy như bình thường.
 
 ---
@@ -333,7 +338,97 @@ AI **không ghi vào bảng nhóm**. Khi Leader bấm **"Áp dụng"**:
 
 ---
 
-## 3. Checklist kiểm thử cho FE
+## 3. Gợi ý giờ làm việc nhóm (mới, FR-25)
+
+### Khi nào gọi
+Người được giao mở một việc nhóm **chưa xong**, không có giờ cố định, rồi bấm **"Gợi ý giờ"**.
+Không gọi LLM nên **không tốn lượt AI** và chạy được với mọi gói.
+
+AI chỉ đọc. Kết quả không chồng lên việc cố định, event Google, slot cá nhân hay slot nhóm khác, không rơi vào giờ nghỉ trưa, và nằm trong giờ làm việc của người đó. Thứ tự là việc con theo `orderIndex`, mỗi khối ≤ 3 giờ. Cách xếp giống nút "Xếp lịch" cá nhân.
+
+### Request
+```
+POST /groups/tasks/{groupTaskId}/slot-suggestions
+{ "language": "vi" }        // tùy chọn, mặc định "vi"
+```
+
+### Response 200 (ví dụ; đúng cấu trúc API trả về)
+```json
+{
+  "task_id": "00000000-0000-0000-0000-0000000000c8",
+  "slots": [
+    {
+      "subtask_id": "00000000-0000-0000-0000-000000000003",
+      "title": "Báo cáo: Phần 3",
+      "start": "2026-11-23T10:00:00+07:00",
+      "end": "2026-11-23T11:00:00+07:00",
+      "minutes": 60,
+      "reason": "Khoảng trống trong lịch của bạn, xong trước hạn Thứ Tư 25/11, 17:00."
+    },
+    {
+      "subtask_id": "00000000-0000-0000-0000-000000000004",
+      "title": "Báo cáo: Phần 4",
+      "start": "2026-11-23T11:15:00+07:00",
+      "end": "2026-11-23T12:15:00+07:00",
+      "minutes": 60,
+      "reason": "Khoảng trống trong lịch của bạn, xong trước hạn Thứ Tư 25/11, 17:00."
+    }
+  ],
+  "warnings": [],
+  "summary": "Mình gợi ý 2 khung giờ cho Báo cáo.",
+  "time_zone": "Asia/Ho_Chi_Minh"
+}
+```
+
+| Trường | Ý nghĩa | Gợi ý hiển thị |
+|---|---|---|
+| `slots` | Khung giờ gợi ý, theo thứ tự thời gian. Rỗng = không tìm được (xem `warnings`) | Danh sách có checkbox, mặc định chọn hết |
+| `slots[].subtask_id` | Việc con của khung này; `null` = việc không có việc con | Gửi lại khi tạo slot |
+| `slots[].minutes` | Độ dài khung. Một việc con dài có thể bị chia thành nhiều khung | |
+| `slots[].reason` | Một câu lý do (≤ 500 ký tự, vừa với `explanation` của Backend) | Chữ nhỏ |
+| `summary` | Một câu tóm tắt | Tiêu đề hộp gợi ý |
+| `warnings[].type` | `no_estimate`: việc con của mình chưa có ước lượng, nên không xếp được · `not_enough_time`: không đủ giờ trống trước hạn (`needed_minutes`, `free_minutes`) · `overdue`: việc đã quá hạn · `beyond_window`: hạn còn xa, AI mới xếp trong 7 ngày tới (bấm lại sau) | Dòng cảnh báo cam |
+
+Cách AI tính:
+- **Phần việc của mình** gồm việc con đang mở (ToDo / InProgress) có `assigneeId` là mình. Nếu việc con không giao riêng thì tính theo người được giao việc cha. Việc không có việc con thì là chính việc đó.
+- **Số phút cần xếp** = ước lượng trừ đi số phút mình **đã có slot** cho phần đó (Approved / Due / InProgress / Overrun / Done). Phần đã xếp đủ thì không gợi ý nữa.
+- **Hạn**: lấy hạn của việc. Nếu việc không có hạn thì lấy hạn của nhóm, tính đến cuối giờ làm việc ngày đó. Nếu cả hai đều không có thì AI xếp sớm nhất có thể.
+- AI không áp dụng K_bias cho việc nhóm, vì việc nhóm chưa có loại công việc.
+
+### Lưu slot sau khi chọn
+AI **không tạo slot**. Người dùng bấm "Thêm vào lịch" thì FE gọi Backend **tuần tự** cho từng khung đã chọn:
+```
+POST /api/group-tasks/{groupTaskId}/schedule-slots
+{
+  "subTaskId": "<slots[].subtask_id, bỏ trống nếu null>",
+  "startTime": "<slots[].start>",
+  "endTime": "<slots[].end>",
+  "explanation": "<slots[].reason>",
+  "status": "Approved"
+}
+```
+- `409 SLOT_OVERLAP`: lịch đã thay đổi kể từ lúc gợi ý. Bỏ qua khung đó, rồi gọi lại "Gợi ý giờ" cho phần còn thiếu.
+- Chi tiết các luật của Backend: `docs/GROUP_FE.md` §11 (repo Backend).
+
+### Lỗi riêng
+`404` không có việc hoặc không thuộc nhóm · `403` không có phần nào đang mở giao cho mình · `409` nhóm lưu trữ, việc đã Done / Skipped, hoặc **việc có giờ cố định** (Leader đã đặt giờ; người dùng tạo slot đúng giờ đó bằng tay).
+
+---
+
+## 4. Thay đổi ở màn hình đang có (từ 25/11, AI PR #58)
+
+Slot nhóm (`taskId = null`, có `groupTaskId`) giờ là **giờ bận** với AI:
+
+| Màn hình | Thay đổi | FE cần làm |
+|---|---|---|
+| Xếp lịch cá nhân (`POST /schedule/propose`) | Không còn đề xuất trùng slot nhóm, nên duyệt không còn bị `409` vì slot nhóm | Không |
+| Briefing "Hôm nay" (`GET /briefing/today`) và trợ lý 3D | `schedule[]` có thêm phần tử **`kind: "group"`**, `task_id` = **id việc nhóm** (không phải việc cá nhân), `title` = `Việc: Việc con`. Kiểm tra trễ hạn tính slot nhóm là giờ bận | Thêm `"group"` vào `BriefingScheduleKind` (`api-client.ts`) và chọn icon / màu riêng. Bấm vào thì mở việc nhóm, **không** mở `/tasks/{id}`. Mobile không đọc `kind` nên không phải sửa |
+| Chạy quá giờ (`POST /schedule/overrun`) | Gọi được với `slot_id` của **slot nhóm** (trước đây `404`). `moves[]` **không bao giờ** chứa slot nhóm, và slot cá nhân được dời sẽ tránh slot nhóm | Không. `moves[]` vẫn áp dụng bằng `PUT /api/schedule-slots/{id}` như cũ |
+| Gợi ý người nhận việc / chat nhóm | `free_minutes`, `free_times` đã trừ slot nhóm của từng người | Không |
+
+---
+
+## 5. Checklist kiểm thử cho FE
 
 | # | Tình huống | Mong đợi |
 |---|---|---|
@@ -349,5 +444,13 @@ AI **không ghi vào bảng nhóm**. Khi Leader bấm **"Áp dụng"**:
 | 10 | Bấm Áp dụng lần 2 (tab khác) | `409 already_applied`, không tạo trùng |
 | 11 | AI lỗi (`502`) | Thông báo thử lại, chữ đã gõ còn nguyên, không mất lượt |
 | 12 | Mở lại chat cũ | Thấy đủ tin nhắn, checklist và bản nháp cũ |
+| 13 | Member được giao việc nhóm bấm "Gợi ý giờ" | Danh sách khung giờ trong giờ làm việc, không trùng lịch, đúng thứ tự việc con |
+| 14 | Người không được giao / Viewer | Không thấy nút "Gợi ý giờ" (`403`) |
+| 15 | Chọn 2 khung rồi "Thêm vào lịch" | 2 slot nhóm hiện trong lịch, đồng bộ Google |
+| 16 | Bấm "Gợi ý giờ" lần nữa | Không gợi ý lại phần đã xếp đủ |
+| 17 | Việc con chưa có ước lượng | Cảnh báo "chưa có ước lượng" |
+| 18 | Việc có giờ cố định | Không có nút "Gợi ý giờ" (`409`) |
+| 19 | Briefing hôm nay có slot nhóm | Dòng kiểu "nhóm", bấm mở đúng việc nhóm |
+| 20 | Xếp lịch cá nhân khi đã có slot nhóm | Không có khung nào trùng slot nhóm |
 
 Hỏi thêm: Hiếu (AI). API Backend của nhóm: `docs/GROUP_FE.md` repo Backend (Việt).

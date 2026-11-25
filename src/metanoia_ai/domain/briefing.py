@@ -39,6 +39,7 @@ class ScheduleKind(StrEnum):
     SLOT = "slot"  # an approved / done slot of a Flexible task
     FIXED = "fixed"  # a Fixed task (meeting)
     GOOGLE = "google"  # an event synced from Google Calendar
+    GROUP = "group"  # a slot the user placed for Work Group work (task_id: group task)
 
 
 @dataclass(frozen=True)
@@ -48,6 +49,7 @@ class SlotEntry:
     start: datetime
     end: datetime
     status: SlotStatus
+    is_group: bool = False  # task_id is then a GroupTask Id
 
 
 @dataclass(frozen=True)
@@ -140,7 +142,7 @@ def schedule_between(
             continue
         items.append(
             ScheduleItem(
-                ScheduleKind.SLOT,
+                ScheduleKind.GROUP if slot.is_group else ScheduleKind.SLOT,
                 slot.start,
                 slot.end,
                 slot.title,
@@ -229,13 +231,14 @@ def risk_free_ranges(
     fixed_tasks: Iterable[FixedTaskTime],
     events: Iterable[CalendarEvent],
     round_minutes: int,
+    group_slots: Iterable[TimeRange] = (),
 ) -> list[TimeRange]:
     """Free working time from now for the risk check.
 
-    Busy = Fixed tasks + Google events only. Approved slots of Flexible tasks are
-    NOT busy: they are time kept for the very tasks being checked (#2).
+    Busy = Fixed tasks + Google events + Work Group slots. Approved slots of Flexible
+    tasks are NOT busy: they are time kept for the very tasks being checked (#2).
     """
-    busy = busy_ranges(fixed_tasks, events, approved_slots=())
+    busy = busy_ranges(fixed_tasks, events, approved_slots=group_slots)
     return free_ranges(hours, now, window_days, busy, round_minutes)
 
 

@@ -8,7 +8,7 @@ from uuid import UUID
 
 from metanoia_ai.application.ports.schedule_repository import TaskStatus
 from metanoia_ai.domain.briefing import FixedEntry, GoogleEntry, OpenSubtask, SlotEntry
-from metanoia_ai.domain.models import FocusSessionRecord, WorkingHours
+from metanoia_ai.domain.models import FocusSessionRecord, TimeRange, WorkingHours
 
 
 @dataclass(frozen=True)
@@ -53,6 +53,9 @@ class BriefingData:
     fixed_tasks: tuple[FixedEntry, ...]
     events: tuple[GoogleEntry, ...]
     calendar_connected: bool  # a GoogleConnection with Status Active
+    # The user's Work Group slots on the calendar, today to the end of the risk window:
+    # busy for their personal tasks (Backend sql/009).
+    group_busy: tuple[TimeRange, ...] = ()
 
 
 class BriefingRepository(Protocol):

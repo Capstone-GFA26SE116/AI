@@ -141,6 +141,29 @@ GET_CONNECTION_STATUS = text("""
     WHERE "UserId" = :user_id
 """)
 
+# Work Group slots (Backend sql/009, 2026-11-25) share ScheduleSlot: TaskId is NULL,
+# GroupTaskId is set and the owner is s."UserId" (Backend ScheduleSlotQueries.OwnedBy).
+GROUP_SLOT_OF_USER = """s."GroupTaskId" IS NOT NULL AND s."UserId" = :user_id"""
+
+_GROUP_SLOT_TIMES = (
+    """
+    SELECT s."StartTime", s."EndTime"
+    FROM "ScheduleSlot" s
+    WHERE """
+    + GROUP_SLOT_OF_USER
+    + """
+      AND s."Status" IN """
+    + ON_CALENDAR_SLOTS
+    + """
+      AND s."EndTime" > :window_start
+      AND s."StartTime" < :window_end
+"""
+)
+
+# The user's own group slots on the calendar: busy, never moved by the AI.
+GET_GROUP_SLOT_TIMES = text(_GROUP_SLOT_TIMES)
+
+# Busy slots: the user's personal slots and their group slots.
 GET_APPROVED_SLOTS = text(
     """
     SELECT s."StartTime", s."EndTime"
@@ -153,7 +176,8 @@ GET_APPROVED_SLOTS = text(
     + """
       AND s."EndTime" > :window_start
       AND s."StartTime" < :window_end
-"""
+    UNION ALL"""
+    + _GROUP_SLOT_TIMES
 )
 
 # A new proposal replaces every older pending one of the user.

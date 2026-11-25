@@ -4,6 +4,7 @@ import pytest
 
 from metanoia_ai.infrastructure.db.schedule_repository import (
     GET_APPROVED_SLOTS,
+    GET_GROUP_SLOT_TIMES,
     GET_TASKS,
 )
 
@@ -71,3 +72,21 @@ def test_day_overloaded_warning_json_has_its_day():
         "capacity_minutes": 480,
         "message": "Ngày 23/11 …",
     }
+
+
+def test_group_slots_of_the_user_are_busy() -> None:
+    # Backend sql/009 (2026-11-25): a group slot has no TaskId; its owner is UserId.
+    text = sql(GET_APPROVED_SLOTS)
+    personal, group = text.split("UNION ALL")
+    assert 'JOIN "Task"' in personal
+    assert 'JOIN "Task"' not in group
+    assert 's."GroupTaskId" IS NOT NULL AND s."UserId" = :user_id' in group
+    assert "'Approved', 'Due', 'InProgress', 'Overrun'" in group
+    assert 's."EndTime" > :window_start AND s."StartTime" < :window_end' in group
+
+
+def test_group_slot_times_read_only_group_slots() -> None:
+    text = sql(GET_GROUP_SLOT_TIMES)
+    assert text.startswith("SELECT")
+    assert 's."GroupTaskId" IS NOT NULL AND s."UserId" = :user_id' in text
+    assert "UNION" not in text

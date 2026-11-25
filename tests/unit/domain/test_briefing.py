@@ -509,3 +509,26 @@ def test_schedule_between_uses_the_given_range():
     )
 
     assert [i.title for i in result.items] == ["Chiều", "Họp"]
+
+
+# --- Work Group slots (Backend sql/009) ---
+
+
+def test_group_slot_is_shown_as_its_own_kind():
+    group_task = uuid4()
+    entry = SlotEntry(
+        group_task, "Báo cáo nhóm", at(17, 10), at(17, 11), SlotStatus.APPROVED, True
+    )
+    [item] = schedule([entry, slot(at(17, 9), at(17, 10))]).items[1:]
+    assert item.kind is ScheduleKind.GROUP
+    assert item.task_id == group_task
+    assert schedule([slot(at(17, 9), at(17, 10))]).items[0].kind is ScheduleKind.SLOT
+
+
+def test_group_slots_are_busy_for_the_risk_check():
+    # Today 9–17 is 480 free minutes; a 3-hour group slot leaves 300.
+    group = [TimeRange(at(17, 9), at(17, 12))]
+    ranges = risk_free_ranges(HOURS, NOW, WINDOW, [], [], 5, group)
+    assert free_minutes_before(ranges, at(17, 17)) == 300
+    [result] = deadline_risks([task(at(17, 17), 480)], ranges, NOW, WINDOW)
+    assert result.is_at_risk

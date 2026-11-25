@@ -119,6 +119,7 @@ def test_schedule_reads_the_fr12_statements_for_the_range() -> None:
         StartTime=START,
         EndTime=END,
         Status="Approved",
+        IsGroup=True,
     )
     fixed = SimpleNamespace(
         Id=UUID(int=3), Title="Họp", FixedStart=START, FixedEnd=END, Status="Skipped"
@@ -142,6 +143,7 @@ def test_schedule_reads_the_fr12_statements_for_the_range() -> None:
     rows = run(session, "schedule", USER, START, END)
 
     assert rows.slots[0].status is SlotStatus.APPROVED
+    assert rows.slots[0].is_group is True  # a Work Group slot (Backend sql/009)
     assert rows.fixed_tasks[0].is_skipped is True
     assert rows.events[0].title == "Sinh nhật"
     params = {s: p for s, p in session.calls[1:]}

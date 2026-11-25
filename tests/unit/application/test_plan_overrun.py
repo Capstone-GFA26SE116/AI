@@ -153,3 +153,46 @@ def test_the_port_has_no_write_method() -> None:
 
     public = {name for name in vars(OverrunRepository) if not name.startswith("_")}
     assert public == {"get_overrun_data"}
+
+
+def group_row(n: int, start: datetime, end: datetime, **kw) -> SlotRow:
+    base = row(n, start, end, **kw)
+    return SlotRow(
+        base.slot_id,
+        base.title,
+        base.start,
+        base.end,
+        base.state,
+        base.is_fixed,
+        base.deadline,
+        base.started,
+        is_group=True,
+    )
+
+
+def test_a_group_slot_is_never_moved_and_blocks_the_moves() -> None:
+    # Backend sql/009: the member placed it; the app can only move personal slots.
+    use_case, _ = setup(
+        group_row(1, at(10, 45), at(11, 15)),  # Approved, not started: still stays
+        row(2, at(11, 30), at(12)),  # personal: moves, but not onto the group slot
+    )
+
+    result = ask(use_case)
+
+    assert result.plan.kind is OverrunKind.REPLAN
+    assert [(m.slot_id.int, m.new.start, m.new.end) for m in result.plan.moves] == [
+        (2, at(11, 15), at(11, 45)),
+    ]
+
+
+def test_a_late_group_slot_gets_a_plan() -> None:
+    late = group_row(
+        20, at(9), at(10), state=SlotState.OVERRUN, started=True, title="Nhóm: Thiết kế"
+    )
+    use_case, _ = setup(late, row(1, at(10, 30), at(11)))
+
+    result = ask(use_case, slot_id=UUID(int=20))
+
+    assert result.slot_id == UUID(int=20)
+    assert result.plan.kind is OverrunKind.REPLAN
+    assert [m.slot_id.int for m in result.plan.moves] == [1]

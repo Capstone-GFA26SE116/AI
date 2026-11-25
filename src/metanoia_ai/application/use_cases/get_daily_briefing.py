@@ -259,6 +259,7 @@ class GetDailyBriefing:
                 for e in data.events
             ],
             self.settings.round_minutes,
+            data.group_busy,
         )
         tasks = [
             RiskTask(c.task_id, c.deadline, c.needed_minutes)

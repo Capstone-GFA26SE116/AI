@@ -26,9 +26,11 @@ from metanoia_ai.domain.briefing import (
     SlotEntry,
     SlotStatus,
 )
-from metanoia_ai.domain.models import FocusSessionRecord, WorkingHours
+from metanoia_ai.domain.models import FocusSessionRecord, TimeRange, WorkingHours
 from metanoia_ai.infrastructure.db.learning_repository import SOURCE_FROM_DB
 from metanoia_ai.infrastructure.db.schedule_repository import (
+    GET_GROUP_SLOT_TIMES,
+    GROUP_SLOT_OF_USER,
     OPEN_SUBTASK,
     STATUS_FROM_DB,
 )
@@ -108,20 +110,37 @@ GET_HOURS = text("""
     WHERE "UserId" = :user_id
 """)
 
-# A subtask slot shows "Task: Subtask", like FR-10.
-GET_SLOTS = text("""
+# A subtask slot shows "Task: Subtask", like FR-10. Group slots (Backend sql/009) have
+# no TaskId: they carry their owner in UserId and give the group task's Id.
+_SLOTS_IN_DAY = """
+      AND s."Status" IN ('Proposed', 'Approved', 'Due', 'InProgress', 'Overrun', 'Done')
+      AND s."EndTime" > :day_start
+      AND s."StartTime" < :day_end
+"""
+GET_SLOTS = text(
+    """
     SELECT s."TaskId", s."StartTime", s."EndTime", s."Status",
            CASE WHEN st."Title" IS NULL THEN t."Title"
-                ELSE t."Title" || ': ' || st."Title" END AS "Title"
+                ELSE t."Title" || ': ' || st."Title" END AS "Title",
+           FALSE AS "IsGroup"
     FROM "ScheduleSlot" s
     JOIN "Task" t ON t."Id" = s."TaskId"
     JOIN "Project" p ON p."Id" = t."ProjectId"
     LEFT JOIN "SubTask" st ON st."Id" = s."SubTaskId"
-    WHERE p."UserId" = :user_id
-      AND s."Status" IN ('Proposed', 'Approved', 'Due', 'InProgress', 'Overrun', 'Done')
-      AND s."EndTime" > :day_start
-      AND s."StartTime" < :day_end
-""")
+    WHERE p."UserId" = :user_id"""
+    + _SLOTS_IN_DAY
+    + """    UNION ALL
+    SELECT s."GroupTaskId", s."StartTime", s."EndTime", s."Status",
+           CASE WHEN gs."Title" IS NULL THEN gt."Title"
+                ELSE gt."Title" || ': ' || gs."Title" END AS "Title",
+           TRUE AS "IsGroup"
+    FROM "ScheduleSlot" s
+    JOIN "GroupTask" gt ON gt."Id" = s."GroupTaskId"
+    LEFT JOIN "GroupSubTask" gs ON gs."Id" = s."GroupSubTaskId"
+    WHERE """
+    + GROUP_SLOT_OF_USER
+    + _SLOTS_IN_DAY
+)
 
 GET_FIXED_TASKS = text("""
     SELECT t."Id", t."Title", t."FixedStart", t."FixedEnd", t."Status"
@@ -260,8 +279,16 @@ class SqlBriefingRepository:
                     r.StartTime,
                     r.EndTime,
                     SLOT_STATUS_FROM_DB[r.Status],
+                    r.IsGroup,
                 )
                 for r in await execute(GET_SLOTS, today)
+            ),
+            group_busy=tuple(
+                TimeRange(r.StartTime, r.EndTime)
+                for r in await execute(
+                    GET_GROUP_SLOT_TIMES,
+                    {**user, "window_start": day_start, "window_end": window_end},
+                )
             ),
             fixed_tasks=tuple(
                 FixedEntry(

@@ -145,6 +145,7 @@ Ký hiệu: 🗣 = câu nói khi trình bày · ✅ = kết quả phải thấy 
 3. *"Tôi hay ước lượng sai loại việc nào?"* → *"Writing, thường cần thêm khoảng 30%"*.
 4. *"Bắt đầu hẹn giờ việc Code landing page"* → trợ lý **hỏi lại để xác nhận** → nói *"Có"* → bộ hẹn giờ chạy.
 5. *"Dừng hẹn giờ"* → xác nhận → dừng.
+6. *"Chiều nay từ 3 giờ đến 4 giờ tôi có việc gấp"* (chọn khung giờ đang có slot trên lịch) *(FR-22d)* → thẻ đề xuất dời các slot bị chiếm (chỉ dời slot Metanoia, không đụng sự kiện Google) → *"Đồng ý"* → lịch đổi, có nút **Hoàn tác**.
 - 🗣 "Câu hỏi quen thuộc được trả lời ngay trên máy, không tốn lượt AI. Lệnh nào làm thay đổi dữ liệu cũng phải xác nhận."
 
 **C5. Thông báo** → giống Web (nhắc slot, đề xuất của nhóm).
@@ -174,7 +175,6 @@ Ký hiệu: 🗣 = câu nói khi trình bày · ✅ = kết quả phải thấy 
 | Chức năng | API (AI service) | Ghi chú |
 |---|---|---|
 | Gợi ý giờ làm việc nhóm *(FR-25)* | `POST /groups/tasks/{id}/slot-suggestions` | An gọi cho *Viết brand guideline*: AI gợi ý 2 khung cho *Phần màu sắc* và *Phần typography* (phần của Bình không có) |
-| Chèn việc gấp / hoãn / làm bù *(FR-22d)* | `/schedule/insert-block`, `/schedule/postpone`, `/schedule/catch-up` | Mobile chưa nối lệnh của trợ lý |
 
 Cách gọi: mở `<AI_URL>/docs` → **Authorize** → dán access token của An (Web: DevTools → Application → access token) → **Try it out**.
 
@@ -187,7 +187,7 @@ Cách gọi: mở `<AI_URL>/docs` → **Authorize** → dán access token của 
    - Script tự kiểm tra lại và **tự hoàn tác** nếu còn sót.
 2. **Làm tay** (SQL không xóa được):
    - **Google Calendar** của tài khoản An (nếu đã kết nối): xóa các sự kiện Metanoia đã tạo.
-   - **Supabase Storage**: nếu đã upload file vào *Tài liệu dự án*, cleanup in đường dẫn file trong tab Messages, xóa các file đó trong Storage. File đính kèm thẳng vào chat (như A6) không lưu vào Storage.
+   - **File tài liệu dự án**: nếu đã upload file vào *Tài liệu dự án*, file nằm trên ổ đĩa server Backend; cleanup in đường dẫn trong tab Messages. Sau cleanup không ai mở được file đó nữa, xóa trên server khi tiện. File đính kèm thẳng vào chat (như A6) không lưu thành file.
 3. Lần sau: chạy lại `01_seed.sql`, mọi thứ y như cũ. Đăng nhập Google lại bình thường, vì cleanup xóa user nên seed tạo lại tài khoản chờ đăng nhập.
 
 ---
@@ -206,7 +206,7 @@ Cách gọi: mở `<AI_URL>/docs` → **Authorize** → dán access token của 
 | Học K_bias (FR-17) | A8 (kết quả) | C4 câu 3 |
 | Briefing "Hôm nay" (FR-12) | A1 | C1 |
 | Giờ hiệu quả (FR-18), Thống kê (FR-20) | A8 | — |
-| Trợ lý giọng nói + lệnh có xác nhận (FR-22, 22b, 22c) | — | C4 |
+| Trợ lý giọng nói + lệnh có xác nhận, chèn việc gấp (FR-22, 22b, 22c, 22d) | — | C4 |
 | Nhóm: vai trò, giao việc, bình luận, đổi hạn, bấm giờ nhóm, slot nhóm | B1–B5 | — |
 | AI gợi ý người làm (FR-23), chat AI nhóm (FR-24) | B3, B4 | — |
 | Gói, giới hạn gói, PayOS, hóa đơn | A9, D3 | D2, D3 |

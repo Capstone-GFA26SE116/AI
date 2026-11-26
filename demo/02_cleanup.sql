@@ -11,7 +11,8 @@
 --   - Cuối file đếm lại: mọi bảng phải còn 0 dòng của user demo, không thì báo lỗi và hoàn tác.
 --
 -- Không xóa được bằng SQL (làm tay nếu có dùng trong lúc demo):
---   - File đã upload vào kho tài liệu dự án (Supabase Storage): file này in ra đường dẫn trong tab "Messages"/"Notices".
+--   - File đã upload vào kho tài liệu dự án (lưu trên ổ đĩa server Backend, LocalFileStorage): file này in ra đường dẫn
+--     trong tab "Messages"/"Notices"; file mồ côi không ai mở được nữa, xóa trên server khi tiện.
 --   - Sự kiện Metanoia đã đẩy lên Google Calendar của tài khoản demo: vào Google Calendar xóa, hoặc dùng lịch riêng cho demo.
 --   - Job Hangfire đã hẹn cho slot demo: tự bỏ qua khi chạy vì slot không còn.
 -- =====================================================================================================================
@@ -45,7 +46,7 @@ BEGIN
         RAISE NOTICE 'Không có user demo nào để xóa.';
     END IF;
     IF paths IS NOT NULL THEN
-        RAISE NOTICE E'File cần xóa tay trong Supabase Storage:\n  %', paths;
+        RAISE NOTICE E'File còn trên ổ đĩa server Backend (xóa tay khi tiện):\n  %', paths;
     END IF;
 END $$;
 

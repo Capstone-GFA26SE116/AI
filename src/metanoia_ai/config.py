@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from datetime import time
 from functools import lru_cache
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -54,6 +54,8 @@ class Settings(BaseSettings):
     # of at most this many minutes (0 = never cut).
     schedule_spread: bool = True
     schedule_max_block_minutes: int = Field(default=180, ge=0)
+    # FR-10g: who writes each slot's reason: "template" (code, no AI call) or "llm".
+    schedule_reasons: Literal["template", "llm"] = "template"
     # A slot runs over (FR-16b): the most extra minutes the user may ask for.
     overrun_extra_minutes_max: int = Field(default=480, gt=0)
     # FR-22d: the longest urgent block, and how far back missed slots are caught up.

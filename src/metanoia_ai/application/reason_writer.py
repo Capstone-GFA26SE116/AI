@@ -15,6 +15,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 from string import Template
+from typing import Protocol
 from uuid import UUID
 
 from pydantic import BaseModel, ValidationError
@@ -22,6 +23,7 @@ from pydantic import BaseModel, ValidationError
 from metanoia_ai.application.ports.llm_client import LLMClient, LLMError
 from metanoia_ai.domain.forbidden_terms import has_internal_name
 from metanoia_ai.domain.models import Language
+from metanoia_ai.domain.schedule_reasons import template_reasons
 from metanoia_ai.domain.schedule_text import SlotFacts
 from metanoia_ai.prompts import load_prompt
 
@@ -86,7 +88,31 @@ class BadAnswerError(Exception):
     """The LLM answered, but the answer breaks a rule."""
 
 
+class SlotReasonWriter(Protocol):
+    """Writes the reason of each slot (FR-10). `uses_llm` False: no quota (FR-10g)."""
+
+    uses_llm: bool
+
+    async def write(
+        self, facts: Mapping[UUID, SlotFacts], language: Language
+    ) -> ReasonResult: ...
+
+
+class TemplateReasonWriter:
+    """FR-10g: reasons from fixed sentences, no LLM, no quota, no AIUsageLog."""
+
+    uses_llm = False
+
+    async def write(
+        self, facts: Mapping[UUID, SlotFacts], language: Language
+    ) -> ReasonResult:
+        texts = template_reasons(list(facts.values()), language)
+        return ReasonResult(reasons=dict(zip(facts, texts, strict=True)), calls=())
+
+
 class ReasonWriter:
+    uses_llm = True
+
     def __init__(
         self,
         llm: LLMClient,

@@ -73,6 +73,12 @@ from metanoia_ai.application.use_cases.recompute_productive_hours import (
 from metanoia_ai.application.use_cases.record_task_completion import (
     RecordTaskCompletion,
 )
+from metanoia_ai.application.use_cases.reshuffle import (
+    CatchUp,
+    InsertBlock,
+    PostponeSlot,
+    ReshuffleSettings,
+)
 from metanoia_ai.application.use_cases.save_task_memory import SaveTaskMemory
 from metanoia_ai.application.use_cases.send_project_chat_message import (
     DocumentLimits,
@@ -128,6 +134,7 @@ from metanoia_ai.infrastructure.db.project_import_repository import (
     SqlProjectImportRepository,
 )
 from metanoia_ai.infrastructure.db.quota_repository import SqlQuotaRepository
+from metanoia_ai.infrastructure.db.reshuffle_repository import SqlReshuffleRepository
 from metanoia_ai.infrastructure.db.schedule_repository import SqlScheduleRepository
 from metanoia_ai.infrastructure.db.similar_task_repository import (
     SqlSimilarTaskRepository,
@@ -295,6 +302,52 @@ def get_plan_overrun(
             window_days=settings.schedule_window_days,
             breaks=settings.lunch_breaks(),
         ),
+        now=lambda: datetime.now(UTC),
+    )
+
+
+def reshuffle_settings(settings: Settings) -> ReshuffleSettings:
+    return ReshuffleSettings(
+        round_minutes=settings.schedule_round_minutes,
+        window_days=settings.schedule_window_days,
+        breaks=settings.lunch_breaks(),
+        max_block_minutes=settings.insert_block_max_minutes,
+        look_back_days=settings.catch_up_look_back_days,
+    )
+
+
+def get_insert_block(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> InsertBlock:
+    """FR-22d M3 / M4 on the real database. Reads only; no LLM."""
+    return InsertBlock(
+        SqlReshuffleRepository(session),
+        reshuffle_settings(settings),
+        now=lambda: datetime.now(UTC),
+    )
+
+
+def get_postpone_slot(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> PostponeSlot:
+    """FR-22d M7 on the real database. Reads only; no LLM."""
+    return PostponeSlot(
+        SqlReshuffleRepository(session),
+        reshuffle_settings(settings),
+        now=lambda: datetime.now(UTC),
+    )
+
+
+def get_catch_up(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> CatchUp:
+    """FR-22d M10 on the real database. Reads only; no LLM."""
+    return CatchUp(
+        SqlReshuffleRepository(session),
+        reshuffle_settings(settings),
         now=lambda: datetime.now(UTC),
     )
 

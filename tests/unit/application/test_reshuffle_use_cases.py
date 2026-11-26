@@ -64,13 +64,14 @@ def row(
 class FakeRepo:
     """Read only, like the real one (AC6): there is no write method to call."""
 
-    def __init__(self, data: CalendarData | None) -> None:
+    def __init__(self, data: CalendarData | None, user: UUID = USER) -> None:
         self.data = data
+        self.user = user
         self.calls: list[tuple] = []
 
     async def get_calendar(self, user_id, window_start, window_end, slot_id=None):
         self.calls.append((user_id, window_start, window_end, slot_id))
-        if self.data is None or user_id != USER:
+        if self.data is None or user_id != self.user:
             return None
         target = next((s for s in self.data.slots if s.slot_id == slot_id), None)
         return CalendarData(

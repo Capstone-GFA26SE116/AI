@@ -137,15 +137,14 @@ def test_to_calendar_sorts_slots() -> None:
 # --- InsertBlock ---
 
 
-def test_insert_pushes_back_and_suggests_project_and_domain() -> None:
+def test_insert_moves_the_covered_slot_and_suggests_project_and_domain() -> None:
     uc, repo = use(
         InsertBlock, data([row(1, at(14), at(15)), row(2, at(15, 15), at(16))])
     )
     result = asyncio.run(uc.execute(USER, "Sửa lỗi gấp", at(14), at(15), Language.VI))
 
     assert [(m.slot_id.int, m.new.start) for m in result.plan.moves] == [
-        (1, at(15, 15)),
-        (2, at(16, 30)),
+        (1, at(16)),  # after slot 2, which stays (plan #3)
     ]
     assert (result.project_id, result.domain_id, result.time_zone) == (
         PROJECT,
@@ -153,7 +152,7 @@ def test_insert_pushes_back_and_suggests_project_and_domain() -> None:
         "Asia/Ho_Chi_Minh",
     )
     assert result.summary.startswith(
-        "Thêm Sửa lỗi gấp từ 14 giờ đến 15 giờ và dời 2 việc"
+        "Thêm Sửa lỗi gấp từ 14 giờ đến 15 giờ và dời 1 việc"
     )
     assert repo.calls[0][0] == USER
 

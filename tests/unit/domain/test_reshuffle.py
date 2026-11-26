@@ -75,23 +75,41 @@ def test_free_block_moves_nothing() -> None:
     )
 
 
-def test_covered_slot_and_the_next_ones_are_pushed_back_in_order() -> None:
+def test_only_covered_slots_move_and_the_others_stay() -> None:
     movable = [
         slot(1, span(14, 0, 15, 0)),
-        slot(2, span(15, 15, 16, 0)),
+        slot(2, span(15, 15, 16, 0)),  # starts right after the block + 15' break
         slot(3, span(16, 15, 17, 0)),
     ]
     result = plan_insert(span(14, 0, 15, 0), cal(movable), RULES)
 
-    # each one after the previous + 15' buffer
-    assert times(result.moves) == [
-        (1, "10 15:15", "16:15"),
-        (2, "10 16:30", "17:15"),
-        (3, "11 08:00", "08:45"),  # no room today → next working day
+    # slot 1 does not fit before slot 2 or 3: it goes after them, they stay (#3)
+    assert times(result.moves) == [(1, "10 17:00", "18:00")]
+
+
+def test_slot_inside_the_break_after_the_block_moves() -> None:
+    movable = [slot(1, span(14, 0, 14, 30)), slot(2, span(15, 0, 15, 30))]
+    result = plan_insert(span(14, 0, 15, 0), cal(movable), RULES)
+
+    # both move, in their old order (slot 2 started at the block end, with no break)
+    assert times(result.moves) == [(1, "10 15:15", "15:45"), (2, "10 16:00", "16:30")]
+
+
+def test_real_run_case_lunch_does_not_push_the_whole_afternoon() -> None:
+    # 2026-11-26 real run: one 60' slot jumped over lunch and pushed 3 more (plan §5).
+    movable = [
+        slot(1, span(10, 0, 11, 0)),
+        slot(2, span(11, 15, 12, 0)),  # after the block + 15' break: stays
+        slot(3, span(14, 30, 15, 30)),
     ]
+    result = plan_insert(
+        span(10, 0, 11, 0), cal(movable, breaks=[span(12, 0, 13, 0)]), RULES
+    )
+
+    assert times(result.moves) == [(1, "10 13:00", "14:00")]
 
 
-def test_pushing_stops_when_the_next_slot_is_not_in_the_way() -> None:
+def test_a_slot_with_room_after_the_block_moves_right_after_it() -> None:
     movable = [slot(1, span(14, 0, 15, 0)), slot(2, span(16, 30, 17, 30))]
     result = plan_insert(span(14, 0, 15, 0), cal(movable), RULES)
 

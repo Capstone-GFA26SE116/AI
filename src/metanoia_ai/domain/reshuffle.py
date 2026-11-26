@@ -3,8 +3,9 @@
 Pure code, no LLM (CLAUDE.md §5). Nothing is moved here: each result is a proposal
 the user approves; the app then applies it through the Backend (plan §1).
 
-- Insert (M3, M4): a block of urgent work. Movable slots it covers, and the ones after
-  them that same day, are pushed back in the same order until nothing is in the way.
+- Insert (M3, M4): a block of urgent work. Only the movable slots it covers (or that
+  start within the break after it) move, each to the earliest free time after the
+  block, in their old order; every other slot stays where it is (plan #3).
   Things that never move and overlap the block are conflicts, with how important
   each one is and a suggestion: another time, overwrite, or cancel.
 - Postpone (M7): one slot to the earliest free time from the next working day on.
@@ -140,12 +141,9 @@ def plan_insert(block: TimeRange, cal: Calendar, rules: Rules) -> InsertPlan:
     buffer = timedelta(minutes=hours.buffer_minutes)
 
     conflicts = tuple(judge(b) for b in cal.blockers if overlaps(b.time, block))
+    with_break = TimeRange(block.start, block.end + buffer)
     affected = sorted(
-        (
-            s
-            for s in cal.movable
-            if s.time.end > block.start and local_date(s.time.start, zone) == day
-        ),
+        (s for s in cal.movable if overlaps(s.time, with_break)),
         key=lambda s: s.time.start,
     )
     affected_ids = {s.slot_id for s in affected}
@@ -162,9 +160,7 @@ def plan_insert(block: TimeRange, cal: Calendar, rules: Rules) -> InsertPlan:
     moves: list[SlotMove] = []
     not_placed: list[NotPlaced] = []
     earliest = round_up(block.end + buffer, rules.round_minutes, zone)
-    for slot in affected:
-        if slot.time.start >= earliest:
-            break  # nothing pushes it any more, nor the ones after it (plan #3)
+    for slot in affected:  # the others stay busy: nothing is pushed in a chain (#3)
         length = slot.time.end - slot.time.start
         start = _first_fit(after(gaps, earliest), length, slot.deadline)
         if start is None:

@@ -1,6 +1,6 @@
 # FR-22d — Chèn việc gấp, dời sang mai, xếp lại việc bị lỡ (M3, M4, M7, M10, M18)
 
-Trạng thái: Đang code · Branch: `feature/fr22d-urgent-block` · Cập nhật: 2026-11-26
+Trạng thái: Xong (phía AI) · Branch: `feature/fr22d-urgent-block` · Cập nhật: 2026-11-26
 
 <!-- Hiếu chốt 2026-11-26 (chat): (1) chỉ dời lịch của Metanoia, không đụng sự kiện gõ thẳng trên Google;
 (2) việc gấp trùng việc Fixed → báo, so sánh mức quan trọng, gợi ý; user chọn hủy hoặc ghi đè;
@@ -18,19 +18,19 @@ Trạng thái: Đang code · Branch: `feature/fr22d-urgent-block` · Cập nhậ
 - **Ai gọi, khi nào:** Mobile / Web gọi thẳng 3 endpoint mới (xem trước) ; trợ lý giọng nói (FR-22) gọi chúng
   bên trong và trả `kind = "confirm"` + `action` có sẵn bản xem trước. Người dùng nói / bấm "Có" → **Mobile ghi qua Backend**.
 - **Tiêu chí xong:**
-  - [ ] AC1 — Chèn việc gấp không trùng gì: slot Flexible bị đè và các slot sau nó trong ngày được đẩy lùi đúng thứ tự,
+  - [x] AC1 — Chèn việc gấp không trùng gì: slot Flexible bị đè và các slot sau nó trong ngày được đẩy lùi đúng thứ tự,
         giữ độ dài, có buffer, tròn 5', bỏ qua giờ nghỉ trưa; dừng đẩy khi slot sau không còn bị đụng.
-  - [ ] AC2 — Không bao giờ dời: task Fixed, sự kiện Google, slot việc nhóm, slot đã bấm giờ / đang chạy / xong / hủy (quyết định 1).
-  - [ ] AC3 — Trùng (M4): trả `conflicts` (loại, tên, giờ, quan trọng hay không + lý do), `options`, `recommendation`,
+  - [x] AC2 — Không bao giờ dời: task Fixed, sự kiện Google, slot việc nhóm, slot đã bấm giờ / đang chạy / xong / hủy (quyết định 1).
+  - [x] AC3 — Trùng (M4): trả `conflicts` (loại, tên, giờ, quan trọng hay không + lý do), `options`, `recommendation`,
         `other_time` (khoảng trống cùng độ dài gần nhất trong cùng ngày, không trùng gì). Ghi đè task Fixed → `skip_task_ids`.
-  - [ ] AC4 — M7: slot sang giờ trống sớm nhất từ ngày làm việc kế tiếp; không kịp hạn chót → `not_placed`.
+  - [x] AC4 — M7: slot sang giờ trống sớm nhất từ ngày làm việc kế tiếp; không kịp hạn chót → `not_placed`.
         Slot đã bấm giờ / Fixed / việc nhóm / không còn trên lịch → 409.
-  - [ ] AC5 — M10: slot `Missed`, hoặc `Approved` / `Due` đã hết giờ mà chưa bấm giờ, của task chưa xong, trong
+  - [x] AC5 — M10: slot `Missed`, hoặc `Approved` / `Due` đã hết giờ mà chưa bấm giờ, của task chưa xong, trong
         `CATCH_UP_LOOK_BACK_DAYS` ngày → đặt lại từ bây giờ theo thứ tự cũ; không kịp hạn → `not_placed`.
-  - [ ] AC6 — Mỗi slot bị dời có giờ cũ + giờ mới (M18). Không gọi LLM, không trừ lượt, không ghi DB.
-  - [ ] AC7 — Trợ lý: 3 công cụ mới `insert_block`, `postpone_task`, `catch_up` → `confirm` + `action` (kèm bản xem trước);
+  - [x] AC6 — Mỗi slot bị dời có giờ cũ + giờ mới (M18). Không gọi LLM, không trừ lượt, không ghi DB.
+  - [x] AC7 — Trợ lý: 3 công cụ mới `insert_block`, `postpone_task`, `catch_up` → `confirm` + `action` (kèm bản xem trước);
         câu trả lời ≤ 60 từ (vi / en), có số việc bị dời và việc trùng. Các công cụ cũ không đổi; `pytest` xanh.
-  - [ ] AC8 — Chạy thật: tạo dữ liệu thử, gọi 3 endpoint + 3 câu nói qua Gemini, xóa đúng các dòng đã tạo, còn 0.
+  - [x] AC8 — Chạy thật: tạo dữ liệu thử, gọi 3 endpoint + 3 câu nói qua Gemini, xóa đúng các dòng đã tạo, còn 0.
 - **Ngoài phạm vi:** Backend thực thi (đã có API) · sửa / xóa sự kiện Google · tạo task Flexible bằng giọng (M14) ·
   M1, M2, M5, M6, M8, M9 (đợt sau).
 
@@ -84,7 +84,7 @@ Trạng thái: Đang code · Branch: `feature/fr22d-urgent-block` · Cập nhậ
 |---|---|---|---|
 | 1 | Dời gì | Chỉ slot Flexible `Approved` / `Due` chưa bấm giờ của Metanoia | Hiếu chốt 2026-11-26 (1); như FR-16b AC3 |
 | 2 | Việc gấp lưu thế nào | Task **Fixed** do Mobile tạo qua Backend | Fixed = giờ do người khác / việc khẩn đặt, không học K; FR-10 tự coi là giờ bận |
-| 3 | Đẩy lùi hay chỉ dời slot bị đè | Đẩy lùi theo thứ tự (như FR-16b), **dừng** khi slot sau không còn bị đụng | Đúng ý "dời các lịch phía sau"; giữ thứ tự hạn chót FR-10; ít thay đổi nhất |
+| 3 | Đẩy lùi hay chỉ dời slot bị đè | ~~Đẩy lùi theo thứ tự, dừng khi hết đụng~~ → **chỉ dời slot bị đè** (chồng việc gấp + buffer sau nó), sang giờ trống sớm nhất sau việc gấp; slot khác giữ nguyên (sửa 2026-11-26, xem §5) | Chạy thật: đẩy theo thứ tự làm 1 slot nhảy qua giờ trưa kéo theo 3 slot khác bị dời vô ích |
 | 4 | "Quan trọng" (M4) tính sao | Code, không LLM: task Fixed của dự án có khách, sự kiện Google (có thể có người khác), việc nhóm (người khác chờ), slot đang bấm giờ → quan trọng; task Fixed của dự án không có khách → không | Không tốn lượt, giải thích được; LLM không biết thêm gì |
 | 5 | Gợi ý | Có `other_time` cùng ngày → gợi ý **giờ khác**; không có → **ghi đè** (quan trọng thì kèm lời nhắc báo khách / nhóm) | User đã nói là gấp; "hủy" luôn có nhưng không gợi ý |
 | 6 | Ghi đè sự kiện Google / việc nhóm / slot đang chạy | Không sửa chúng (quyết định 1): Google + nhóm giữ nguyên, câu nhắc tự xử lý; slot đang bấm giờ → không có `overwrite` | AI service không ghi Google; dừng timer là việc khác |
@@ -111,10 +111,9 @@ Trạng thái: Đang code · Branch: `feature/fr22d-urgent-block` · Cập nhậ
 2. Đọc slot (cửa sổ từ đầu ngày của block), task Fixed, sự kiện Google, giờ làm, giờ nghỉ.
 3. `conflicts` = mọi thứ không dời được mà chồng block: task Fixed (không Skipped), sự kiện Google (không all-day /
    hủy / do Metanoia tạo), slot nhóm trên lịch, slot cá nhân không dời được (đã bấm giờ / đang chạy).
-4. `affected` = slot dời được cùng ngày có `end > block.start`, theo giờ bắt đầu. Đi lần lượt:
-   `earliest = round_up(block.end + buffer)`. Slot bắt đầu ≥ `earliest` và còn trống → giữ nó và mọi slot sau (dừng).
-   Ngược lại: đặt vào khoảng trống sớm nhất ≥ `earliest` (giờ bận = mọi thứ trừ `affected` chưa xét, + block + giờ nghỉ),
-   giữ độ dài, trước hạn chót; không được → `not_placed`. `earliest = placed.end`.
+4. `affected` = slot dời được chồng `[block.start, block.end + buffer)`, theo giờ bắt đầu. Lần lượt đặt vào khoảng trống
+   sớm nhất ≥ `round_up(block.end + buffer)` và sau slot vừa đặt (giờ bận = mọi slot khác + Fixed + Google + block + giờ nghỉ),
+   giữ độ dài, trước hạn chót; không được → `not_placed`. Slot khác không bị đẩy dây chuyền.
 5. Có conflicts → quan trọng (#4), `other_time` (khoảng trống cùng độ dài sớm nhất ≥ now, cùng ngày, chỉ tính giờ bận
    không dời được + giờ nghỉ; khác block), `options`, `recommendation` (#5), `skip_task_ids`.
 6. `project_id`, `domain_id` (#7). Câu tóm tắt.
@@ -152,16 +151,20 @@ Trạng thái: Đang code · Branch: `feature/fr22d-urgent-block` · Cập nhậ
 | T13 | chạy thật | script tạo dữ liệu thử, 3 endpoint + 3 câu nói, xóa, còn 0 | đúng đề xuất | AC8 |
 
 ## 4. Các bước code
-- [ ] **1.** `domain/reshuffle.py` — T1–T7.
-- [ ] **2.** Câu tóm tắt trong `assistant_text.py` — T8.
-- [ ] **3.** Port + use case + fake repo — T9.
-- [ ] **4.** `db/reshuffle_repository.py` — T10.
-- [ ] **5.** Route + deps + config — T11.
-- [ ] **6.** Trợ lý: công cụ, prompt v5, `assistant_turn.py`, `action.preview` — T12.
-- [ ] **7.** Chạy thật — T13.
-- [ ] **8.** Docs: `CLAUDE.md` §6, `docs/open-questions.md` (Mobile / Backend).
+- [x] **1.** `domain/reshuffle.py` — T1–T7.
+- [x] **2.** Câu tóm tắt trong `assistant_text.py` — T8.
+- [x] **3.** Port + use case + fake repo — T9.
+- [x] **4.** `db/reshuffle_repository.py` — T10.
+- [x] **5.** Route + deps + config — T11.
+- [x] **6.** Trợ lý: công cụ, prompt v5, `assistant_turn.py`, `action.preview` — T12.
+- [x] **7.** Chạy thật — T13.
+- [x] **8.** Docs: `CLAUDE.md` §6, `docs/open-questions.md` (Mobile / Backend).
 
 ## 5. Nhật ký thay đổi
 | Ngày | Thay đổi | Lý do (bug / quyết định mới) |
 |---|---|---|
 | 2026-11-26 | Tạo plan | Hiếu chọn M3, M4, M7, M10, M18; chốt (1) chỉ dời lịch Metanoia, (2) trùng Fixed → báo + gợi ý, user hủy / ghi đè |
+| 2026-11-26 | Bước 1–6 xong: `pytest` 2614 (+~100), `ruff` sạch | |
+| 2026-11-26 | Bước 7 chạy thật lần 1 (19/23): đẩy theo thứ tự làm việc 60' nhảy qua giờ trưa và kéo 3 slot sau đi theo → **đổi #3 + AC1 + luồng §2.4**: chỉ dời slot bị đè. Thêm test domain cho đúng ca này | Hiếu cho chạy thật; workflow tự làm (thay đổi nhỏ trong FR, ghi lại để Hiếu xem) |
+| 2026-11-26 | Bước 7 chạy thật lần 2: `scripts/try_reshuffle.py` **22/22 PASS**, 0 dòng thử còn lại, DB không đổi sau mọi lần gọi; endpoint 0,45–0,7 s; trợ lý 2–4 s (Gemini 503 một lần → Groq dự phòng); 4 lượt AI cho 4 câu nói | |
+| 2026-11-26 | `scripts/try_assistant.py` giờ có 25 câu mẫu (thêm 5 câu FR-22d) thay vì 20 | Bộ mẫu prompt v5 |

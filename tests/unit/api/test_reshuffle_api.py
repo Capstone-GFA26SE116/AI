@@ -197,3 +197,39 @@ def test_catch_up_shape() -> None:
     assert move["new_start"] == "2026-11-10T13:05:00+07:00"
     assert move["task_id"] == str(UUID(int=101)) and move["subtask_id"] is None
     assert response.json()["summary"].startswith("Có 1 việc bị lỡ.")
+
+
+# --- /assistant/turn sends the same body as preview ---
+
+
+def test_assistant_preview_has_the_endpoint_shape() -> None:
+    from metanoia_ai.api.deps import get_assistant_turn
+    from metanoia_ai.application.use_cases.assistant_turn import Reshufflers
+    from tests.unit.application.test_assistant_reshuffle import HOURS
+    from tests.unit.application.test_assistant_reshuffle import NOW as TURN_NOW
+    from tests.unit.application.test_assistant_reshuffle import SETTINGS as R_SETTINGS
+    from tests.unit.application.test_assistant_turn import pick, setup
+
+    use_case, *_ = setup(
+        pick("insert_block", start_time="14:00", end_time="15:00"), user=USER_ID
+    )
+    repo = FakeRepo(data(), USER_ID)
+    repo.data = type(repo.data)(HOURS, (), (), (), None, None, None)
+    use_case.reshuffle = Reshufflers(
+        InsertBlock(repo, R_SETTINGS, lambda: TURN_NOW),
+        PostponeSlot(repo, R_SETTINGS, lambda: TURN_NOW),
+        CatchUp(repo, R_SETTINGS, lambda: TURN_NOW),
+    )
+    app.dependency_overrides[get_settings] = make_settings
+    app.dependency_overrides[get_assistant_turn] = lambda: use_case
+
+    response = TestClient(app).post(
+        "/assistant/turn", json={"text": "Có việc gấp 2 giờ chiều"}, headers=auth()
+    )
+
+    assert response.status_code == 200
+    action = response.json()["action"]
+    assert action["type"] == "insert_block"
+    assert action["preview"]["block"]["start"] == "2026-10-30T14:00:00+07:00"
+    assert action["preview"]["moves"] == [] and action["preview"]["project_id"] is None
+    assert action["preview"]["summary"] == response.json()["reply"]

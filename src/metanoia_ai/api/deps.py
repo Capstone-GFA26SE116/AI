@@ -32,6 +32,7 @@ from metanoia_ai.application.use_cases.apply_task_breakdown import (
 from metanoia_ai.application.use_cases.assistant_turn import (
     AssistantSettings,
     AssistantTurn,
+    Reshufflers,
 )
 from metanoia_ai.application.use_cases.embed_pending_memories import (
     EmbedPendingMemories,
@@ -953,6 +954,15 @@ def get_assistant_turn(
         settings=assistant_settings(settings),
         now=now,
         router=local_router() if settings.assistant_local_router else None,
+        reshuffle=Reshufflers(
+            InsertBlock(
+                SqlReshuffleRepository(session), reshuffle_settings(settings), now
+            ),
+            PostponeSlot(
+                SqlReshuffleRepository(session), reshuffle_settings(settings), now
+            ),
+            CatchUp(SqlReshuffleRepository(session), reshuffle_settings(settings), now),
+        ),
     )
 
 

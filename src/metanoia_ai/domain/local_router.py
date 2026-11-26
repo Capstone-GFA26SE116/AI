@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from metanoia_ai.domain.assistant_tools import (
     DEFAULT_EXTRA_MINUTES,
     NAMED_TOOLS,
+    RESHUFFLE_TOOLS,
     WRITE_TOOLS,
     SmalltalkKind,
     ToolChoice,
@@ -32,6 +33,29 @@ from metanoia_ai.domain.spoken_period import SpokenPeriod
 NGRAM_SIZES = (3, 4, 5)
 NAME_SLOT = "{x}"
 COMMAND_LABELS = frozenset(t.value for t in WRITE_TOOLS)  # FR-22c
+# FR-22d: always left to the LLM (it reads the times and names in the sentence).
+RESHUFFLE_LABELS = frozenset(t.value for t in RESHUFFLE_TOOLS)
+# A sentence with one of these may ask to move the schedule: the LLM decides (FR-22d).
+RESHUFFLE_PHRASES = (
+    "viec gap",
+    "khan cap",
+    "dot xuat",
+    "chen",
+    "de mai",
+    "sang mai",
+    "doi sang",
+    "doi lich",
+    "doi viec",
+    "bi lo",
+    "lo mat",
+    "xep lai",
+    "urgent task",
+    "something urgent",
+    "push back",
+    "postpone",
+    "reschedule",
+    "missed",
+)
 SMALLTALK_LABELS = {
     "smalltalk_greet": SmalltalkKind.GREET,
     "smalltalk_thanks": SmalltalkKind.THANKS,
@@ -231,6 +255,10 @@ ANCHORS: dict[str, tuple[str, ...]] = {
     "finish_timer": ("xong", "hoan thanh", "done", "finished", "finish"),
     "extend_timer": ("them", "gia han", "more", "extra", "extend", "add"),
     "approve_proposal": ("duyet", "chap nhan lich", "dong y lich", "approve", "accept"),
+    # FR-22d: never picked here (RESHUFFLE_LABELS), listed for completeness
+    "insert_block": ("viec gap", "khan cap", "dot xuat", "chen", "urgent"),
+    "postpone_task": ("de mai", "sang mai", "doi sang", "postpone", "push back"),
+    "catch_up": ("bi lo", "xep lai", "missed", "reschedule"),
     "unsupported": (),  # open-ended: reached only by clear examples and the write rule
 }
 
@@ -374,7 +402,11 @@ def local_choice(
     """A sure tool choice, or None to ask the LLM. Names are found by the caller (#4)."""
     if is_follow_up(text, has_history):
         return None  # needs the earlier turns: the LLM reads it better (#6)
+    if has_phrase(text, RESHUFFLE_PHRASES):
+        return None  # FR-22d: may ask to move the schedule; the LLM reads the details
     guess = router.guess(text)
+    if guess is not None and guess.label in RESHUFFLE_LABELS:
+        return None
     sure = guess is not None and (
         guess.score >= settings.min_score
         and guess.score - guess.runner_up >= settings.min_gap

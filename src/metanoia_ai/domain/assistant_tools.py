@@ -5,8 +5,10 @@ It never sees IDs and never writes the reply (#2). Anything else → `unsupporte
 """
 
 import math
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import time
 from enum import StrEnum
 
 from metanoia_ai.domain.spoken_period import SpokenPeriod
@@ -39,6 +41,10 @@ class ToolName(StrEnum):
     FINISH_TIMER = "finish_timer"
     EXTEND_TIMER = "extend_timer"
     APPROVE_PROPOSAL = "approve_proposal"
+    # FR-22d: schedule changes. The code computes a proposal; the app applies it after a "yes".
+    INSERT_BLOCK = "insert_block"
+    POSTPONE_TASK = "postpone_task"
+    CATCH_UP = "catch_up"
     UNSUPPORTED = "unsupported"
     SMALLTALK = "smalltalk"
 
@@ -53,9 +59,16 @@ WRITE_TOOLS = frozenset(
         ToolName.APPROVE_PROPOSAL,
     }
 )
+# FR-22d: proposals to move slots; always picked by the LLM (they need times or a name).
+RESHUFFLE_TOOLS = frozenset(
+    {ToolName.INSERT_BLOCK, ToolName.POSTPONE_TASK, ToolName.CATCH_UP}
+)
 # The tools that read data (#3). Smalltalk and unsupported never call anything.
 READ_TOOLS = (
-    frozenset(ToolName) - {ToolName.UNSUPPORTED, ToolName.SMALLTALK} - WRITE_TOOLS
+    frozenset(ToolName)
+    - {ToolName.UNSUPPORTED, ToolName.SMALLTALK}
+    - WRITE_TOOLS
+    - RESHUFFLE_TOOLS
 )
 # Tools that take a spoken task / project name, matched by code (#6).
 # For upcoming_milestones the name is optional: no name → all active projects.
@@ -71,6 +84,9 @@ NAMED_TOOLS = frozenset(
 MIN_EXTRA_MINUTES = 5
 MAX_EXTRA_MINUTES = 480
 DEFAULT_EXTRA_MINUTES = 15
+# FR-22d: an urgent block said with a length ("2 tiếng") instead of an end time.
+MAX_BLOCK_MINUTES = 720
+_CLOCK = re.compile(r"(\d{1,2}):(\d{2})")
 
 
 class SmalltalkKind(StrEnum):
@@ -86,7 +102,9 @@ class ToolChoice:
     period: SpokenPeriod | None = None  # schedule_for only; missing → today
     name: str | None = None  # named tools only; None when the user said no name
     smalltalk: SmalltalkKind | None = None  # smalltalk only; missing → help
-    minutes: int | None = None  # extend_timer only (FR-22c #3)
+    minutes: int | None = None  # extend_timer (FR-22c #3); insert_block length (FR-22d)
+    start_time: time | None = None  # insert_block only (FR-22d), on the user's clock
+    end_time: time | None = None  # insert_block only
     low_confidence: bool = False  # the LLM picked something else, but too unsure (#12)
 
 
@@ -104,6 +122,8 @@ def router_schema() -> dict[str, object]:
             "name": {"type": "string"},
             "smalltalk": {"type": "string", "enum": [s.value for s in SmalltalkKind]},
             "minutes": {"type": "integer", "minimum": 1},
+            "start_time": {"type": "string"},  # "HH:MM", 24 h (FR-22d)
+            "end_time": {"type": "string"},
             "confidence": {"type": "number", "minimum": 0, "maximum": 1},
         },
         "required": ["tool", "confidence"],
@@ -162,8 +182,42 @@ def parse_choice(raw: object, min_confidence: float = MIN_CONFIDENCE) -> ToolCho
             return ToolChoice(
                 tool, confidence, minutes=clamp_minutes(raw.get("minutes"))
             )
+        case ToolName.INSERT_BLOCK:
+            return ToolChoice(
+                tool,
+                confidence,
+                period=period or SpokenPeriod.TODAY,
+                name=name,
+                minutes=block_minutes(raw.get("minutes")),
+                start_time=clock_time(raw.get("start_time")),
+                end_time=clock_time(raw.get("end_time")),
+            )
+        case ToolName.POSTPONE_TASK:
+            return ToolChoice(tool, confidence, name=name)
         case _:
             return ToolChoice(tool, confidence)
+
+
+def clock_time(value: object) -> time | None:
+    """ "14:30" → 14:30. Anything else → None (the assistant asks again, FR-22d #12)."""
+    if not isinstance(value, str):
+        return None
+    match = _CLOCK.fullmatch(value.strip())
+    if match is None:
+        return None
+    hour, minute = int(match.group(1)), int(match.group(2))
+    if hour > 23 or minute > 59:
+        return None
+    return time(hour, minute)
+
+
+def block_minutes(value: object) -> int | None:
+    """An urgent block's length when no end time is said; None when missing or odd."""
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    if not math.isfinite(value) or not MIN_EXTRA_MINUTES <= value <= MAX_BLOCK_MINUTES:
+        return None
+    return round(value)
 
 
 def clamp_minutes(value: object) -> int:

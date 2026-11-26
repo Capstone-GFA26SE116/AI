@@ -12,11 +12,20 @@ from pydantic import BaseModel, Field
 
 from metanoia_ai.api.auth import get_current_user_id
 from metanoia_ai.api.deps import get_assistant_turn
+from metanoia_ai.api.routes.schedule import (
+    CatchUpResponse,
+    InsertResponse,
+    PostponeResponse,
+    to_catch_up_response,
+    to_insert_response,
+    to_postpone_response,
+)
 from metanoia_ai.application.use_cases.assistant_turn import (
     ActionType,
     AssistantTurn,
     FocusStop,
     HistoryLine,
+    PendingAction,
     Turn,
     TurnKind,
     TurnRequest,
@@ -28,6 +37,11 @@ from metanoia_ai.application.use_cases.propose_schedule import (
 )
 from metanoia_ai.application.use_cases.recompute_productive_hours import (
     UserNotFoundError,
+)
+from metanoia_ai.application.use_cases.reshuffle import (
+    CatchUpResult,
+    InsertResult,
+    PostponeResult,
 )
 from metanoia_ai.application.use_cases.send_task_chat_message import (
     AIUnavailableError,
@@ -68,6 +82,8 @@ class ActionResponse(BaseModel):
     stop_reason: FocusStop | None = None  # "Completed" / "Interrupted" (Backend names)
     minutes: int | None = None
     proposal_id: UUID | None = None
+    # FR-22d: the same body as /schedule/insert-block, /postpone or /catch-up
+    preview: InsertResponse | PostponeResponse | CatchUpResponse | None = None
 
 
 class TurnResponse(BaseModel):
@@ -112,10 +128,20 @@ def to_response(turn: Turn) -> TurnResponse:
         emotion=turn.emotion,
         options=[OptionResponse(id=o.id, title=o.title) for o in turn.options],
         suggestions=list(turn.suggestions),
-        action=None
-        if turn.action is None
-        else ActionResponse(**{k: v for k, v in vars(turn.action).items()}),
+        action=None if turn.action is None else to_action(turn.action),
     )
+
+
+def to_action(action: PendingAction) -> ActionResponse:
+    fields = {k: v for k, v in vars(action).items() if k != "preview"}
+    preview = action.preview
+    if isinstance(preview, InsertResult):
+        fields["preview"] = to_insert_response(preview)
+    elif isinstance(preview, PostponeResult):
+        fields["preview"] = to_postpone_response(preview)
+    elif isinstance(preview, CatchUpResult):
+        fields["preview"] = to_catch_up_response(preview)
+    return ActionResponse(**fields)
 
 
 @router.post("/turn")

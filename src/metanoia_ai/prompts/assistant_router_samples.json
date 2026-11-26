@@ -116,5 +116,33 @@
     ],
     "tool": "schedule_for",
     "period": "tomorrow"
+  },
+  {
+    "text": "Chiều nay từ 2 giờ tới 4 giờ tôi có việc gấp cần sửa lỗi cho khách",
+    "language": "vi",
+    "tool": "insert_block",
+    "name": "sửa lỗi cho khách"
+  },
+  {
+    "text": "Mai 9 giờ sáng tôi có việc đột xuất khoảng 2 tiếng",
+    "language": "vi",
+    "tool": "insert_block",
+    "period": "tomorrow"
+  },
+  {
+    "text": "Bỏ việc này đi, để mai làm",
+    "language": "vi",
+    "tool": "postpone_task"
+  },
+  {
+    "text": "Dời việc viết blog sang ngày mai giúp tôi",
+    "language": "vi",
+    "tool": "postpone_task",
+    "name": "viết blog"
+  },
+  {
+    "text": "Hôm nay tôi lỡ mấy việc, xếp lại giúp tôi",
+    "language": "vi",
+    "tool": "catch_up"
   }
 ]

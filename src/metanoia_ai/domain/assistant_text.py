@@ -1059,3 +1059,29 @@ def catch_up_text(
     if moved:
         template += " Đồng ý không?" if vi else " OK?"
     return _say(template, **values)
+
+
+def ask_block_time_text(lang: Language) -> str:
+    """FR-22d #12: an urgent block without a start time."""
+    return _say(
+        "Việc gấp bắt đầu lúc mấy giờ và làm đến mấy giờ?"
+        if lang is Language.VI
+        else "What time does the urgent work start and end?"
+    )
+
+
+def block_invalid_text(lang: Language) -> str:
+    """The block is in the past, too long or after the next 7 days."""
+    return _say(
+        "Khung giờ đó không xếp được: đã qua, dài quá 12 tiếng hoặc xa hơn 7 ngày tới."
+        if lang is Language.VI
+        else "I cannot plan that time: it has passed, is over 12 hours, or is more than 7 days away."
+    )
+
+
+def no_slot_to_postpone_text(lang: Language) -> str:
+    return _say(
+        "Mình không thấy việc nào trên lịch hôm nay mà dời được."
+        if lang is Language.VI
+        else "I don't see a task on today's calendar that can be moved."
+    )

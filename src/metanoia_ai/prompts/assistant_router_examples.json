@@ -325,5 +325,28 @@
     "Approve the proposed schedule",
     "Approve my schedule",
     "Accept the schedule proposal"
+  ],
+  "insert_block": [
+    "Chiều nay 2 giờ đến 4 giờ tôi có việc gấp",
+    "Tôi có việc khẩn cấp từ 3 giờ tới 5 giờ chiều",
+    "Chèn việc gấp lúc 9 giờ sáng mai",
+    "Có việc đột xuất 14h tới 15h30",
+    "I have something urgent from 2 to 4 pm",
+    "Block 3 to 5 pm today for an urgent task"
+  ],
+  "postpone_task": [
+    "Bỏ việc này, để mai làm",
+    "Dời việc viết blog sang mai",
+    "Để mai làm việc thiết kế",
+    "Hôm nay không kịp, dời sang mai nhé",
+    "Postpone this task to tomorrow",
+    "Push back the blog post to tomorrow"
+  ],
+  "catch_up": [
+    "Xếp lại mấy việc bị lỡ hôm nay",
+    "Những việc tôi bị lỡ thì xếp lại giúp",
+    "Hôm nay lỡ mất mấy việc, xếp lại đi",
+    "Reschedule the tasks I missed",
+    "I missed some tasks today, fit them in again"
   ]
 }

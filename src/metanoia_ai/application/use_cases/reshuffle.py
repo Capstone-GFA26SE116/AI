@@ -240,9 +240,29 @@ class PostponeSlot(_Base):
         self, user_id: UUID, slot_id: UUID, language: Language
     ) -> PostponeResult:
         data, cal, rules = await self._load(user_id, slot_id)
-        target = data.target
-        if target is None:
+        if data.target is None:
             raise SlotNotFoundError(str(slot_id))
+        return self._postpone(data, cal, rules, data.target, language)
+
+    async def execute_for_task(
+        self, user_id: UUID, task_id: UUID | None, language: Language
+    ) -> PostponeResult:
+        """For the assistant (#13): the task's next movable slot that is not over;
+        no task → the slot happening now or starting soonest today."""
+        data, cal, rules = await self._load(user_id)
+        target = find_slot(data, task_id, rules.now)
+        if target is None:
+            raise SlotNotFoundError(str(task_id))
+        return self._postpone(data, cal, rules, target, language)
+
+    def _postpone(
+        self,
+        data: CalendarData,
+        cal: Calendar,
+        rules: Rules,
+        target: CalendarSlot,
+        language: Language,
+    ) -> PostponeResult:
         if not is_movable(target):
             raise SlotNotMovableError(target.state.value)
         slot = MovableSlot(
@@ -263,6 +283,25 @@ class PostponeSlot(_Base):
             language,
         )
         return PostponeResult(target.slot_id, target.title, move, summary, zone.key)
+
+
+def find_slot(
+    data: CalendarData, task_id: UUID | None, now: datetime
+) -> CalendarSlot | None:
+    """The slot the user means by "this task" / a task name (#13)."""
+    zone = data.hours.time_zone
+    open_slots = sorted(
+        (s for s in data.slots if is_movable(s) and s.end > now),
+        key=lambda s: s.start,
+    )
+    if task_id is not None:
+        return next((s for s in open_slots if s.task_id == task_id), None)
+    today = [
+        s
+        for s in open_slots
+        if s.start.astimezone(zone).date() == now.astimezone(zone).date()
+    ]
+    return today[0] if today else None
 
 
 class CatchUp(_Base):

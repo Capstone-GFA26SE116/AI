@@ -76,7 +76,9 @@ from metanoia_ai.domain.schedule_text import (
     warning_message,
 )
 
-SCHEDULABLE = {TaskStatus.TODO, TaskStatus.IN_PROGRESS}
+# A Scheduled task whose slots were missed or cancelled has no time on the calendar
+# any more: it is scheduled again (`has_approved_slot` keeps the others out).
+SCHEDULABLE = {TaskStatus.TODO, TaskStatus.SCHEDULED, TaskStatus.IN_PROGRESS}
 
 
 class NoSubscriptionError(Exception):

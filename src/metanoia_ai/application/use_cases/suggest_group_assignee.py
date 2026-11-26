@@ -50,7 +50,7 @@ from metanoia_ai.domain.memory_text import mask_contact
 from metanoia_ai.domain.models import Language, TimeRange
 
 OPEN = {GroupTaskStatus.TODO, GroupTaskStatus.IN_PROGRESS}
-OPEN_PERSONAL = {TaskStatus.TODO, TaskStatus.IN_PROGRESS}
+OPEN_PERSONAL = {TaskStatus.TODO, TaskStatus.SCHEDULED, TaskStatus.IN_PROGRESS}
 
 
 class GroupTaskNotFoundError(Exception):

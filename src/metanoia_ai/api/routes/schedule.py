@@ -11,10 +11,16 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from metanoia_ai.api.auth import get_current_user_id
-from metanoia_ai.api.deps import get_plan_overrun, get_propose_schedule
+from metanoia_ai.api.deps import (
+    get_catch_up,
+    get_insert_block,
+    get_plan_overrun,
+    get_postpone_slot,
+    get_propose_schedule,
+)
 from metanoia_ai.application.use_cases.plan_overrun import (
     OverrunRequest,
     OverrunResult,
@@ -31,9 +37,20 @@ from metanoia_ai.application.use_cases.propose_schedule import (
 from metanoia_ai.application.use_cases.recompute_productive_hours import (
     UserNotFoundError,
 )
+from metanoia_ai.application.use_cases.reshuffle import (
+    BlockInvalidError,
+    CatchUp,
+    CatchUpResult,
+    InsertBlock,
+    InsertResult,
+    PostponeResult,
+    PostponeSlot,
+    SlotNotMovableError,
+)
 from metanoia_ai.config import Settings, get_settings
 from metanoia_ai.domain.models import Language, WarningType
-from metanoia_ai.domain.overrun_plan import OverrunKind
+from metanoia_ai.domain.overrun_plan import OverrunKind, SlotMove
+from metanoia_ai.domain.reshuffle import Choice, ConflictKind, Why
 
 router = APIRouter(prefix="/schedule", tags=["schedule"])
 
@@ -220,3 +237,220 @@ def to_overrun_response(result: OverrunResult) -> OverrunResponse:
         past_day_end=plan.past_day_end,
         summary=result.summary,
     )
+
+
+# --- FR-22d: urgent block (M3, M4), postpone (M7), catch up (M10) ---
+
+
+class InsertBody(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    start: AwareDatetime
+    end: AwareDatetime
+    language: Language = Language.VI
+
+
+class BlockResponse(BaseModel):
+    title: str
+    start: datetime
+    end: datetime
+
+
+class TimeResponse(BaseModel):
+    start: datetime
+    end: datetime
+
+
+class ConflictResponse(BaseModel):
+    kind: ConflictKind
+    id: UUID | None  # Fixed task id, or slot id; None for a Google event
+    title: str
+    start: datetime
+    end: datetime
+    important: bool
+    why: Why
+
+
+class InsertResponse(BaseModel):
+    block: BlockResponse
+    past_day_end: bool
+    project_id: UUID | None  # where the app creates the Fixed task (null → ask)
+    domain_id: UUID | None  # the kind of work for it (null → ask)
+    moves: list[MoveResponse]  # old + new times: apply, and keep for undo (M18)
+    not_placed: list[NotPlacedResponse]
+    conflicts: list[ConflictResponse]
+    options: list[Choice]  # empty without conflicts
+    recommendation: Choice | None
+    other_time: TimeResponse | None
+    skip_task_ids: list[UUID]  # overwrite: set these Fixed tasks to Skipped
+    summary: str
+
+
+class PostponeBody(BaseModel):
+    slot_id: UUID
+    language: Language = Language.VI
+
+
+class PostponeResponse(BaseModel):
+    slot_id: UUID
+    task_title: str
+    move: MoveResponse | None
+    not_placed: bool  # no free time before the task deadline
+    summary: str
+
+
+class CatchUpBody(BaseModel):
+    language: Language = Language.VI
+
+
+class CatchUpMoveResponse(MoveResponse):
+    task_id: UUID | None
+    subtask_id: UUID | None
+
+
+class CatchUpResponse(BaseModel):
+    moves: list[CatchUpMoveResponse]
+    not_placed: list[NotPlacedResponse]
+    summary: str
+
+
+def to_move(m: SlotMove, zone: ZoneInfo) -> MoveResponse:
+    return MoveResponse(
+        slot_id=m.slot_id,
+        task_title=m.title,
+        old_start=m.old.start.astimezone(zone),
+        old_end=m.old.end.astimezone(zone),
+        new_start=m.new.start.astimezone(zone),
+        new_end=m.new.end.astimezone(zone),
+    )
+
+
+def to_insert_response(result: InsertResult) -> InsertResponse:
+    zone = ZoneInfo(result.time_zone)
+    plan = result.plan
+    return InsertResponse(
+        block=BlockResponse(
+            title=result.title,
+            start=plan.block.start.astimezone(zone),
+            end=plan.block.end.astimezone(zone),
+        ),
+        past_day_end=plan.past_day_end,
+        project_id=result.project_id,
+        domain_id=result.domain_id,
+        moves=[to_move(m, zone) for m in plan.moves],
+        not_placed=[
+            NotPlacedResponse(slot_id=n.slot_id, task_title=n.title)
+            for n in plan.not_placed
+        ],
+        conflicts=[
+            ConflictResponse(
+                kind=c.blocker.kind,
+                id=c.blocker.ref_id,
+                title=c.blocker.title,
+                start=c.blocker.time.start.astimezone(zone),
+                end=c.blocker.time.end.astimezone(zone),
+                important=c.important,
+                why=c.why,
+            )
+            for c in plan.conflicts
+        ],
+        options=list(plan.options),
+        recommendation=plan.recommendation,
+        other_time=None
+        if plan.other_time is None
+        else TimeResponse(
+            start=plan.other_time.start.astimezone(zone),
+            end=plan.other_time.end.astimezone(zone),
+        ),
+        skip_task_ids=list(plan.skip_task_ids),
+        summary=result.summary,
+    )
+
+
+def to_postpone_response(result: PostponeResult) -> PostponeResponse:
+    zone = ZoneInfo(result.time_zone)
+    return PostponeResponse(
+        slot_id=result.slot_id,
+        task_title=result.title,
+        move=None if result.move is None else to_move(result.move, zone),
+        not_placed=result.move is None,
+        summary=result.summary,
+    )
+
+
+def to_catch_up_response(result: CatchUpResult) -> CatchUpResponse:
+    zone = ZoneInfo(result.time_zone)
+    return CatchUpResponse(
+        moves=[
+            CatchUpMoveResponse(
+                **to_move(m.move, zone).model_dump(),
+                task_id=m.task_id,
+                subtask_id=m.subtask_id,
+            )
+            for m in result.moves
+        ],
+        not_placed=[
+            NotPlacedResponse(slot_id=n.slot_id, task_title=n.title)
+            for n in result.not_placed
+        ],
+        summary=result.summary,
+    )
+
+
+@router.post("/insert-block")
+async def insert_block(
+    body: InsertBody,
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+    use_case: Annotated[InsertBlock, Depends(get_insert_block)],
+) -> InsertResponse:
+    """M3 / M4: urgent work from start to end → what moves, what is in the way.
+    Writes nothing, no AI call; the app applies it through the Backend."""
+    try:
+        result = await use_case.execute(
+            user_id, body.title.strip(), body.start, body.end, body.language
+        )
+    except BlockInvalidError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
+        ) from error
+    except UserNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        ) from error
+    return to_insert_response(result)
+
+
+@router.post("/postpone")
+async def postpone(
+    body: PostponeBody,
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+    use_case: Annotated[PostponeSlot, Depends(get_postpone_slot)],
+) -> PostponeResponse:
+    """M7: move one slot to the next working day. Writes nothing, no AI call."""
+    try:
+        result = await use_case.execute(user_id, body.slot_id, body.language)
+    except (SlotNotFoundError, UserNotFoundError) as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Slot not found"
+        ) from error
+    except SlotNotMovableError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This slot cannot move (started, finished, cancelled, Fixed or group)",
+        ) from error
+    return to_postpone_response(result)
+
+
+@router.post("/catch-up")
+async def catch_up(
+    body: CatchUpBody,
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+    use_case: Annotated[CatchUp, Depends(get_catch_up)],
+) -> CatchUpResponse:
+    """M10: place missed slots again from now. Writes nothing, no AI call."""
+    try:
+        result = await use_case.execute(user_id, body.language)
+    except UserNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        ) from error
+    return to_catch_up_response(result)

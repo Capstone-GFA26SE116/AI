@@ -168,10 +168,11 @@ Full text in `docs/functional-requirements.md`. Status: first line of each `plan
 | FR-24 | Work Group plan chat (Leader only): same writer / prompts as FR-08b (`discuss` checklist, `plan` draft); every draft task gets a suggested member by code (FR-23 ranking, work spread out, template reason). AI writes only `ChatConversation` (Scope `Group`, needs `plans/FR-24.sql` on the DB) + `ChatMessage`; the app creates the work through the Backend and calls `/applied` | `plans/FR-24.md` |
 | FR-25 | Work Group: suggest time slots on the caller's calendar for the group work given to them (FR-10 planner, no K, no LLM, writes nothing; the app creates the slots through the Backend) | `plans/FR-25.md` |
 | — | Work Group slots (`ScheduleSlot.GroupTaskId`, owner `UserId`) are busy time in FR-10 / FR-16b / FR-12 / FR-22 / FR-23 | `plans/group-slots-busy.md` |
+| FR-22d | Urgent block (M3/M4: move only the covered Metanoia slots; Fixed / Google / group / started slots are conflicts with importance + suggestion other time / overwrite / cancel), postpone to the next working day (M7), catch up missed slots (M10); old times kept for undo (M18). Code only, writes nothing; 3 assistant tools (prompt v5) | `plans/FR-22d.md` |
 | FR-16b | A slot runs over: propose to extend it or move the slots after it (no LLM, writes nothing) | `plans/FR-16b.md` |
 
 **Not this repo:** FR-11 schedule approval + writing to Google Calendar (Backend).
-**Deferred:** FR-13 blind test. **Out of scope:** voice commands other than the 5 of FR-22c (create / edit / delete tasks…), STT/TTS on the server, Eisenhower matrix, training our own model.
+**Deferred:** FR-13 blind test. **Out of scope:** voice commands other than the 5 of FR-22c and the 3 of FR-22d (create a normal task / edit / delete tasks…), STT/TTS on the server, Eisenhower matrix, training our own model.
 
 ## 7. Rules for LLM use
 

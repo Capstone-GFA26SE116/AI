@@ -21,7 +21,7 @@ import logging
 import statistics
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from enum import StrEnum
 from string import Template
 from uuid import UUID
@@ -41,6 +41,7 @@ from metanoia_ai.application.ports.quota_repository import (
 from metanoia_ai.application.reason_writer import BadAnswerError, LLMCall
 from metanoia_ai.application.use_cases.find_similar_tasks import SimilarTasksResult
 from metanoia_ai.application.use_cases.get_daily_briefing import Briefing
+from metanoia_ai.application.use_cases.plan_overrun import SlotNotFoundError
 from metanoia_ai.application.use_cases.propose_schedule import (
     NoSubscriptionError,
     PlanFeatureError,
@@ -48,6 +49,12 @@ from metanoia_ai.application.use_cases.propose_schedule import (
 )
 from metanoia_ai.application.use_cases.recompute_productive_hours import (
     UserNotFoundError,
+)
+from metanoia_ai.application.use_cases.reshuffle import (
+    BlockInvalidError,
+    CatchUp,
+    InsertBlock,
+    PostponeSlot,
 )
 from metanoia_ai.application.use_cases.send_task_chat_message import (
     AIUnavailableError,
@@ -57,6 +64,7 @@ from metanoia_ai.domain.assistant_text import DueMilestone, Emotion, TimedLine
 from metanoia_ai.domain.assistant_tools import (
     DEFAULT_EXTRA_MINUTES,
     NAMED_TOOLS,
+    RESHUFFLE_TOOLS,
     WRITE_TOOLS,
     BadToolChoiceError,
     SmalltalkKind,
@@ -76,10 +84,11 @@ from metanoia_ai.prompts import load_prompt
 
 logger = logging.getLogger(__name__)
 
-PROMPT_VERSION = "assistant_router_v4"  # v4: 5 commands (FR-22c)
+PROMPT_VERSION = "assistant_router_v5"  # v5: schedule changes (FR-22d)
 NOW_FORMAT = "%Y-%m-%d %H:%M"
 # FR-22c #4: a voice-started timer is attached to the task's slot starting this soon.
 SLOT_AHEAD_MINUTES = 30
+DEFAULT_BLOCK_MINUTES = 60  # FR-22d #12: an urgent block said without an end
 ACTIVE_PROJECT = "Active"
 # Named tools whose name is a task (the others name a project).
 TASK_NAMED_TOOLS = frozenset({ToolName.SIMILAR_TASK_TIME, ToolName.START_TIMER})
@@ -93,6 +102,15 @@ BriefingReader = Callable[
 HabitsReader = Callable[[UUID, Language], Awaitable[Sequence[str]]]  # FR-20 insights
 HoursReader = Callable[[UUID], Awaitable[Sequence[int]]]  # FR-18 top hours
 SimilarReader = Callable[[UUID, UUID], Awaitable[SimilarTasksResult]]  # FR-09
+
+
+@dataclass(frozen=True)
+class Reshufflers:
+    """FR-22d use cases (read only, no LLM), built in deps.py on the same session."""
+
+    insert: InsertBlock
+    postpone: PostponeSlot
+    catch_up: CatchUp
 
 
 class TurnKind(StrEnum):
@@ -112,6 +130,10 @@ class ActionType(StrEnum):
     STOP_TIMER = "stop_timer"  # POST /api/focus/{session_id}/stop
     EXTEND_TIMER = "extend_timer"  # POST /schedule/overrun (FR-16b), then PUT slots
     APPROVE_PROPOSAL = "approve_proposal"  # POST /api/schedule/proposals/{id}/approve
+    # FR-22d: `preview` holds the proposal; the app applies it (plan §1) and keeps undo.
+    INSERT_BLOCK = "insert_block"  # create a Fixed task, PUT moved slots
+    POSTPONE = "postpone"  # PUT the slot
+    CATCH_UP = "catch_up"  # PUT each slot
 
 
 class FocusStop(StrEnum):
@@ -133,6 +155,9 @@ class PendingAction:
     stop_reason: FocusStop | None = None
     minutes: int | None = None
     proposal_id: UUID | None = None
+    # FR-22d: the proposal the app shows and applies (InsertResult / PostponeResult /
+    # CatchUpResult); the API turns it into the same body as the /schedule endpoint.
+    preview: object | None = None
 
 
 @dataclass(frozen=True)
@@ -224,8 +249,10 @@ class AssistantTurn:
         settings: AssistantSettings,
         now: Callable[[], datetime],
         router: LocalRouter | None = None,
+        reshuffle: Reshufflers | None = None,
     ) -> None:
         self.router = router
+        self.reshuffle = reshuffle
         self.repo = repo
         self.quota_repo = quota_repo
         self.quota = ChatQuota(quota_repo, now=now)
@@ -475,6 +502,8 @@ class AssistantTurn:
                 return await self._milestones(choice, request, now, zone)
             case _ if tool in WRITE_TOOLS:
                 return await self._command(choice, request, now, zone)
+            case _ if tool in RESHUFFLE_TOOLS:
+                return await self._reshuffle(choice, request, now, zone)
         raise ValueError(f"tool {tool} has no reader")  # pragma: no cover
 
     async def _pick(
@@ -693,3 +722,102 @@ class AssistantTurn:
                 stop_reason=FocusStop.COMPLETED if finished else FocusStop.INTERRUPTED,
             ),
         )
+
+    # --- FR-22d: schedule changes ---
+
+    async def _reshuffle(
+        self, choice: ToolChoice, request: TurnRequest, now: datetime, zone: ZoneInfo
+    ) -> Turn:
+        """A CONFIRM turn with the proposal, or a plain answer when there is nothing
+        to propose. Only reads (the use cases write nothing)."""
+        lang, tool, user = request.language, choice.tool, request.user_id
+
+        def answer(reply: str, emotion: Emotion = Emotion.NEUTRAL) -> Turn:
+            return Turn(TurnKind.ANSWER, tool, reply, emotion)
+
+        def confirm(reply: str, action: PendingAction) -> Turn:
+            return Turn(TurnKind.CONFIRM, tool, reply, Emotion.THINKING, action=action)
+
+        if self.reshuffle is None:
+            return Turn(
+                TurnKind.UNSUPPORTED,
+                None,
+                say.unsupported_text(lang),
+                Emotion.NEUTRAL,
+                suggestions=say.suggestions(lang),
+            )
+
+        if tool is ToolName.INSERT_BLOCK:
+            block = block_times(choice, now, zone)
+            if block is None:
+                return answer(say.ask_block_time_text(lang))
+            title = choice.name or (
+                "Việc gấp" if lang is Language.VI else "Urgent work"
+            )
+            try:
+                result = await self.reshuffle.insert.execute(
+                    user, title, block[0], block[1], lang
+                )
+            except BlockInvalidError:
+                return answer(say.block_invalid_text(lang))
+            return confirm(
+                result.summary, PendingAction(ActionType.INSERT_BLOCK, preview=result)
+            )
+
+        if tool is ToolName.POSTPONE_TASK:
+            task_id = None
+            if choice.name is not None or request.selected_id is not None:
+                picked = await self._pick(
+                    choice,
+                    request,
+                    await self.repo.open_tasks(user),
+                    "việc",
+                    "task",
+                )
+                if isinstance(picked, Turn):
+                    return picked
+                task_id = picked.id
+            try:
+                result = await self.reshuffle.postpone.execute_for_task(
+                    user, task_id, lang
+                )
+            except SlotNotFoundError:
+                return answer(say.no_slot_to_postpone_text(lang))
+            if result.move is None:
+                return answer(result.summary)
+            return confirm(
+                result.summary,
+                PendingAction(
+                    ActionType.POSTPONE,
+                    task_title=result.title,
+                    slot_id=result.slot_id,
+                    preview=result,
+                ),
+            )
+
+        result = await self.reshuffle.catch_up.execute(user, lang)
+        if not result.moves:
+            return answer(
+                result.summary, Emotion.HAPPY if not result.not_placed else Emotion.SAD
+            )
+        return confirm(
+            result.summary, PendingAction(ActionType.CATCH_UP, preview=result)
+        )
+
+
+def block_times(
+    choice: ToolChoice, now: datetime, zone: ZoneInfo
+) -> tuple[datetime, datetime] | None:
+    """The spoken block on the user's clock; None when no start time was said (#12).
+    No end and no length → 60 minutes. An end not after the start → None (ask again)."""
+    if choice.start_time is None:
+        return None
+    day = now.astimezone(zone).date()
+    if choice.period is SpokenPeriod.TOMORROW:
+        day += timedelta(days=1)
+    start = datetime.combine(day, choice.start_time, tzinfo=zone)
+    if choice.end_time is not None:
+        end = datetime.combine(day, choice.end_time, tzinfo=zone)
+    else:
+        end = start + timedelta(minutes=choice.minutes or DEFAULT_BLOCK_MINUTES)
+    return (start, end) if end > start else None

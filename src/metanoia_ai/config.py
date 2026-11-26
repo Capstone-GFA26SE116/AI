@@ -56,6 +56,9 @@ class Settings(BaseSettings):
     schedule_max_block_minutes: int = Field(default=180, ge=0)
     # A slot runs over (FR-16b): the most extra minutes the user may ask for.
     overrun_extra_minutes_max: int = Field(default=480, gt=0)
+    # FR-22d: the longest urgent block, and how far back missed slots are caught up.
+    insert_block_max_minutes: int = Field(default=720, gt=0)
+    catch_up_look_back_days: int = Field(default=2, gt=0, le=7)
 
     # LLM. Optional at startup: only features that call the LLM need them,
     # and they get them through llm_config(), which fails if one is missing.

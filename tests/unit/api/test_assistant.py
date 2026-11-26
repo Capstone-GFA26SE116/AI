@@ -194,4 +194,5 @@ def test_confirm_turn_sends_the_action() -> None:
         "stop_reason": "Completed",
         "minutes": None,
         "proposal_id": None,
+        "preview": None,  # FR-22d only
     }

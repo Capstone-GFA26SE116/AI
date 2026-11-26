@@ -107,7 +107,7 @@ domain rules → port → use case (+ fake repo tests) → SQL repository → ro
 - Every update is logged in `KBiasUpdateLog` so any K can be recomputed.
 
 **Scheduling (FR-10)**
-- **Code places the slots; the LLM only writes the one-line reason.**
+- **Code places the slots; the one-line reason is written by code (FR-10g, default) or by the LLM (`SCHEDULE_REASONS=llm`).**
 - Order: keep Fixed → Flexible by nearest deadline (tie: longer first) → size with
   T_proposed → prefer productive hours → warn if a deadline can't be met.
 - FR-10c (no daily hour cap: freelancers may work 12–14 h): work goes to the least-loaded
@@ -140,6 +140,7 @@ Full text in `docs/functional-requirements.md`. Status: first line of each `plan
 | FR-10d | Learn each user's daily capacity from timer data (80th percentile of work days ≥ 60'); warn, never block, on heavier planned days | `plans/FR-10d.md` |
 | FR-10e | Tasks due after the proposal window and not fully placed get a `beyond_window` warning ("press Schedule again later"); placement unchanged | `plans/FR-10e.md` |
 | FR-10f | Slots know why a task has parts (`long_work` blocks vs `no_long_gap`); reason prompt v4 is less robotic (no "X of Y", no today/yesterday) | `plans/FR-10f.md` |
+| FR-10g | Slot reasons written by code from the same facts (`SCHEDULE_REASONS=template`, default): no LLM, no quota, no AIUsageLog; `llm` keeps prompt v4 | `plans/FR-10g.md` |
 | — | Quota check + `AIUsageLog` (before every LLM call) | — |
 | FR-08a | AI chat, task level: split a big task into subtasks, then Apply | `plans/FR-08a.md` |
 | FR-08b-1 | AI chat, project level: text brief → milestones + Flexible tasks, then Apply | `plans/FR-08b-1.md` |

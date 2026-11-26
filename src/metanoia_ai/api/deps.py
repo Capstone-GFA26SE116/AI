@@ -21,7 +21,11 @@ from metanoia_ai.application.ports.account_repository import AccountRepository
 from metanoia_ai.application.ports.embedding_client import EmbeddingClient
 from metanoia_ai.application.ports.llm_client import LLMClient
 from metanoia_ai.application.project_chat_writer import ProjectChatWriter
-from metanoia_ai.application.reason_writer import ReasonWriter
+from metanoia_ai.application.reason_writer import (
+    ReasonWriter,
+    SlotReasonWriter,
+    TemplateReasonWriter,
+)
 from metanoia_ai.application.use_cases.apply_and_schedule import ApplyAndSchedule
 from metanoia_ai.application.use_cases.apply_project_breakdown import (
     ApplyProjectBreakdown,
@@ -221,17 +225,12 @@ def get_propose_schedule(
     settings: Annotated[Settings, Depends(get_settings)],
     llm_client: Annotated[LLMClient, Depends(get_llm_client)],
 ) -> ProposeSchedule:
-    """FR-10 use case on the real database and Gemini, with values from config."""
-    llm = settings.llm_config()
+    """FR-10 use case on the real database, with values from config.
+    FR-10g: reasons by code (default, no AI call) or by Gemini."""
     return ProposeSchedule(
         SqlScheduleRepository(session),
         SqlQuotaRepository(session),  # same session → same transaction
-        ReasonWriter(
-            llm_client,
-            max_retries=llm.max_retries,
-            input_price_per_1m=llm.input_price_per_1m,
-            output_price_per_1m=llm.output_price_per_1m,
-        ),
+        schedule_reason_writer(settings, llm_client),
         initial_k=Decimal(str(settings.kbias_initial)),
         window_days=settings.schedule_window_days,
         min_chunk_minutes=settings.schedule_min_chunk_minutes,
@@ -288,6 +287,21 @@ def get_suggest_group_slots(
             max_block_minutes=settings.schedule_max_block_minutes or None,
         ),
         clock=lambda: datetime.now(UTC),
+    )
+
+
+def schedule_reason_writer(
+    settings: Settings, llm_client: LLMClient
+) -> SlotReasonWriter:
+    """FR-10g: SCHEDULE_REASONS=template (default) writes reasons by code."""
+    if settings.schedule_reasons == "template":
+        return TemplateReasonWriter()
+    llm = settings.llm_config()
+    return ReasonWriter(
+        llm_client,
+        max_retries=llm.max_retries,
+        input_price_per_1m=llm.input_price_per_1m,
+        output_price_per_1m=llm.output_price_per_1m,
     )
 
 

@@ -5,7 +5,8 @@
 3. Minutes to schedule per task / subtask.
 4. Free time in the window.
 5. Planner (pure code) → slots + warnings.
-6. LLM writes one reason per slot (with retries; failure → no reasons).
+6. One reason per slot: by code (FR-10g, default, no quota) or by the LLM
+   (with retries; failure → no reasons).
 7. Save in one transaction: old Pending → Superseded, new proposal + slots,
    charge 1 call (only if the LLM worked), one AIUsageLog row per LLM call.
 """
@@ -32,7 +33,11 @@ from metanoia_ai.application.ports.schedule_repository import (
     TaskStatus,
     TaskToSchedule,
 )
-from metanoia_ai.application.reason_writer import LLMCall, ReasonResult, ReasonWriter
+from metanoia_ai.application.reason_writer import (
+    LLMCall,
+    ReasonResult,
+    SlotReasonWriter,
+)
 from metanoia_ai.domain.daily_capacity import (
     MIN_DAYS,
     daily_capacity,
@@ -131,7 +136,7 @@ class ProposeSchedule:
         self,
         schedule_repo: ScheduleRepository,
         quota_repo: QuotaRepository,
-        reason_writer: ReasonWriter,
+        reason_writer: SlotReasonWriter,
         *,
         initial_k: Decimal,
         window_days: int,
@@ -217,7 +222,8 @@ class ProposeSchedule:
         subscription = await self.quota.get_subscription(user_id, now)
         if subscription is None:
             raise NoSubscriptionError(str(user_id))
-        if not subscription.has_calls_left:
+        # FR-10g: reasons written by code use no AI call, so no quota is needed.
+        if self.reason_writer.uses_llm and not subscription.has_calls_left:
             raise QuotaExceededError("plan limit reached")
         return subscription
 

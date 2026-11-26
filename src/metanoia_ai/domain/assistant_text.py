@@ -16,6 +16,7 @@ from metanoia_ai.domain.assistant_tools import SmalltalkKind, ToolName
 from metanoia_ai.domain.briefing_text import duration
 from metanoia_ai.domain.forbidden_terms import InternalNameError, has_internal_name
 from metanoia_ai.domain.models import Language
+from metanoia_ai.domain.reshuffle import Choice, Why
 from metanoia_ai.domain.spoken_period import SpokenPeriod
 
 MAX_WORDS = 60
@@ -858,3 +859,203 @@ SUGGESTIONS = {
 def suggestions(lang: Language) -> tuple[str, ...]:
     """2–3 example questions for `unsupported` and `smalltalk` help."""
     return SUGGESTIONS[lang]
+
+
+# --- FR-22d: urgent block, postpone, catch up (asked back before the app applies) ---
+
+CONFLICT_WHY = {
+    Why.CLIENT: (" (việc với khách)", " (a client task)"),
+    Why.PERSONAL: (" (việc cá nhân)", " (a personal task)"),
+    Why.OTHER_PEOPLE: (
+        " (lịch Google, có thể có người khác)",
+        " (a Google event, maybe with others)",
+    ),
+    Why.GROUP: (" (việc nhóm)", " (group work)"),
+    Why.RUNNING: (" (bạn đang làm)", " (you are working on it)"),
+}
+NOTIFY = {
+    Why.CLIENT: (", nhớ báo khách", ", and tell the client"),
+    Why.OTHER_PEOPLE: (
+        ", rồi tự hủy lịch đó trên Google",
+        ", then cancel that event on Google",
+    ),
+    Why.GROUP: (", nhớ báo nhóm", ", and tell your group"),
+}
+
+
+@dataclass(frozen=True)
+class ConflictLine:
+    """Something in the way of an urgent block (FR-22d): its title and why it matters."""
+
+    title: str
+    why: Why
+
+
+def _when(moment: datetime, now: datetime, zone: ZoneInfo, lang: Language) -> str:
+    """ "14 giờ" today, "9 giờ ngày mai" on another day."""
+    moment, now = moment.astimezone(zone), now.astimezone(zone)
+    if moment.date() == now.date():
+        return spoken_time(moment, lang)
+    return f"{spoken_time(moment, lang)} {spoken_day(moment, now, lang)}"
+
+
+def _moved_items(
+    moved: Sequence[MovedLine], now: datetime, zone: ZoneInfo, lang: Language
+) -> str:
+    joiner = " sang " if lang is Language.VI else " to "
+    return _join(
+        [
+            f"{short_name(m.title)}{joiner}{_when(m.start, now, zone, lang)}"
+            for m in moved[:MOVED_ITEMS]
+        ],
+        lang,
+    )
+
+
+def insert_text(
+    title: str,
+    block_start: datetime,
+    block_end: datetime,
+    moved: Sequence[MovedLine],
+    not_placed: int,
+    conflicts: Sequence[ConflictLine],
+    recommendation: Choice | None,
+    other_time: tuple[datetime, datetime] | None,
+    past_day_end: bool,
+    now: datetime,
+    zone: ZoneInfo,
+    lang: Language,
+) -> str:
+    """M3 / M4 in one breath: what moves, or what is in the way and the suggestion."""
+    vi = lang is Language.VI
+    idx = 0 if vi else 1
+    values: dict[str, object] = {
+        "title": short_name(title),
+        "start": _when(block_start, now, zone, lang),
+        "end": spoken_time(block_end.astimezone(zone), lang),
+        "n": _count(len(moved), "việc", "task", lang),
+        "items": _moved_items(moved, now, zone, lang),
+        "more": _more(len(moved) - MOVED_ITEMS, "việc", "task", lang),
+        "late": _count(not_placed, "việc", "task", lang),
+    }
+    if not conflicts:
+        if moved:
+            template = (
+                "Thêm {title} từ {start} đến {end} và dời {n}: {items}{more}."
+                if vi
+                else "Add {title} from {start} to {end} and move {n}: {items}{more}."
+            )
+        else:
+            template = (
+                "Thêm {title} từ {start} đến {end}, không cần dời việc nào."
+                if vi
+                else "Add {title} from {start} to {end}; nothing needs to move."
+            )
+        if not_placed:
+            template += (
+                " {late} sẽ không kịp hạn chót."
+                if vi
+                else " {late} would miss the deadline."
+            )
+        if past_day_end:
+            template += (
+                " Như vậy là quá giờ làm."
+                if vi
+                else " This goes past your working hours."
+            )
+        return _say(template + (" Đồng ý không?" if vi else " OK?"), **values)
+
+    first = conflicts[0]
+    values["other"] = short_name(first.title)
+    values["why"] = CONFLICT_WHY[first.why][idx]
+    values["others"] = _more(len(conflicts) - 1, "việc", "item", lang)
+    template = (
+        "{title} từ {start} đến {end} trùng với {other}{why}{others}."
+        if vi
+        else "{title} from {start} to {end} clashes with {other}{why}{others}."
+    )
+    if recommendation is Choice.OTHER_TIME and other_time is not None:
+        values["alt_start"] = _when(other_time[0], now, zone, lang)
+        values["alt_end"] = spoken_time(other_time[1].astimezone(zone), lang)
+        template += (
+            " Mình gợi ý làm từ {alt_start} đến {alt_end}, hoặc bạn ghi đè hay hủy."
+            if vi
+            else " I suggest {alt_start} to {alt_end}, or you can overwrite or cancel."
+        )
+    elif recommendation is Choice.OVERWRITE:
+        notify = NOTIFY.get(first.why)
+        values["notify"] = notify[idx] if notify else ""
+        template += (
+            " Hôm nay không còn giờ trống khác, mình gợi ý ghi đè{notify}, hoặc bạn hủy."
+            if vi
+            else " No other free time today, so I suggest overwriting{notify}, or cancel."
+        )
+    else:
+        template += (
+            " Bạn đang làm dở việc đó, nên chỉ có thể hủy hoặc đợi xong."
+            if vi
+            else " You are in the middle of it, so you can only cancel or wait."
+        )
+    if moved:
+        template += " Sẽ cần dời {n}." if vi else " {n} would need to move."
+    return _say(template, **values)
+
+
+def postpone_text(
+    title: str,
+    new_start: datetime | None,
+    now: datetime,
+    zone: ZoneInfo,
+    lang: Language,
+) -> str:
+    """M7: where the slot goes, or why it cannot move."""
+    vi = lang is Language.VI
+    if new_start is None:
+        template = (
+            "Không còn chỗ trống trước hạn chót của {title} trong tuần tới, nên mình chưa dời được."
+            if vi
+            else "There is no free time before the deadline of {title} in the coming week, so I cannot move it."
+        )
+        return _say(template, title=short_name(title))
+    template = "Dời {title} sang {when} nhé?" if vi else "Move {title} to {when}?"
+    return _say(
+        template, title=short_name(title), when=_when(new_start, now, zone, lang)
+    )
+
+
+def catch_up_text(
+    moved: Sequence[MovedLine],
+    not_placed: int,
+    now: datetime,
+    zone: ZoneInfo,
+    lang: Language,
+) -> str:
+    """M10: the missed slots placed again from now."""
+    vi = lang is Language.VI
+    missed = len(moved) + not_placed
+    if missed == 0:
+        return _say(
+            "Không có việc nào bị lỡ, lịch của bạn vẫn ổn."
+            if vi
+            else "Nothing was missed; your schedule is fine."
+        )
+    values = {
+        "n": _count(missed, "việc", "task", lang),
+        "items": _moved_items(moved, now, zone, lang),
+        "more": _more(len(moved) - MOVED_ITEMS, "việc", "task", lang),
+        "late": _count(not_placed, "việc", "task", lang),
+    }
+    template = "Có {n} bị lỡ." if vi else "{n} missed."
+    if moved:
+        template += (
+            " Mình xếp lại: {items}{more}." if vi else " New times: {items}{more}."
+        )
+    if not_placed:
+        template += (
+            " {late} không còn kịp hạn chót."
+            if vi
+            else " {late} can no longer meet the deadline."
+        )
+    if moved:
+        template += " Đồng ý không?" if vi else " OK?"
+    return _say(template, **values)

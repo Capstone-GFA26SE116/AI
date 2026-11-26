@@ -26,7 +26,8 @@ from metanoia_ai.domain.free_time import DailyBreak, break_ranges, busy_ranges
 from metanoia_ai.domain.models import TimeRange
 from metanoia_ai.domain.schedule_duration import remaining_estimate
 
-OPEN_PERSONAL = {TaskStatus.TODO, TaskStatus.IN_PROGRESS}
+# Scheduled counts too: without a slot on the calendar it is still work to place.
+OPEN_PERSONAL = {TaskStatus.TODO, TaskStatus.SCHEDULED, TaskStatus.IN_PROGRESS}
 
 
 def member_candidate(

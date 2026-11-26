@@ -267,9 +267,20 @@ def test_t29_english():
 
 def test_t39_scheduled_task_is_not_scheduled_again():
     world = World()
-    result = world.run(planning(task(status=TaskStatus.SCHEDULED), task(approved=True)))
+    result = world.run(
+        planning(task(status=TaskStatus.SCHEDULED, approved=True), task(approved=True))
+    )
     assert result.proposal_id is None
     assert result.slots == ()
+
+
+def test_scheduled_task_that_lost_its_slots_is_scheduled_again():
+    # 2026-11-26: 3 real tasks were Scheduled with only Missed / Cancelled slots and
+    # were never placed again. No slot on the calendar → it is open work again.
+    world = World()
+    lost = task(status=TaskStatus.SCHEDULED)
+    result = world.run(planning(lost))
+    assert [s.task_id for s in result.slots] == [lost.task_id]
 
 
 def test_t40_unknown_task_ids_are_ignored():
@@ -286,7 +297,7 @@ def test_t41_nothing_to_schedule():
     used_before = world.calls_used
     logs_before = len(world.log_rows)
 
-    result = world.run(planning(task(status=TaskStatus.SCHEDULED)))
+    result = world.run(planning(task(status=TaskStatus.SCHEDULED, approved=True)))
 
     assert result.proposal_id is None
     assert result.is_feasible is True
@@ -466,3 +477,17 @@ def test_lunch_break_is_kept_free_every_working_day():
         day = slot.start.date()
         noon = datetime.combine(day, time(12), tzinfo=SAIGON)
         assert slot.end <= noon or slot.start >= noon + timedelta(hours=1)
+
+
+def test_group_capacity_counts_scheduled_tasks_without_a_slot():
+    # FR-23 load: a Scheduled task with no slot on the calendar is still work to place.
+    from metanoia_ai.application.group_capacity import personal_unscheduled_minutes
+
+    data = planning(
+        task(minutes=60, status=TaskStatus.SCHEDULED),
+        task(
+            minutes=30, status=TaskStatus.SCHEDULED, approved=True
+        ),  # already busy time
+        task(minutes=45, status=TaskStatus.DONE),
+    )
+    assert personal_unscheduled_minutes(data, NOW, NOW + timedelta(days=7)) == 60

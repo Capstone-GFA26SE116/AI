@@ -7,14 +7,15 @@ Usage (from the repo root; no need to start the API):
 to test "clarify"), open tasks, a meeting this afternoon and this evening, an approved
 slot tomorrow, a running timer, a learned K for Writing, onboarding "morning + evening"
 and 2 finished "viết bài blog" tasks with memories (FR-09).
-Asks the 20 questions of prompts/assistant_router_samples.json through
+Asks the questions (25 since FR-22d) of prompts/assistant_router_samples.json through
 POST /assistant/turn in-process, prints each reply, checks the picked tool
-(≥ 18/20, AC1 / AC2), the AI call count (AC4) and the time (AC8), then always
+(≥ 90 %, AC1 / AC2), the AI call count (AC4) and the time (AC8), then always
 deletes exactly the rows it made. Never prints DATABASE_URL, the JWT secret or keys.
 """
 
 import asyncio
 import json
+import math
 import statistics
 import time
 from datetime import UTC, datetime, timedelta
@@ -42,7 +43,7 @@ NAMES += ["blog", "report", "meeting", "dinner", "old1", "old2"]
 IDS = {name: uuid4() for name in NAMES}
 PROJECTS = [str(IDS[n]) for n in ("landing_a", "landing_b", "spa")]
 TASKS = [str(IDS[n]) for n in ("blog", "report", "meeting", "dinner", "old1", "old2")]
-MIN_CORRECT = 18
+MIN_CORRECT_SHARE = 0.9  # AC1 / AC2: 18 of the first 20; 90 % of all samples now
 PERIOD_STARTS = {
     "morning": ("Sáng nay", "This morning"),
     "afternoon": ("Chiều nay", "This afternoon"),
@@ -322,7 +323,8 @@ async def main() -> None:
                 )
 
         rows, llm_ms, used = await usage(engine)
-        print(f"\nChọn đúng công cụ: {right}/{len(samples)} (cần ≥ {MIN_CORRECT})")
+        need = math.ceil(MIN_CORRECT_SHARE * len(samples))
+        print(f"\nChọn đúng công cụ: {right}/{len(samples)} (cần ≥ {need})")
         print(
             f"AIUsageLog (Chat): {rows} dòng · AiCallsUsed: {used} · HTTP 200: {statuses.count(200)}"
         )
@@ -335,8 +337,10 @@ async def main() -> None:
                 f"Riêng Gemini (LatencyMs): trung vị {statistics.median(llm_ms):.0f} ms · "
                 f"p95 {p95(llm_ms) if len(llm_ms) > 1 else llm_ms[0]:.0f} ms"
             )
-        ok = right >= MIN_CORRECT
-        print(f"  [{'OK' if ok else 'FAIL'}] AC1/AC2: ≥ {MIN_CORRECT}/20 đúng công cụ")
+        ok = right >= need
+        print(
+            f"  [{'OK' if ok else 'FAIL'}] AC1/AC2: ≥ {need}/{len(samples)} đúng công cụ"
+        )
         # FR-22b: a turn picked by the local router uses no LLM and is not charged;
         # each LLM turn charges exactly 1 call (FR-22 AC4).
         charge_ok = rows == used and used <= statuses.count(200)

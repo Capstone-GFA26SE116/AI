@@ -62,6 +62,7 @@ from metanoia_ai.application.use_cases.get_productive_hours import GetProductive
 from metanoia_ai.application.use_cases.get_project_chat import GetProjectChat
 from metanoia_ai.application.use_cases.get_task_chat import GetTaskChat
 from metanoia_ai.application.use_cases.group_chat import GroupChat
+from metanoia_ai.application.use_cases.import_excel_plan import ImportExcelPlan
 from metanoia_ai.application.use_cases.import_projects import ImportProjects
 from metanoia_ai.application.use_cases.list_chat_history import ListChatHistory
 from metanoia_ai.application.use_cases.plan_overrun import (
@@ -107,6 +108,7 @@ from metanoia_ai.application.use_cases.suggest_group_slots import (
 from metanoia_ai.config import MissingLlmSettingError, Settings, get_settings
 from metanoia_ai.domain.analytics import AnalyticsRange
 from metanoia_ai.domain.briefing import BiasRule
+from metanoia_ai.domain.excel_plan import PlanRows
 from metanoia_ai.domain.local_router import LocalRouter, LocalSettings, load_examples
 from metanoia_ai.domain.models import Language
 from metanoia_ai.domain.project_breakdown import ProjectLimits
@@ -121,6 +123,7 @@ from metanoia_ai.infrastructure.db.chat_history_repository import (
     SqlChatHistoryRepository,
 )
 from metanoia_ai.infrastructure.db.chat_repository import SqlChatRepository
+from metanoia_ai.infrastructure.db.excel_plan_repository import SqlExcelPlanRepository
 from metanoia_ai.infrastructure.db.group_assignee_repository import (
     SqlGroupAssigneeRepository,
 )
@@ -144,6 +147,7 @@ from metanoia_ai.infrastructure.db.schedule_repository import SqlScheduleReposit
 from metanoia_ai.infrastructure.db.similar_task_repository import (
     SqlSimilarTaskRepository,
 )
+from metanoia_ai.infrastructure.files.excel_plan import read_plan
 from metanoia_ai.infrastructure.llm.fallback_client import FallbackLLMClient
 from metanoia_ai.infrastructure.llm.gemini_client import (
     DEFAULT_TIMEOUT_SECONDS,
@@ -1009,3 +1013,15 @@ def get_import_projects(
     return ImportProjects(
         SqlProjectImportRepository(session), now=lambda: datetime.now(UTC)
     )
+
+
+def get_import_excel_plan(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ImportExcelPlan:
+    return ImportExcelPlan(
+        SqlExcelPlanRepository(session), now=lambda: datetime.now(UTC)
+    )
+
+
+def get_excel_plan_reader() -> Callable[[bytes], PlanRows]:
+    return read_plan

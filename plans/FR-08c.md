@@ -1,12 +1,66 @@
-# FR-08c — Nhập 1 file (Excel…) → nhiều dự án, mỗi dự án có sẵn chat để lên kế hoạch
+# FR-08c — Nhập kế hoạch từ Excel
 
-Trạng thái: Xong · Branch: `feature/fr08c-import-projects` · Cập nhật: 2026-11-20
-
-<!-- Hiếu duyệt 2026-11-20: "ok làm đi và sửa lại luật cho phần AI có thể chỉnh sửa bảng project".
-Luật mới: AI chỉ TẠO dự án khi nhập file, kiểm giới hạn gói như Backend, không sửa / xóa (CLAUDE.md §8, docs/database.md).
-Claude Code soạn plan rồi làm liền. -->
+Trạng thái: Xong trên máy · Branch: `feature/fr08c-excel-plan` · Cập nhật: 2026-11-27
 
 ## 0. Mục tiêu
+
+- [x] AC1. Đọc workbook .xlsx theo ba sheet Projects / Milestones / Tasks (có tên tiếng Việt tương ứng trong mẫu). Giữ mã, tên, hạn, thời lượng và dòng nguồn. Dòng thiếu, giá trị sai và mã trùng được đưa vào bản xem trước để sửa hoặc bỏ.
+- [x] AC2. API xác nhận kiểm tra lại dữ liệu, mã cha, domain và giới hạn gói. Tạo Project, Milestone, Task trong một giao dịch, có thể thử lại cùng bản xác nhận sau lỗi mạng.
+- [x] AC3. Luồng Excel có cấu trúc dùng parser, áp dụng cho mọi gói trong giới hạn dự án. Luồng brief cũ giữ nguyên.
+- Ngoài phạm vi: nhận diện cột tự do bằng LLM, subtasks, ghi lịch và OCR.
+
+## 1. Bên ngoài
+
+| Method | Endpoint | Request | Response |
+|---|---|---|---|
+| POST | `/projects/import/plan/preview` | multipart file | rows {projects, milestones, tasks}, domains, issues, project_limit, projects_left |
+| POST | `/projects/import/plan` | request_id (UUID), projects, milestones, tasks | projects (id/name), milestone_count, task_count |
+
+Mẫu: Projects (`project_code,name,description,deadline`), Milestones
+(`project_code,milestone_code,name,deadline`), Tasks
+(`project_code,milestone_code,name,estimated_minutes,domain,deadline`).
+Cho dùng sheet `Danh sách dự án`, `Cột mốc`, `Công việc chi tiết` với cùng header.
+Mã cột mốc chỉ cần duy nhất trong từng dự án. Hạn ngày Excel hoặc ISO; task có thể kế thừa
+hạn cột mốc rồi dự án. Mỗi task cần domain đang hoạt động và số phút nguyên dương.
+Mã dạng chữ được giữ nguyên và so khớp không phân biệt hoa thường. Mã số nên định dạng Text
+nếu cần số 0 đầu. Tiêu đề tối đa theo schema hiện hành.
+Các ô đầu vào phải là giá trị; công thức cần dán thành giá trị trước khi nhập.
+
+## 2. Bên trong
+
+- Parser openpyxl read-only. Tối đa 20 MB khi tải lên, 100 MB sau giải nén, 5.000 dòng dữ liệu mỗi sheet và 64 cột. Tối đa 20 dự án mỗi lần xác nhận.
+  Từ chối sheet vượt giới hạn hoặc sai header thay vì trả kết quả thiếu.
+- Domain kiểm dữ liệu độc lập; API xác nhận dùng lại bộ kiểm tra của preview. Task import
+  là Flexible/ToDo, estimate lấy từ Excel, AiEstimatedMinutes rỗng.
+- Dùng các quyền INSERT hiện có với Project, Milestone, Task. Giữ các cột và trạng thái
+  đang dùng trong luồng áp dụng bản kế hoạch. Không đổi schema.
+- Khóa theo user và kiểm quota dự án trước khi ghi. ID dự án xác định từ user, request ID
+  và nội dung xác nhận. Retry cùng payload trả lại các ID. Nếu chỉ còn một phần
+  dự án của lần nhập trước, trả 409. FE cấp ID mới khi sửa bản xác nhận.
+
+## 3. Test
+
+- Parser: file nhiều sheet, Excel date, các dòng rỗng và sheet có header sai.
+- Validator: cùng mã cột mốc khác dự án, task mồ côi, mã trùng, hạn kế thừa và domain.
+- Use case: giới hạn gói, ghi theo cây, retry cùng yêu cầu, lỗi giữa giao dịch.
+- API: xác thực, multipart preview, xác nhận và ánh xạ mã lỗi.
+
+## 4. Các bước code
+
+- [x] 1. Domain và parser với unit test.
+- [x] 2. Port, use case, SQL và API, kèm unit test.
+- [x] 3. Chạy pytest và ruff, bàn giao hợp đồng cho FE.
+
+## 5. Nhật ký thay đổi
+
+- 2026-11-27: Thêm đường nhập kế hoạch XLSX ba sheet theo MVP đã trao đổi.
+
+- 2026-11-27: Pytest đạt 2.637 test, coverage 96,04%, ruff đạt. PostgreSQL cục bộ với schema rút gọn xác nhận nối đúng cây và hai request đồng thời cùng payload trả về cùng ID.
+
+## Luồng nhập brief hiện hữu
+
+### Mục tiêu cũ
+
 - **Làm gì:** 2 bước.
   1. **Xem trước** — user tải 1 file (xlsx, csv, pdf, docx, txt, md) ở trang Dự án → AI đọc và **chia thành các dự án**:
      tên, mô tả ngắn, hạn (nếu file có), phần nào của file (`source`, vd "Sheet Yêu cầu, dòng 2–14"), và `brief` = nội dung

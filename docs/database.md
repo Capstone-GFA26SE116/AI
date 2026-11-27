@@ -121,10 +121,11 @@ Hiếu cho phép 2026-11-20 (cần báo Backend). Đọc DB 2026-11-20 (chỉ đ
   (unique 1 dự án mặc định / user) · `CreatedAt` · `AllowAiDocumentAccess` bool mặc định false.
 - **AI chỉ INSERT**: `Status = 'Active'`, `IsDefault = false`, `ClientId = NULL`, `AllowAiDocumentAccess = false`,
   `StartDate` = hôm nay (giờ user), `Deadline` ≥ hôm nay hoặc NULL. **Không bao giờ UPDATE / DELETE** dự án.
+- FR-08c nhập Excel đặt `Id` dựa trên user, mã xác nhận và dữ liệu được duyệt để thử lại mà không tạo trùng. Project, Milestone và Task được tạo cùng giao dịch.
 - Giới hạn gói như Backend (`PlanLimitService.EnsureCanCreateProjectAsync`): `SubscriptionPlan.ProjectLimit` của gói `Active`
   (NULL = không giới hạn); đếm dự án `UserId` = user, `IsDefault = false`, `Status <> 'Archived'`; đủ thì không tạo.
 
-### `Milestone` — AI ghi lúc Apply (FR-08b-1) ⚠️
+### `Milestone` — AI ghi lúc Apply (FR-08b-1) hoặc xác nhận nhập Excel (FR-08c) ⚠️
 Đọc DB 2026-10-16 (chỉ đọc, FR-08b-1 bước 0). Đang có 2 dòng.
 - `Id` uuid · `ProjectId` uuid NOT NULL · `Name` **varchar(150)** NOT NULL (plan gọi là `title`) ·
   `OrderIndex` int NOT NULL ≥ 1 · `DueDate` **date** trống được (plan gọi là `deadline`) ·
@@ -134,7 +135,7 @@ Hiếu cho phép 2026-11-20 (cần báo Backend). Đọc DB 2026-11-20 (chỉ đ
 - Unique `UQ_Milestone_ProjectId_OrderIndex` (`ProjectId`, `OrderIndex`) `DEFERRABLE INITIALLY DEFERRED`.
   FK `ProjectId` → `Project`: `ON DELETE CASCADE`. **Không có** `CreatedAt`.
 
-### `Task` — AI ghi lúc Apply (FR-08b-1) ⚠️
+### `Task` — AI ghi lúc Apply (FR-08b-1) hoặc xác nhận nhập Excel (FR-08c) ⚠️
 - Chỉ tạo mới task `Flexible`, `ToDo`: `ProjectId`, `MilestoneId`, `DomainId`, `Title`, `Deadline`, `EstimatedMinutes`,
   `AiEstimatedMinutes`. Không sửa task có sẵn. Cột và CHECK: xem `Task` ở mục chỉ đọc.
 
@@ -143,7 +144,7 @@ Hiếu cho phép 2026-11-20 (cần báo Backend). Đọc DB 2026-11-20 (chỉ đ
 
 ## Bảng chỉ đọc
 
-### `Task` (chỉ đọc, trừ lúc Apply FR-08b-1)
+### `Task` (chỉ đọc, trừ lúc Apply FR-08b-1 hoặc xác nhận nhập Excel FR-08c)
 - **Không có `UserId`** → chủ sở hữu qua `Project.UserId` (luôn JOIN `Project`).
 - Cột (đọc DB 2026-10-16): `Id` · `ProjectId` NOT NULL · `MilestoneId` trống được (FK → `Milestone`, `ON DELETE SET NULL`) ·
   `DomainId` NOT NULL (FK `ON DELETE RESTRICT`) · `Title` **varchar(200)** NOT NULL · `Description` · `TaskType` mặc định `Flexible` ·

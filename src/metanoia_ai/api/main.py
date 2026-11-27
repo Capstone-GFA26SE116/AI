@@ -17,6 +17,7 @@ from metanoia_ai.api.routes import (
     briefing,
     chat,
     chat_history,
+    excel_plan,
     groups,
     learning,
     memory,
@@ -55,6 +56,7 @@ app.include_router(chat.router)
 app.include_router(project_chat.router)
 app.include_router(chat_history.router)
 app.include_router(project_import.router)
+app.include_router(excel_plan.router)
 app.include_router(profile.router)
 app.include_router(briefing.router)
 app.include_router(analytics.router)

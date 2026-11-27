@@ -93,7 +93,7 @@ class ExistingMilestone:
 @dataclass(frozen=True)
 class NewMilestone:
     title: str  # Milestone.Name
-    due_date: date  # Milestone.DueDate
+    due_date: date | None  # Milestone.DueDate
     order_index: int
 
 

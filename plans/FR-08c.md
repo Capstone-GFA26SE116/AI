@@ -53,6 +53,12 @@ Các ô đầu vào phải là giá trị; công thức cần dán thành giá t
 
 ## 5. Nhật ký thay đổi
 
+- 2026-11-27: Hỗ trợ workbook tiếng Việt hiện có với sheet `Cột mốc (Milestones)` và
+  `Công việc chi tiết (Tasks)`. Đổi giờ thập phân sang phút nếu kết quả là số nguyên.
+  Task tra dự án từ mã cột mốc; nếu mã có nhiều cha thì đối chiếu tên dự án. Dòng mơ hồ
+  vẫn xuất hiện để sửa. Nếu thiếu loại việc, người dùng có thể chọn một loại đang hoạt
+  động cho các dòng còn thiếu ở bước xem trước.
+
 - 2026-11-27: Thêm đường nhập kế hoạch XLSX ba sheet theo MVP đã trao đổi.
 
 - 2026-11-27: Pytest đạt 2.637 test, coverage 96,04%, ruff đạt. PostgreSQL cục bộ với schema rút gọn xác nhận nối đúng cây và hai request đồng thời cùng payload trả về cùng ID.
@@ -121,6 +127,12 @@ Các ô đầu vào phải là giá trị; công thức cần dán thành giá t
 - [x] **4.** Chạy thật — T6; docs.
 
 ## 5. Nhật ký thay đổi
+
+- 2026-11-27: Hỗ trợ workbook tiếng Việt hiện có với sheet `Cột mốc (Milestones)` và
+  `Công việc chi tiết (Tasks)`. Đổi giờ thập phân sang phút nếu kết quả là số nguyên.
+  Task tra dự án từ mã cột mốc; nếu mã có nhiều cha thì đối chiếu tên dự án. Dòng mơ hồ
+  vẫn xuất hiện để sửa. Nếu thiếu loại việc, người dùng có thể chọn một loại đang hoạt
+  động cho các dòng còn thiếu ở bước xem trước.
 | Ngày | Thay đổi | Lý do (bug / quyết định mới) |
 |---|---|---|
 | 2026-11-20 | Tạo plan; luật mới cho bảng `Project` | Hiếu |

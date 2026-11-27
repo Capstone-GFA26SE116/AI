@@ -290,7 +290,7 @@ class ProposeSchedule:
             ]
         units = []
         for sub in task.subtasks:
-            if not sub.is_open:
+            if not sub.is_open or sub.has_approved_slot:
                 continue
             sessions = sessions_of(task.sessions, sub.subtask_id)
             units.append(

@@ -5,6 +5,7 @@ import pytest
 from metanoia_ai.infrastructure.db.schedule_repository import (
     GET_APPROVED_SLOTS,
     GET_GROUP_SLOT_TIMES,
+    GET_SUBTASKS,
     GET_TASKS,
 )
 
@@ -13,7 +14,7 @@ def sql(statement) -> str:
     return " ".join(str(statement).split())
 
 
-@pytest.mark.parametrize("statement", [GET_APPROVED_SLOTS, GET_TASKS])
+@pytest.mark.parametrize("statement", [GET_APPROVED_SLOTS, GET_TASKS, GET_SUBTASKS])
 def test_every_on_calendar_state_is_busy(statement) -> None:
     # The Backend moves an approved slot on: Due → InProgress → Overrun (DB CHECK,
     # 2026-11-10). Missing them let FR-10 propose a slot on top of a running one.
@@ -26,6 +27,11 @@ def test_busy_slots_are_limited_to_the_user_and_window() -> None:
     text = sql(GET_APPROVED_SLOTS)
     assert 'p."UserId" = :user_id' in text
     assert 's."EndTime" > :window_start AND s."StartTime" < :window_end' in text
+
+
+def test_parent_and_subtask_calendar_slots_are_distinguished():
+    assert 's."SubTaskId" IS NULL' in sql(GET_TASKS)
+    assert 's."SubTaskId" = st."Id"' in sql(GET_SUBTASKS)
 
 
 def test_tasks_query_reads_the_project():

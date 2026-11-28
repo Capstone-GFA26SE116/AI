@@ -54,7 +54,8 @@ GET_TASKS = text(
            t."EstimatedMinutes", t."ProjectId",
            EXISTS (
                SELECT 1 FROM "ScheduleSlot" s
-               WHERE s."TaskId" = t."Id" AND s."Status" IN """
+               WHERE s."TaskId" = t."Id" AND s."SubTaskId" IS NULL
+                 AND s."Status" IN """
     + ON_CALENDAR_SLOTS
     + """
            ) AS "HasApprovedSlot"
@@ -66,9 +67,17 @@ GET_TASKS = text(
 """
 )
 
-GET_SUBTASKS = text("""
+GET_SUBTASKS = text(
+    """
     SELECT st."Id", st."TaskId", st."Title", st."EstimatedMinutes",
-           st."OrderIndex", st."Status"
+           st."OrderIndex", st."Status",
+           EXISTS (
+               SELECT 1 FROM "ScheduleSlot" s
+               WHERE s."TaskId" = st."TaskId" AND s."SubTaskId" = st."Id"
+                 AND s."Status" IN """
+    + ON_CALENDAR_SLOTS
+    + """
+           ) AS "HasApprovedSlot"
     FROM "SubTask" st
     JOIN "Task" t ON t."Id" = st."TaskId"
     JOIN "Project" p ON p."Id" = t."ProjectId"
@@ -76,7 +85,8 @@ GET_SUBTASKS = text("""
       AND t."TaskType" = 'Flexible'
       AND t."Status" NOT IN ('Done', 'Skipped')
     ORDER BY st."TaskId", st."OrderIndex"
-""")
+"""
+)
 
 GET_SESSIONS = text("""
     SELECT fs."TaskId", fs."SubTaskId", fs."StartedAt", fs."EndedAt",
@@ -260,6 +270,7 @@ class SqlScheduleRepository:
                     estimated_minutes=s.EstimatedMinutes,
                     order_index=s.OrderIndex,
                     is_open=s.Status == OPEN_SUBTASK,
+                    has_approved_slot=s.HasApprovedSlot,
                 )
             )
         sessions: dict[UUID, list[FocusSessionRecord]] = {}

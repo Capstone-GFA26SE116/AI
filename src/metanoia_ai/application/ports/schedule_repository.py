@@ -32,6 +32,7 @@ class SubTaskToSchedule:
     estimated_minutes: int
     order_index: int
     is_open: bool  # False when Done or Skipped
+    has_approved_slot: bool = False
 
 
 @dataclass(frozen=True)
@@ -44,7 +45,7 @@ class TaskToSchedule:
     status: TaskStatus
     deadline: datetime
     estimated_minutes: int
-    has_approved_slot: bool
+    has_approved_slot: bool  # A slot for the parent task itself
     subtasks: tuple[SubTaskToSchedule, ...]
     sessions: tuple[FocusSessionRecord, ...]
     project_id: UUID | None = None  # FR-10c: to switch between projects

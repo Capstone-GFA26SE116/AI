@@ -248,6 +248,21 @@ def test_t27_task_ids_limit_the_tasks():
     assert {s.task_id for s in result.slots} == {wanted.task_id}
 
 
+def test_scope_schedules_only_open_children_without_calendar_slots():
+    scheduled, remaining = uuid4(), uuid4()
+    parent = task(
+        status=TaskStatus.SCHEDULED,
+        subtasks=[
+            SubTaskToSchedule(scheduled, "Already scheduled", 30, 1, True, True),
+            SubTaskToSchedule(remaining, "Still needs time", 30, 2, True),
+        ],
+    )
+    result = World().run(planning(parent, task()), task_ids=[parent.task_id])
+    assert {(slot.task_id, slot.subtask_id) for slot in result.slots} == {
+        (parent.task_id, remaining)
+    }
+
+
 def test_t28_error_while_saving_saves_nothing():
     world = World()
     world.repo.fail_on_save = True

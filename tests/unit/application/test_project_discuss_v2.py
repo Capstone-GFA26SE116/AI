@@ -17,8 +17,10 @@ from tests.unit.application.test_project_discuss_writer import answer, fill
 # --- T1: the prompt ---
 
 
-def test_the_chat_uses_prompt_v2():
-    assert DISCUSS_PROMPT_VERSION == "project_discuss_v2"
+def test_the_chat_uses_the_companion_prompt():
+    assert DISCUSS_PROMPT_VERSION == "project_discuss_v3"
+    assert "Compare against existing_tasks" in fill()
+    assert "the user must approve them" in fill()
 
 
 def test_prompt_lists_the_kinds_of_help():
